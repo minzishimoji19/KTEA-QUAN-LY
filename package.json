@@ -1,0 +1,24 @@
+{
+  "name": "ktea-customer-intelligence",
+  "version": "1.0.0",
+  "description": "Personal Customer Management & Customer Intelligence System",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c green,cyan \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "db:start": "powershell -ExecutionPolicy Bypass -File scripts/start-db.ps1",
+    "db:stop": "powershell -ExecutionPolicy Bypass -File scripts/stop-db.ps1",
+    "build:backend": "npm --prefix backend run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "build": "npm run build:backend && npm run build:frontend",
+    "lint:backend": "npm --prefix backend run lint",
+    "lint:frontend": "npm --prefix frontend run lint",
+    "lint": "npm run lint:backend && npm run lint:frontend",
+    "test:backend": "npm --prefix backend test",
+    "test": "npm run test:backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}

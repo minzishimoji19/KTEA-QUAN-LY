@@ -1,0 +1,293 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum CustomerStatus {
+  LEAD
+  PROSPECT
+  ACTIVE
+  DORMANT
+  LOST
+}
+
+enum PriorityLevel {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum NeedStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  DROPPED
+}
+
+enum CaseStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ActivityType {
+  CONTACT
+  CALL
+  MESSAGE
+  MEETING
+  APPLICATION_CREATED
+  APPLICATION_UPDATED
+  STATUS_CHANGED
+  NEED_DETECTED
+  FOLLOW_UP
+  PUSH_CREATED
+  PUSH_RESULT
+  NOTE_CREATED
+  SYSTEM_EVENT
+  PUSH_SENT
+  NOTE
+}
+
+enum FollowUpStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum RecommendationStatus {
+  NEW
+  REVIEWED
+  DISMISSED
+  CONVERTED_TO_PUSH
+  ACTIVE
+  ACCEPTED
+  EXPIRED
+}
+
+enum PushStatus {
+  PENDING
+  IN_PROGRESS
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+model Customer {
+  id              String            @id @default(uuid())
+  fullName        String            @map("full_name")
+  phone           String            @map("phone")
+  email           String?           @map("email")
+  gender          Gender?           @map("gender")
+  dateOfBirth     DateTime?         @map("date_of_birth")
+  address         String?           @map("address")
+  source          String?           @map("source")
+  overallStatus   CustomerStatus    @default(LEAD) @map("overall_status")
+  priority        PriorityLevel?    @map("priority")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  needs           CustomerNeed[]
+  cases           CustomerCase[]
+  activities      CustomerActivity[]
+  notes           CustomerNote[]
+  customerTags    CustomerTag[]
+  followUps       FollowUp[]
+  recommendations Recommendation[]
+  pushRecords     PushRecord[]
+
+  @@index([phone])
+  @@index([overallStatus])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@map("customers")
+}
+
+model Product {
+  id              String            @id @default(uuid())
+  code            String            @unique @map("code")
+  name            String            @map("name")
+  description     String?           @map("description") @db.Text
+  active          Boolean           @default(true) @map("active")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  cases           CustomerCase[]
+  recommendations Recommendation[]
+  pushRecords     PushRecord[]
+
+  @@map("products")
+}
+
+model CustomerNeed {
+  id              String            @id @default(uuid())
+  customerId      String            @map("customer_id")
+  needType        String            @map("need_type")
+  status          NeedStatus        @default(OPEN) @map("status")
+  detectedAt      DateTime          @default(now()) @map("detected_at")
+  resolvedAt      DateTime?         @map("resolved_at")
+  notes           String?           @map("notes") @db.Text
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  customer        Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([status])
+  @@map("customer_needs")
+}
+
+model CustomerCase {
+  id              String            @id @default(uuid())
+  customerId      String            @map("customer_id")
+  productId       String            @map("product_id")
+  caseStatus      CaseStatus        @default(DRAFT) @map("case_status")
+  applicationDate DateTime?         @map("application_date")
+  resultDate      DateTime?         @map("result_date")
+  failureReason   String?           @map("failure_reason") @db.Text
+  notes           String?           @map("notes") @db.Text
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  customer        Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product         Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([customerId])
+  @@index([productId])
+  @@index([caseStatus])
+  @@index([createdAt])
+  @@map("customer_cases")
+}
+
+model CustomerActivity {
+  id              String            @id @default(uuid())
+  customerId      String            @map("customer_id")
+  type            ActivityType      @map("type")
+  title           String            @map("title")
+  description     String?           @map("description") @db.Text
+  occurredAt      DateTime          @default(now()) @map("occurred_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  customer        Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([occurredAt])
+  @@map("customer_activities")
+}
+
+model CustomerNote {
+  id              String            @id @default(uuid())
+  customerId      String            @map("customer_id")
+  content         String            @map("content") @db.Text
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  customer        Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("customer_notes")
+}
+
+model Tag {
+  id              String            @id @default(uuid())
+  name            String            @unique @map("name")
+  color           String?           @map("color")
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  customerTags    CustomerTag[]
+
+  @@map("tags")
+}
+
+model CustomerTag {
+  customerId      String            @map("customer_id")
+  tagId           String            @map("tag_id")
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  customer        Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tag             Tag               @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([customerId, tagId])
+  @@index([tagId])
+  @@map("customer_tags")
+}
+
+model FollowUp {
+  id              String            @id @default(uuid())
+  customerId      String            @map("customer_id")
+  title           String            @map("title")
+  description     String?           @map("description") @db.Text
+  dueAt           DateTime          @map("due_at")
+  status          FollowUpStatus    @default(PENDING) @map("status")
+  completedAt     DateTime?         @map("completed_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  customer        Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([dueAt])
+  @@index([status])
+  @@map("follow_ups")
+}
+
+model Recommendation {
+  id                 String               @id @default(uuid())
+  customerId         String               @map("customer_id")
+  targetProductId    String?              @map("target_product_id")
+  recommendationType String               @map("recommendation_type")
+  score              Decimal?             @map("score") @db.Decimal(5, 2)
+  reason             String               @map("reason") @db.Text
+  status             RecommendationStatus @default(NEW) @map("status")
+  generatedAt        DateTime             @default(now()) @map("generated_at")
+  dismissedAt        DateTime?            @map("dismissed_at")
+  createdAt          DateTime             @default(now()) @map("created_at")
+
+  customer           Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  targetProduct      Product?             @relation(fields: [targetProductId], references: [id], onDelete: SetNull)
+  pushRecords        PushRecord[]
+
+  @@index([customerId])
+  @@index([targetProductId])
+  @@index([status])
+  @@map("recommendations")
+}
+
+model PushRecord {
+  id                 String            @id @default(uuid())
+  customerId         String            @map("customer_id")
+  recommendationId   String?           @map("recommendation_id")
+  targetProductId    String?           @map("target_product_id")
+  pushedAt           DateTime          @default(now()) @map("pushed_at")
+  status             PushStatus        @default(PENDING) @map("status")
+  resultAt           DateTime?         @map("result_at")
+  failureReason      String?           @map("failure_reason") @db.Text
+  note               String?           @map("note") @db.Text
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  customer           Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  recommendation     Recommendation?   @relation(fields: [recommendationId], references: [id], onDelete: SetNull)
+  targetProduct      Product?          @relation(fields: [targetProductId], references: [id], onDelete: SetNull)
+
+  @@index([customerId])
+  @@index([targetProductId])
+  @@index([recommendationId])
+  @@index([status])
+  @@index([pushedAt])
+  @@map("push_records")
+}
