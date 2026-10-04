@@ -104,6 +104,7 @@ export class CustomerRepository extends BaseRepository {
         take,
         orderBy: { [sortBy]: sortOrder },
         include: {
+          customerSource: true,
           customerTags: {
             include: { tag: true },
           },
@@ -151,6 +152,7 @@ export class CustomerRepository extends BaseRepository {
     return this.db.customer.findUnique({
       where: { id },
       include: {
+        customerSource: true,
         customerTags: {
           include: { tag: true },
         },
@@ -162,8 +164,14 @@ export class CustomerRepository extends BaseRepository {
     return this.db.customer.findUnique({
       where: { id },
       include: {
+        customerSource: true,
         cases: {
-          include: { product: true },
+          include: {
+            product: true,
+            progressHistory: {
+              orderBy: { changedAt: 'asc' },
+            },
+          },
           orderBy: { createdAt: 'desc' },
         },
         needs: {
@@ -210,6 +218,7 @@ export class CustomerRepository extends BaseRepository {
     dateOfBirth?: Date | null;
     address?: string | null;
     source?: string | null;
+    sourceId?: string | null;
     overallStatus?: CustomerStatus;
     priority?: PriorityLevel | null;
   }) {

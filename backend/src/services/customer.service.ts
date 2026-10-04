@@ -1,7 +1,8 @@
 import { CustomerStatus, Gender, PriorityLevel, ActivityType } from '@prisma/client';
 import { customerRepository, CustomerQueryFilters } from '../repositories/customer.repository.js';
+import { customerSourceRepository } from '../repositories/customerSource.repository.js';
 import { tagRepository } from '../repositories/tag.repository.js';
-import { NotFoundError, ConflictError } from '../utils/errors.js';
+import { NotFoundError, ConflictError, BadRequestError } from '../utils/errors.js';
 import { buildPaginationMeta } from '../utils/db.js';
 import BaseService from './base.service.js';
 import prisma from '../config/database.js';
@@ -30,7 +31,11 @@ export class CustomerService extends BaseService {
     if (!customer) {
       throw new NotFoundError(`Customer with ID '${id}' not found`);
     }
-    return customer;
+
+    return {
+      ...customer,
+      source: customer.source || customer.customerSource?.name || null,
+    };
   }
 
   async createCustomer(data: {
@@ -41,6 +46,7 @@ export class CustomerService extends BaseService {
     dateOfBirth?: string | Date | null;
     address?: string | null;
     source?: string | null;
+    sourceId?: string | null;
     overallStatus?: CustomerStatus;
     priority?: PriorityLevel | null;
   }) {
@@ -48,6 +54,30 @@ export class CustomerService extends BaseService {
     const existing = await customerRepository.findByPhone(data.phone);
     if (existing) {
       throw new ConflictError(`A customer with phone '${data.phone}' already exists (${existing.fullName})`);
+    }
+
+    let resolvedSourceId: string | null = null;
+    let resolvedSourceName: string | null = data.source || null;
+
+    if (data.sourceId) {
+      const source = await customerSourceRepository.findById(data.sourceId);
+      if (!source) {
+        throw new NotFoundError(`Customer source with ID '${data.sourceId}' not found`);
+      }
+      if (!source.active) {
+        throw new BadRequestError(`Customer source '${source.name}' is inactive and cannot be selected for a new customer`);
+      }
+      resolvedSourceId = source.id;
+      resolvedSourceName = source.name;
+    } else if (data.source && data.source.trim()) {
+      const matched = await customerSourceRepository.findByName(data.source.trim());
+      if (matched) {
+        if (!matched.active) {
+          throw new BadRequestError(`Customer source '${matched.name}' is inactive and cannot be selected for a new customer`);
+        }
+        resolvedSourceId = matched.id;
+        resolvedSourceName = matched.name;
+      }
     }
 
     const birthDate = data.dateOfBirth ? new Date(data.dateOfBirth) : null;
@@ -62,9 +92,13 @@ export class CustomerService extends BaseService {
           gender: data.gender,
           dateOfBirth: birthDate,
           address: data.address,
-          source: data.source,
+          source: resolvedSourceName,
+          sourceId: resolvedSourceId,
           overallStatus: data.overallStatus || CustomerStatus.LEAD,
           priority: data.priority,
+        },
+        include: {
+          customerSource: true,
         },
       });
 
@@ -89,6 +123,7 @@ export class CustomerService extends BaseService {
     dateOfBirth?: string | Date | null;
     address?: string | null;
     source?: string | null;
+    sourceId?: string | null;
     overallStatus?: CustomerStatus;
     priority?: PriorityLevel | null;
   }) {
@@ -102,6 +137,33 @@ export class CustomerService extends BaseService {
       }
     }
 
+    let updateSourceId: string | null | undefined = undefined;
+    let updateSourceName: string | null | undefined = undefined;
+
+    if (data.sourceId !== undefined) {
+      if (data.sourceId === null) {
+        updateSourceId = null;
+      } else {
+        const source = await customerSourceRepository.findById(data.sourceId);
+        if (!source) {
+          throw new NotFoundError(`Customer source with ID '${data.sourceId}' not found`);
+        }
+        if (!source.active && current.sourceId !== data.sourceId) {
+          throw new BadRequestError(`Cannot assign inactive source '${source.name}'`);
+        }
+        updateSourceId = source.id;
+        updateSourceName = source.name;
+      }
+    } else if (data.source !== undefined && data.source !== null && data.source.trim()) {
+      const matched = await customerSourceRepository.findByName(data.source.trim());
+      if (matched) {
+        updateSourceId = matched.id;
+        updateSourceName = matched.name;
+      } else {
+        updateSourceName = data.source.trim();
+      }
+    }
+
     const birthDate = data.dateOfBirth !== undefined
       ? (data.dateOfBirth ? new Date(data.dateOfBirth) : null)
       : undefined;
@@ -112,6 +174,11 @@ export class CustomerService extends BaseService {
         data: {
           ...data,
           dateOfBirth: birthDate,
+          ...(updateSourceId !== undefined ? { sourceId: updateSourceId } : {}),
+          ...(updateSourceName !== undefined ? { source: updateSourceName } : {}),
+        },
+        include: {
+          customerSource: true,
         },
       });
 

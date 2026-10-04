@@ -6,6 +6,7 @@ import { X, UserCheck, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useUpdateCustomer } from '../../hooks/useCustomers';
 import { useCreateActivity } from '../../hooks/useActivities';
+import { useCustomerSources } from '../../hooks/useCustomerSources';
 import { CustomerDetail } from '../../types/models';
 
 const editCustomerSchema = z.object({
@@ -15,6 +16,7 @@ const editCustomerSchema = z.object({
   gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional().or(z.literal('')),
   dateOfBirth: z.string().optional().or(z.literal('')),
   address: z.string().max(500).optional().or(z.literal('')),
+  sourceId: z.string().optional().or(z.literal('')),
   source: z.string().max(100).optional().or(z.literal('')),
   overallStatus: z.enum(['LEAD', 'PROSPECT', 'ACTIVE', 'DORMANT', 'LOST']),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional().or(z.literal('')),
@@ -35,6 +37,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
 }) => {
   const updateCustomer = useUpdateCustomer(customer.id);
   const createActivity = useCreateActivity(customer.id);
+  const { data: allSources, isLoading: isSourcesLoading } = useCustomerSources(false);
 
   const {
     register,
@@ -50,6 +53,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
       gender: customer.gender || '',
       dateOfBirth: customer.dateOfBirth ? customer.dateOfBirth.split('T')[0] : '',
       address: customer.address || '',
+      sourceId: customer.sourceId || customer.customerSource?.id || '',
       source: customer.source || '',
       overallStatus: customer.overallStatus,
       priority: customer.priority || 'MEDIUM',
@@ -65,6 +69,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
         gender: customer.gender || '',
         dateOfBirth: customer.dateOfBirth ? customer.dateOfBirth.split('T')[0] : '',
         address: customer.address || '',
+        sourceId: customer.sourceId || customer.customerSource?.id || '',
         source: customer.source || '',
         overallStatus: customer.overallStatus,
         priority: customer.priority || 'MEDIUM',
@@ -73,6 +78,14 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
   }, [customer, isOpen, reset]);
 
   if (!isOpen) return null;
+
+  // Filter sources: include all active sources + current customer's source even if inactive
+  const availableSources = (allSources || []).filter(
+    (s) =>
+      s.active ||
+      s.id === customer.sourceId ||
+      s.id === customer.customerSource?.id
+  );
 
   const onSubmit = async (data: EditCustomerFormData) => {
     try {
@@ -84,7 +97,10 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
         gender: data.gender || null,
         dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth).toISOString() : null,
         address: data.address?.trim() || null,
-        source: data.source?.trim() || null,
+        sourceId: data.sourceId || null,
+        source: data.sourceId
+          ? allSources?.find((s) => s.id === data.sourceId)?.name || data.source?.trim() || null
+          : data.source?.trim() || null,
         priority: data.priority || null,
       };
 
@@ -208,11 +224,18 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
 
               <div>
                 <label className="block text-[11px] font-medium text-slate-400 mb-1">Nguồn khách hàng</label>
-                <input
-                  type="text"
-                  {...register('source')}
-                  className="w-full h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-blue-500"
-                />
+                <select
+                  {...register('sourceId')}
+                  disabled={isSourcesLoading}
+                  className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-blue-500 font-sans text-xs"
+                >
+                  <option value="">-- Chưa chọn nguồn --</option>
+                  {availableSources.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} {!s.active ? '(Inactive)' : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 

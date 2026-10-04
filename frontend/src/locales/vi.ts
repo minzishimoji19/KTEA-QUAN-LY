@@ -104,6 +104,13 @@ export const vi = {
     REJECTED: 'Từ chối',
     CANCELLED: 'Đã hủy',
 
+    // Case progress
+    NOT_SELECTED: 'Chưa chọn sản phẩm',
+    REGISTRATION_CREATED: 'Đăng ký tạo',
+    REGISTRATION_COMPLETED: 'Hoàn tất đăng ký',
+    CARD_ISSUED: 'Phát hành thẻ',
+    CARD_ACTIVATED: 'Kích hoạt thẻ',
+
     // Push statuses
     PENDING: 'Đang chờ xử lý',
     IN_PROGRESS: 'Đang xử lý',

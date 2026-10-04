@@ -16,9 +16,9 @@
     "test:api": "tsx src/tests/verify-api.ts",
     "test:analytics": "tsx src/tests/verify-analytics.ts",
     "test:recommendations": "tsx src/tests/verify-recommendation-engine.ts",
-    "test:dashboard": "tsx src/tests/verify-dashboard.ts",
+    "test:lifecycle": "tsx src/tests/verify-case-lifecycle-and-sources.ts",
     "test:settings": "tsx src/tests/verify-settings.ts",
-    "test": "tsx src/tests/verify-domain.ts && tsx src/tests/verify-api.ts && tsx src/tests/verify-analytics.ts && tsx src/tests/verify-recommendation-engine.ts && tsx src/tests/verify-dashboard.ts && tsx src/tests/verify-settings.ts"
+    "test": "tsx src/tests/verify-case-lifecycle-and-sources.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

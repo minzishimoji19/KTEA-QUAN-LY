@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { X, UserPlus, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useCreateCustomer } from '../../hooks/useCustomers';
+import { useCustomerSources } from '../../hooks/useCustomerSources';
 import { CustomerDetail } from '../../types/models';
 import { useToast } from '../../context/ToastContext';
 
@@ -15,6 +16,7 @@ const createCustomerSchema = z.object({
   gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional().or(z.literal('')),
   dateOfBirth: z.string().optional().or(z.literal('')),
   address: z.string().max(500).optional().or(z.literal('')),
+  sourceId: z.string().optional().or(z.literal('')),
   source: z.string().max(100).optional().or(z.literal('')),
   overallStatus: z.enum(['LEAD', 'PROSPECT', 'ACTIVE', 'DORMANT', 'LOST']).default('LEAD'),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional().or(z.literal('')),
@@ -34,6 +36,7 @@ export const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({
   onSuccess,
 }) => {
   const createCustomer = useCreateCustomer();
+  const { data: sources, isLoading: isSourcesLoading } = useCustomerSources(true);
   const { toast } = useToast();
 
   React.useEffect(() => {
@@ -60,7 +63,8 @@ export const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({
       gender: '',
       dateOfBirth: '',
       address: '',
-      source: 'TRUC_TIEP',
+      sourceId: '',
+      source: '',
       overallStatus: 'LEAD',
       priority: 'MEDIUM',
     },
@@ -80,7 +84,13 @@ export const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({
       if (data.gender) payload.gender = data.gender;
       if (data.dateOfBirth) payload.dateOfBirth = new Date(data.dateOfBirth).toISOString();
       if (data.address?.trim()) payload.address = data.address.trim();
-      if (data.source?.trim()) payload.source = data.source.trim();
+      if (data.sourceId) {
+        payload.sourceId = data.sourceId;
+        const matched = sources?.find((s) => s.id === data.sourceId);
+        if (matched) payload.source = matched.name;
+      } else if (data.source?.trim()) {
+        payload.source = data.source.trim();
+      }
       if (data.priority) payload.priority = data.priority;
 
       const created = await createCustomer.mutateAsync(payload);
@@ -90,9 +100,10 @@ export const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({
       if (onSuccess && created?.id) {
         onSuccess(created.id);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to create customer:', err);
-      toast.error('Đăng ký thất bại', err?.message || 'Vui lòng kiểm tra lại các trường dữ liệu.');
+      const message = err instanceof Error ? err.message : 'Vui lòng kiểm tra lại các trường dữ liệu.';
+      toast.error('Đăng ký thất bại', message);
     }
   };
 
@@ -223,12 +234,18 @@ export const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({
                 <label className="block text-[11px] font-medium text-slate-400 mb-1">
                   Nguồn khách hàng
                 </label>
-                <input
-                  type="text"
-                  placeholder="VD: Sự kiện, Giới thiệu, Đối tác..."
-                  {...register('source')}
-                  className="w-full h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 font-sans"
-                />
+                <select
+                  {...register('sourceId')}
+                  disabled={isSourcesLoading}
+                  className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-blue-500 font-sans text-xs"
+                >
+                  <option value="">-- Chưa chọn nguồn --</option>
+                  {(sources || []).map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 

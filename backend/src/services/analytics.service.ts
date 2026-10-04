@@ -550,7 +550,13 @@ export class AnalyticsService extends BaseService {
       },
     };
   }
+
+  // 6. LIFECYCLE FOUNDATION
+  async getLifecycleFoundation() {
+    return analyticsRepository.getLifecycleFoundationMetrics();
+  }
 }
 
 export const analyticsService = new AnalyticsService();
 export default analyticsService;
+

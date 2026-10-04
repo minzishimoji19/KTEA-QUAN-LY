@@ -17,6 +17,7 @@ import {
   Trash2,
   Plus,
   CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 import {
   StatCard,
@@ -36,7 +37,7 @@ import {
   useAddCustomerTag,
   useRemoveCustomerTag,
 } from '../hooks/useCustomers';
-import { useDeleteCase, useUpdateCase } from '../hooks/useCases';
+import { useDeleteCase } from '../hooks/useCases';
 import { useDeleteNeed, useUpdateNeed } from '../hooks/useNeeds';
 import { useDeleteNote } from '../hooks/useNotes';
 import { useUpdateFollowUp, useDeleteFollowUp } from '../hooks/useFollowUps';
@@ -62,22 +63,22 @@ import { ActivityTimeline } from '../features/activities/ActivityTimeline';
 import { getNextPendingFollowUp } from '../utils/followUpUtils';
 
 export const CustomerDetailPage: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+  const { id, customerId } = useParams<{ id?: string; customerId?: string }>();
+  const targetCustomerId = customerId || id;
   const navigate = useNavigate();
 
   // Queries
-  const { data: customer, isLoading, isError, refetch } = useCustomerDetail(id);
+  const { data: customer, isLoading, isError, refetch } = useCustomerDetail(targetCustomerId);
   const { data: allTags } = useTags();
 
   // Mutations
   const deleteCustomer = useDeleteCustomer();
-  const addCustomerTag = useAddCustomerTag(id || '');
-  const removeCustomerTag = useRemoveCustomerTag(id || '');
-  const deleteCase = useDeleteCase(id || '');
-  const updateCase = useUpdateCase(id || '');
-  const deleteNeed = useDeleteNeed(id || '');
-  const updateNeed = useUpdateNeed(id || '');
-  const deleteNote = useDeleteNote(id || '');
+  const addCustomerTag = useAddCustomerTag(targetCustomerId || '');
+  const removeCustomerTag = useRemoveCustomerTag(targetCustomerId || '');
+  const deleteCase = useDeleteCase(targetCustomerId || '');
+  const deleteNeed = useDeleteNeed(targetCustomerId || '');
+  const updateNeed = useUpdateNeed(targetCustomerId || '');
+  const deleteNote = useDeleteNote(targetCustomerId || '');
   const updateFollowUp = useUpdateFollowUp();
   const deleteFollowUp = useDeleteFollowUp();
   const updatePushRecord = useUpdatePushRecord();
@@ -239,6 +240,27 @@ export const CustomerDetailPage: React.FC = () => {
     });
   };
 
+  // Real API-derived customer case summary metrics (Section 7)
+  const totalCases = customer.cases?.length || 0;
+  const activeCases =
+    customer.cases?.filter(
+      (c) =>
+        c.caseStatus === 'ACTIVE' ||
+        c.caseStatus === 'UNDER_REVIEW' ||
+        c.caseStatus === 'SUBMITTED' ||
+        c.caseStatus === 'DRAFT'
+    ).length || 0;
+  const successfulCases =
+    customer.cases?.filter(
+      (c) =>
+        c.caseStatus === 'APPROVED' ||
+        c.caseStatus === 'COMPLETED' ||
+        c.progress === 'COMPLETED' ||
+        c.progress === 'CARD_ACTIVATED'
+    ).length || 0;
+  const rejectedCases =
+    customer.cases?.filter((c) => c.caseStatus === 'REJECTED').length || 0;
+
   return (
     <div className="space-y-4 max-w-7xl mx-auto">
       {/* 1. Header Section */}
@@ -260,15 +282,28 @@ export const CustomerDetailPage: React.FC = () => {
 
           {/* Quick Actions Bar */}
           <div className="flex flex-wrap items-center gap-1.5">
+            {/* Primary Actions required by Section 7 */}
             <Button
               variant="outline"
               size="sm"
               onClick={() => setIsEditOpen(true)}
-              className="h-7 px-2 text-xs gap-1"
+              className="h-7 px-2.5 text-xs gap-1.5 border-slate-700 hover:border-slate-500 text-slate-200"
             >
               <Edit className="w-3 h-3 text-blue-400" />
-              <span>Sửa hồ sơ</span>
+              <span>Sửa thông tin</span>
             </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setIsAddCaseOpen(true)}
+              className="h-7 px-2.5 text-xs gap-1.5 bg-purple-600 hover:bg-purple-500 text-white font-medium"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Tạo hồ sơ mới</span>
+            </Button>
+
+            <span className="text-slate-700 mx-0.5">|</span>
+
             <Button
               variant="outline"
               size="sm"
@@ -295,15 +330,6 @@ export const CustomerDetailPage: React.FC = () => {
             >
               <Layers className="w-3 h-3 text-emerald-400" />
               <span>+ Nhu cầu</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsAddCaseOpen(true)}
-              className="h-7 px-2 text-xs gap-1"
-            >
-              <Briefcase className="w-3 h-3 text-purple-400" />
-              <span>+ Hồ sơ</span>
             </Button>
             <Button
               variant="outline"
@@ -363,6 +389,22 @@ export const CustomerDetailPage: React.FC = () => {
                   <span>{customer.address}</span>
                 </span>
               )}
+
+              {/* Customer Source with Inactive Indicator */}
+              <span className="flex items-center gap-1.5 text-slate-300">
+                <span className="text-slate-500 font-sans">Nguồn:</span>
+                <span className="text-slate-200 font-semibold">
+                  {customer.customerSource?.name || customer.source || 'Tự nhiên'}
+                </span>
+                {customer.customerSource && customer.customerSource.active === false && (
+                  <span
+                    className="text-[9px] font-mono px-1 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700"
+                    title="Nguồn khách này hiện đã ngừng hoạt động"
+                  >
+                    Inactive
+                  </span>
+                )}
+              </span>
 
               {/* Next Follow-up Display */}
               {(() => {
@@ -480,33 +522,35 @@ export const CustomerDetailPage: React.FC = () => {
       {activeTab === 'overview' && (
         <div className="space-y-4">
           {/* Quick Metrics Bar */}
+          {/* Customer Summary Cards (Section 7) */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard
-              label="Hồ sơ sản phẩm"
-              value={customer.cases?.length || 0}
-              subtext="Quy trình thẩm định"
+              label="Tổng số hồ sơ"
+              value={totalCases}
+              subtext="Tất cả hồ sơ đã tạo"
               icon={<Briefcase className="w-4 h-4 text-purple-400" />}
               onClick={() => setActiveTab('cases')}
             />
             <StatCard
-              label="Nhu cầu khách hàng"
-              value={customer.needs?.length || 0}
-              subtext={`${customer.needs?.filter((n) => n.status === 'OPEN').length || 0} chưa xử lý`}
-              icon={<Layers className="w-4 h-4 text-amber-400" />}
+              label="Hồ sơ đang xử lý"
+              value={activeCases}
+              subtext="Đang trong quy trình"
+              icon={<Clock className="w-4 h-4 text-blue-400" />}
+              onClick={() => setActiveTab('cases')}
             />
             <StatCard
-              label="Lịch chăm sóc chờ"
-              value={customer.followUps?.filter((f) => f.status === 'PENDING').length || 0}
-              subtext="Nhiệm vụ liên hệ"
-              icon={<CalendarCheck className="w-4 h-4 text-blue-400" />}
-              onClick={() => setActiveTab('followups')}
+              label="Hồ sơ thành công"
+              value={successfulCases}
+              subtext="Đã duyệt / Hoàn tất"
+              icon={<CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+              onClick={() => setActiveTab('cases')}
             />
             <StatCard
-              label="Lượt chuyển khách"
-              value={customer.pushRecords?.length || 0}
-              subtext="Đã gửi tới chuyên viên"
-              icon={<Send className="w-4 h-4 text-emerald-400" />}
-              onClick={() => setActiveTab('pushes')}
+              label="Hồ sơ bị từ chối"
+              value={rejectedCases}
+              subtext="Đã kết thúc quy trình"
+              icon={<XCircle className="w-4 h-4 text-rose-400" />}
+              onClick={() => setActiveTab('cases')}
             />
           </div>
 
@@ -550,7 +594,14 @@ export const CustomerDetailPage: React.FC = () => {
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/60">
                   <span className="text-slate-400">Nguồn khách</span>
-                  <span className="font-mono text-slate-200">{customer.source || 'Tự nhiên'}</span>
+                  <div className="flex items-center gap-1 font-mono text-slate-200">
+                    <span>{customer.customerSource?.name || customer.source || 'Tự nhiên'}</span>
+                    {customer.customerSource && customer.customerSource.active === false && (
+                      <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                        Inactive
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/60">
                   <span className="text-slate-400">Ngày tạo hồ sơ</span>
@@ -606,23 +657,29 @@ export const CustomerDetailPage: React.FC = () => {
                   {customer.cases.map((c) => (
                     <div
                       key={c.id}
-                      className="p-2.5 rounded border border-slate-800 bg-slate-950/60 flex items-start justify-between gap-2"
+                      onClick={() => navigate(`/customers/${customer.id}/cases/${c.id}`)}
+                      className="p-2.5 rounded border border-slate-800 bg-slate-950/60 flex items-start justify-between gap-2 hover:border-purple-600/50 cursor-pointer transition-colors"
+                      title="Nhấn để xem chi tiết hồ sơ"
                     >
                       <div className="space-y-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-semibold text-slate-200 truncate">
-                            {c.product?.name || c.productId}
+                            {c.product?.name || 'Chưa chọn sản phẩm'}
                           </span>
                           <StatusBadge status={c.caseStatus} />
+                          {c.progress && <StatusBadge status={c.progress} className="text-[10px] py-0" />}
                         </div>
                         <div className="text-[10px] font-mono text-slate-400">
-                          Mã: {c.product?.code}
+                          Hồ sơ #{c.id.slice(0, 8)} {c.product?.code ? `• Mã: ${c.product.code}` : ''}
                         </div>
                         <DateDisplay date={c.applicationDate || c.createdAt} className="text-[10px]" />
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleDeleteCase(c)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteCase(c);
+                        }}
                         className="p-1 rounded text-slate-500 hover:text-red-400 flex-shrink-0"
                         title="Xóa hồ sơ"
                       >
@@ -922,115 +979,163 @@ export const CustomerDetailPage: React.FC = () => {
         </div>
       )}
 
-      {/* 3. Cases / Applications Tab */}
+      {/* 3. Cases / Applications Tab (Section 7) */}
       {activeTab === 'cases' && (
-        <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4 space-y-3">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-            <div>
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-200 font-mono">
-                Hồ sơ đăng ký sản phẩm
-              </h2>
-              <p className="text-[11px] text-slate-400">
-                Quy trình thẩm định tín dụng, vay vốn hoặc mở thẻ
-              </p>
-            </div>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setIsAddCaseOpen(true)}
-              className="h-7 text-xs gap-1 bg-purple-600 hover:bg-purple-500 text-white"
-            >
-              <Plus className="w-3 h-3" />
-              <span>Mở hồ sơ sản phẩm mới</span>
-            </Button>
+        <div className="space-y-4">
+          {/* Case Summary Metrics Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard
+              label="Tổng số hồ sơ"
+              value={totalCases}
+              subtext="Tất cả hồ sơ đã tạo"
+              icon={<Briefcase className="w-4 h-4 text-purple-400" />}
+            />
+            <StatCard
+              label="Hồ sơ đang xử lý"
+              value={activeCases}
+              subtext="Đang trong quy trình"
+              icon={<Clock className="w-4 h-4 text-blue-400" />}
+            />
+            <StatCard
+              label="Hồ sơ thành công"
+              value={successfulCases}
+              subtext="Đã duyệt / Hoàn tất"
+              icon={<CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+            />
+            <StatCard
+              label="Hồ sơ bị từ chối"
+              value={rejectedCases}
+              subtext="Đã kết thúc quy trình"
+              icon={<XCircle className="w-4 h-4 text-rose-400" />}
+            />
           </div>
 
-          <DataTable
-            columns={[
-              {
-                key: 'product',
-                header: 'Sản phẩm',
-                render: (c: CustomerCase) => (
-                  <div className="flex flex-col">
-                    <span className="font-semibold text-slate-100">
-                      {c.product?.name || 'Sản phẩm'}
+          <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div>
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-200 font-mono">
+                  Danh sách hồ sơ khách hàng
+                </h2>
+                <p className="text-[11px] text-slate-400">
+                  Mỗi hồ sơ đại diện cho một lần nộp và thẩm định độc lập. Nhấn vào hồ sơ để xem tiến trình chi tiết.
+                </p>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setIsAddCaseOpen(true)}
+                className="h-7 text-xs gap-1.5 bg-purple-600 hover:bg-purple-500 text-white font-medium"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Tạo hồ sơ mới</span>
+              </Button>
+            </div>
+
+            <DataTable
+              columns={[
+                {
+                  key: 'id',
+                  header: 'Mã hồ sơ',
+                  width: '120px',
+                  render: (c: CustomerCase) => (
+                    <span className="font-mono text-xs font-semibold text-purple-300 hover:underline">
+                      #{c.id.slice(0, 8)}
                     </span>
-                    <span className="text-[10px] font-mono text-slate-400">
-                      {c.product?.code}
-                    </span>
-                  </div>
-                ),
-              },
-              {
-                key: 'applicationDate',
-                header: 'Ngày nộp hồ sơ',
-                render: (c: CustomerCase) => (
-                  <DateDisplay date={c.applicationDate || c.createdAt} />
-                ),
-              },
-              {
-                key: 'caseStatus',
-                header: 'Trạng thái',
-                render: (c: CustomerCase) => <StatusBadge status={c.caseStatus} />,
-              },
-              {
-                key: 'resultDate',
-                header: 'Ngày có kết quả',
-                render: (c: CustomerCase) => <DateDisplay date={c.resultDate} />,
-              },
-              {
-                key: 'notes',
-                header: 'Lý do từ chối / Ghi chú',
-                render: (c: CustomerCase) => (
-                  <span className="text-slate-400 text-xs">
-                    {c.failureReason || c.notes || '--'}
-                  </span>
-                ),
-              },
-              {
-                key: 'actions',
-                header: '',
-                align: 'right',
-                render: (c: CustomerCase) => (
-                  <div className="flex items-center justify-end gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        updateCase.mutate({
-                          id: c.id,
-                          data: {
-                            caseStatus:
-                              c.caseStatus === 'APPROVED' ? 'UNDER_REVIEW' : 'APPROVED',
-                            resultDate:
-                              c.caseStatus === 'APPROVED' ? null : new Date().toISOString(),
-                          },
-                        })
-                      }
-                      className="h-6 px-1.5 text-[10px]"
+                  ),
+                },
+                {
+                  key: 'product',
+                  header: 'Sản phẩm',
+                  width: '200px',
+                  render: (c: CustomerCase) => (
+                    <div className="flex flex-col">
+                      {c.product ? (
+                        <>
+                          <span className="font-semibold text-slate-100 text-xs">
+                            {c.product.name}
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-400">
+                            {c.product.code}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-amber-400 italic text-xs font-medium">
+                          Chưa chọn sản phẩm
+                        </span>
+                      )}
+                    </div>
+                  ),
+                },
+                {
+                  key: 'caseStatus',
+                  header: 'Trạng thái',
+                  width: '120px',
+                  render: (c: CustomerCase) => <StatusBadge status={c.caseStatus} />,
+                },
+                {
+                  key: 'progress',
+                  header: 'Tiến trình',
+                  width: '170px',
+                  render: (c: CustomerCase) => (
+                    <StatusBadge status={c.progress || 'NOT_SELECTED'} />
+                  ),
+                },
+                {
+                  key: 'applicationDate',
+                  header: 'Ngày nộp',
+                  width: '115px',
+                  render: (c: CustomerCase) => (
+                    <DateDisplay date={c.applicationDate || c.createdAt} className="text-xs font-mono" />
+                  ),
+                },
+                {
+                  key: 'updatedAt',
+                  header: 'Cập nhật',
+                  width: '115px',
+                  render: (c: CustomerCase) => (
+                    <DateDisplay date={c.updatedAt || c.createdAt} className="text-xs font-mono" />
+                  ),
+                },
+                {
+                  key: 'actions',
+                  header: '',
+                  align: 'right',
+                  width: '110px',
+                  render: (c: CustomerCase) => (
+                    <div
+                      className="flex items-center justify-end gap-1.5"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      {c.caseStatus === 'APPROVED' ? 'Mở lại' : 'Phê duyệt'}
-                    </Button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteCase(c)}
-                      className="p-1 rounded text-slate-500 hover:text-red-400"
-                      title="Xóa hồ sơ"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ),
-              },
-            ]}
-            data={customer.cases || []}
-            keyExtractor={(c) => c.id}
-            isEmpty={(!customer.cases || customer.cases.length === 0)}
-            emptyTitle="Chưa có hồ sơ sản phẩm"
-            emptyDescription="Khách hàng chưa có hồ sơ thẩm định sản phẩm chính thức nào."
-            emptyActionLabel="+ Mở hồ sơ mới"
-            onEmptyAction={() => setIsAddCaseOpen(true)}
-          />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigate(`/customers/${customer.id}/cases/${c.id}`)}
+                        className="h-6 px-2 text-[10px] border-slate-700 hover:border-purple-500 hover:text-purple-300"
+                      >
+                        Chi tiết
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCase(c)}
+                        className="p-1 rounded text-slate-500 hover:text-red-400"
+                        title="Xóa hồ sơ"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ),
+                },
+              ]}
+              data={customer.cases || []}
+              keyExtractor={(c) => c.id}
+              isEmpty={!customer.cases || customer.cases.length === 0}
+              emptyTitle="Khách hàng này chưa có hồ sơ"
+              emptyDescription="Mỗi khách hàng có thể có nhiều hồ sơ sản phẩm theo thời gian."
+              emptyActionLabel="+ Tạo hồ sơ mới"
+              onEmptyAction={() => setIsAddCaseOpen(true)}
+              onRowClick={(c) => navigate(`/customers/${customer.id}/cases/${c.id}`)}
+            />
+          </div>
         </div>
       )}
 

@@ -7,6 +7,7 @@ import { AppLayout } from './layouts/AppLayout';
 import { DashboardPage } from './pages/DashboardPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { CustomerDetailPage } from './pages/CustomerDetailPage';
+import { CaseDetailPage } from './pages/CaseDetailPage';
 import { FollowUpsPage } from './pages/FollowUpsPage';
 import { PushPage } from './pages/PushPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
@@ -23,6 +24,7 @@ export const App: React.FC = () => {
               <Route index element={<DashboardPage />} />
               <Route path="customers" element={<CustomersPage />} />
               <Route path="customers/:id" element={<CustomerDetailPage />} />
+              <Route path="customers/:customerId/cases/:caseId" element={<CaseDetailPage />} />
               <Route path="follow-ups" element={<FollowUpsPage />} />
               <Route path="push" element={<PushPage />} />
               <Route path="analytics" element={<AnalyticsPage />} />

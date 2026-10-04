@@ -463,7 +463,101 @@ export class AnalyticsRepository extends BaseRepository {
       failedPushesWithReason,
     };
   }
+
+  // 6. LIFECYCLE FOUNDATION METRICS (Distinguishing Customers vs Cases)
+  async getLifecycleFoundationMetrics() {
+    const [
+      totalCustomers,
+      totalCases,
+      casesByStatusGroups,
+      casesByProgressGroups,
+      casesWithCustomer,
+      customersBySourceGroups,
+      cardActivatedCount,
+    ] = await Promise.all([
+      this.db.customer.count(),
+      this.db.customerCase.count(),
+      this.db.customerCase.groupBy({
+        by: ['caseStatus'],
+        _count: { id: true },
+      }),
+      this.db.customerCase.groupBy({
+        by: ['progress'],
+        _count: { id: true },
+      }),
+      this.db.customerCase.findMany({
+        select: {
+          id: true,
+          caseStatus: true,
+          progress: true,
+          customer: {
+            select: {
+              source: true,
+              sourceId: true,
+              customerSource: { select: { id: true, name: true } },
+            },
+          },
+        },
+      }),
+      this.db.customer.groupBy({
+        by: ['source'],
+        _count: { id: true },
+      }),
+      this.db.customerCase.count({
+        where: {
+          progress: { in: ['CARD_ACTIVATED', 'COMPLETED'] },
+        },
+      }),
+    ]);
+
+    const casesByStatus = casesByStatusGroups.map((g) => ({
+      status: g.caseStatus,
+      count: g._count.id,
+    }));
+
+    const casesByProgress = casesByProgressGroups.map((g) => ({
+      progress: g.progress,
+      count: g._count.id,
+    }));
+
+    const sourceCountMap: Record<string, number> = {};
+    for (const c of casesWithCustomer) {
+      const src = c.customer?.customerSource?.name || c.customer?.source || 'Direct';
+      sourceCountMap[src] = (sourceCountMap[src] || 0) + 1;
+    }
+    const casesBySource = Object.entries(sourceCountMap).map(([source, count]) => ({
+      source,
+      count,
+    }));
+
+    const customersBySource = customersBySourceGroups.map((g) => ({
+      source: g.source || 'Direct',
+      count: g._count.id,
+    }));
+
+    const approvedCases = casesByStatus.find((s) => s.status === 'APPROVED')?.count || 0;
+    const rejectedCases = casesByStatus.find((s) => s.status === 'REJECTED')?.count || 0;
+    const completedCases = casesByStatus.find((s) => s.status === 'COMPLETED')?.count || 0;
+
+    const activationRate = approvedCases > 0
+      ? Number(((cardActivatedCount / approvedCases) * 100).toFixed(2))
+      : 0;
+
+    return {
+      totalCustomers,
+      totalCases,
+      casesByStatus,
+      casesByProgress,
+      casesBySource,
+      customersBySource,
+      approvedCases,
+      rejectedCases,
+      completedCases,
+      activationRate,
+    };
+  }
 }
 
 export const analyticsRepository = new AnalyticsRepository();
 export default analyticsRepository;
+

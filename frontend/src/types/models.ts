@@ -6,7 +6,35 @@ export type PriorityLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 
 export type NeedStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'DROPPED';
 
-export type CaseStatus = 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+export type CaseStatus = 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'ACTIVE' | 'COMPLETED';
+
+export type CaseProgress =
+  | 'NOT_SELECTED'
+  | 'REGISTRATION_CREATED'
+  | 'REGISTRATION_COMPLETED'
+  | 'UNDER_REVIEW'
+  | 'APPROVED'
+  | 'CARD_ISSUED'
+  | 'CARD_ACTIVATED'
+  | 'COMPLETED';
+
+export interface CustomerSource {
+  id: string;
+  name: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CaseProgressHistory {
+  id: string;
+  caseId: string;
+  fromProgress: CaseProgress;
+  toProgress: CaseProgress;
+  changedAt: string;
+  note?: string | null;
+  createdAt: string;
+}
 
 export type ActivityType =
   | 'CONTACT'
@@ -23,7 +51,15 @@ export type ActivityType =
   | 'SYSTEM_EVENT'
   | 'PUSH_SENT'
   | 'MEETING'
-  | 'NOTE';
+  | 'NOTE'
+  | 'CREATE_CASE'
+  | 'SELECT_PRODUCT'
+  | 'PROGRESS_CHANGED'
+  | 'REJECTED'
+  | 'APPROVED'
+  | 'CARD_ISSUED'
+  | 'CARD_ACTIVATED'
+  | 'COMPLETED';
 
 export type FollowUpStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 
@@ -72,15 +108,20 @@ export interface Product {
 export interface CustomerCase {
   id: string;
   customerId: string;
-  productId: string;
+  productId?: string | null;
   caseStatus: CaseStatus;
+  progress?: CaseProgress;
   applicationDate?: string | null;
   resultDate?: string | null;
+  rejectedAt?: string | null;
+  rejectionReason?: string | null;
+  rejectionNote?: string | null;
   failureReason?: string | null;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
-  product: Product;
+  product?: Product | null;
+  progressHistory?: CaseProgressHistory[];
 }
 
 export interface CustomerNeed {
@@ -189,6 +230,8 @@ export interface CustomerSummary {
   dateOfBirth?: string | null;
   address?: string | null;
   source?: string | null;
+  sourceId?: string | null;
+  customerSource?: CustomerSource | null;
   overallStatus: CustomerStatus;
   priority?: PriorityLevel | null;
   createdAt: string;

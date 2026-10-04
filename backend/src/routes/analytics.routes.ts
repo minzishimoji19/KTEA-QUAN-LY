@@ -5,11 +5,17 @@ import {
   getCaseAnalytics,
   getNeedAnalytics,
   getPushAnalytics,
+  getLifecycleFoundation,
 } from '../controllers/analytics.controller.js';
 import { validateRequest } from '../middleware/validate.js';
 import { analyticsFilterQuerySchema } from '../validations/analytics.validation.js';
 
 const router = Router();
+
+router.get(
+  '/foundation',
+  getLifecycleFoundation
+);
 
 router.get(
   '/overview',
@@ -42,3 +48,4 @@ router.get(
 );
 
 export default router;
+

@@ -13,6 +13,7 @@ import analyticsRoutes from './analytics.routes.js';
 import dashboardRoutes from './dashboard.routes.js';
 import settingsRoutes from './settings.routes.js';
 import dataRoutes from './data.routes.js';
+import customerSourceRoutes from './customerSource.routes.js';
 
 const router = Router();
 
@@ -22,6 +23,7 @@ router.use(healthRoutes);
 // Core Resource Endpoints
 router.use('/customers', customerRoutes);
 router.use('/cases', caseRoutes);
+router.use('/customer-sources', customerSourceRoutes);
 router.use('/needs', needRoutes);
 router.use('/notes', noteRoutes);
 router.use('/tags', tagRoutes);

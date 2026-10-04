@@ -3,8 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
   ExternalLink,
-  AlertCircle,
-  Clock,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -22,6 +20,7 @@ import { Button } from '../components/ui/Button';
 import { useCustomers } from '../hooks/useCustomers';
 import { useProducts } from '../hooks/useProducts';
 import { useTags } from '../hooks/useTags';
+import { useCustomerSources } from '../hooks/useCustomerSources';
 import { CustomerSummary } from '../types/models';
 import { CreateCustomerModal } from '../features/customers/CreateCustomerModal';
 
@@ -32,12 +31,13 @@ export const CustomersPage: React.FC = () => {
   // Queries for filter options
   const { data: products } = useProducts();
   const { data: tags } = useTags();
+  const { data: sources } = useCustomerSources();
 
   // Direct source of truth from URL query params
   const search = searchParams.get('search') || '';
   const status = searchParams.get('status') || '';
+  const source = searchParams.get('source') || '';
   const product = searchParams.get('product') || '';
-  const need = searchParams.get('need') || '';
   const tag = searchParams.get('tag') || '';
   const startDate = searchParams.get('startDate') || '';
   const endDate = searchParams.get('endDate') || '';
@@ -52,7 +52,7 @@ export const CustomersPage: React.FC = () => {
   // Quick create modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
-  // Sync local search term if URL changes externally (e.g. back/forward, navbar search)
+  // Sync local search term if URL changes externally
   useEffect(() => {
     setSearchTerm(search);
   }, [search]);
@@ -77,7 +77,6 @@ export const CustomersPage: React.FC = () => {
     search: search.trim() || undefined,
     status: status || undefined,
     product: product || undefined,
-    need: need.trim() || undefined,
     tag: tag || undefined,
     startDate: startDate || undefined,
     endDate: endDate || undefined,
@@ -85,7 +84,19 @@ export const CustomersPage: React.FC = () => {
     sortOrder,
   });
 
-  const customers = data?.data || [];
+  let customers = data?.data || [];
+
+  // Client-side refinement for source filter if needed
+  if (source && customers.length > 0) {
+    customers = customers.filter(
+      (c) =>
+        c.sourceId === source ||
+        c.customerSource?.id === source ||
+        c.customerSource?.name === source ||
+        c.source === source
+    );
+  }
+
   const pagination = data?.pagination || {
     page: 1,
     pageSize,
@@ -96,8 +107,8 @@ export const CustomersPage: React.FC = () => {
   const activeFilterCount = [
     Boolean(search.trim()),
     Boolean(status),
+    Boolean(source),
     Boolean(product),
-    Boolean(need.trim()),
     Boolean(tag),
     Boolean(startDate),
     Boolean(endDate),
@@ -116,36 +127,29 @@ export const CustomersPage: React.FC = () => {
     }
   };
 
-  // Table Columns - strictly prioritized for rapid scanning:
-  // Name -> Status -> Need -> Last Activity -> Follow-up -> Recommendation
+  // Table Columns strictly matching business requirements:
+  // - Customer name
+  // - Phone
+  // - Source
+  // - Overall customer status
+  // - Priority
+  // - Number of cases (real API data)
+  // - Latest case status/progress
+  // - Created date
+  // - Updated date
+  // - Actions
   const columns: Column<CustomerSummary>[] = [
     {
       key: 'fullName',
       header: 'Khách hàng',
       sortable: true,
-      width: '210px',
+      width: '180px',
       render: (row) => (
         <div className="flex flex-col min-w-0 py-0.5">
-          <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-slate-100 hover:text-blue-400 transition-colors truncate">
-              {row.fullName}
-            </span>
-            {row.priority && row.priority !== 'LOW' && (
-              <span
-                className={`text-[9px] font-mono px-1 py-0.2 rounded font-semibold uppercase ${
-                  row.priority === 'URGENT' || row.priority === 'HIGH'
-                    ? 'bg-rose-950/80 text-rose-300 border border-rose-800/60'
-                    : 'bg-amber-950/60 text-amber-300 border border-amber-800/40'
-                }`}
-              >
-                {row.priority === 'URGENT' ? 'Khẩn cấp' : row.priority === 'HIGH' ? 'Cao' : 'Trung bình'}
-              </span>
-            )}
-          </div>
+          <span className="font-semibold text-slate-100 hover:text-blue-400 transition-colors truncate">
+            {row.fullName}
+          </span>
           <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="text-[11px] text-slate-400 font-mono">
-              {row.phone}
-            </span>
             {row.customerTags && row.customerTags.length > 0 && (
               <div className="flex items-center gap-1">
                 {row.customerTags.slice(0, 1).map((ct) => (
@@ -168,32 +172,33 @@ export const CustomersPage: React.FC = () => {
       ),
     },
     {
-      key: 'overallStatus',
-      header: 'Trạng thái',
-      sortable: true,
-      width: '100px',
-      render: (row) => <StatusBadge status={row.overallStatus} />,
+      key: 'phone',
+      header: 'Số điện thoại',
+      width: '120px',
+      render: (row) => (
+        <span className="text-xs text-slate-300 font-mono">
+          {row.phone}
+        </span>
+      ),
     },
     {
-      key: 'needs',
-      header: 'Nhu cầu chính',
-      width: '150px',
+      key: 'source',
+      header: 'Nguồn khách',
+      width: '130px',
       render: (row) => {
-        const primaryNeed = row.needs?.[0];
-        if (!primaryNeed) {
-          return <span className="text-slate-600 font-mono text-[11px]">Chưa khai báo</span>;
-        }
+        const sourceName = row.customerSource?.name || row.source || 'Tự nhiên';
+        const isInactive = row.customerSource && row.customerSource.active === false;
         return (
-          <div className="flex items-center gap-1 max-w-[145px]">
-            <span
-              title={`Trạng thái: ${primaryNeed.status}`}
-              className="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-amber-950/50 text-amber-300 border border-amber-800/40 truncate"
-            >
-              {primaryNeed.needType.replace(/_/g, ' ')}
+          <div className="flex items-center gap-1 max-w-[125px]">
+            <span className="text-xs text-slate-200 font-medium truncate" title={sourceName}>
+              {sourceName}
             </span>
-            {row.needs && row.needs.length > 1 && (
-              <span className="text-[10px] text-slate-500 font-mono shrink-0">
-                +{row.needs.length - 1}
+            {isInactive && (
+              <span
+                className="text-[9px] font-mono px-1 rounded bg-slate-800 text-slate-400 border border-slate-700 shrink-0"
+                title="Nguồn khách này hiện đã ngừng hoạt động"
+              >
+                Inactive
               </span>
             )}
           </div>
@@ -201,80 +206,92 @@ export const CustomersPage: React.FC = () => {
       },
     },
     {
-      key: 'lastActivity',
-      header: 'Tương tác gần nhất',
-      width: '160px',
+      key: 'overallStatus',
+      header: 'Trạng thái',
+      sortable: true,
+      width: '110px',
+      render: (row) => <StatusBadge status={row.overallStatus} />,
+    },
+    {
+      key: 'priority',
+      header: 'Độ ưu tiên',
+      width: '100px',
       render: (row) => {
-        const act = row.activities?.[0];
-        if (!act) {
-          return <span className="text-slate-600 font-mono text-[11px]">Chưa có tương tác</span>;
+        if (!row.priority || row.priority === 'LOW') {
+          return <span className="text-slate-500 font-mono text-[11px]">Thấp</span>;
         }
         return (
-          <div className="flex flex-col min-w-0" title={`${act.title} (${act.type})`}>
-            <span className="text-[11px] text-slate-300 truncate font-sans">
-              {act.title}
+          <span
+            className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-semibold uppercase ${
+              row.priority === 'URGENT' || row.priority === 'HIGH'
+                ? 'bg-rose-950/80 text-rose-300 border border-rose-800/60'
+                : 'bg-amber-950/60 text-amber-300 border border-amber-800/40'
+            }`}
+          >
+            {row.priority === 'URGENT' ? 'Khẩn cấp' : 'Cao'}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'casesCount',
+      header: 'Số hồ sơ',
+      width: '90px',
+      align: 'center',
+      render: (row) => {
+        const count = row._count?.cases ?? (row.cases?.length || 0);
+        return (
+          <span
+            className={`inline-flex items-center justify-center font-mono text-xs px-2 py-0.5 rounded-full border ${
+              count > 0
+                ? 'bg-purple-950/60 text-purple-300 border-purple-800/50 font-semibold'
+                : 'bg-slate-900 text-slate-500 border-slate-800'
+            }`}
+          >
+            {count}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'latestCase',
+      header: 'Hồ sơ gần nhất',
+      width: '190px',
+      render: (row) => {
+        const latestCase = row.cases?.[0];
+        if (!latestCase) {
+          return <span className="text-slate-600 font-mono text-[11px]">Chưa có hồ sơ</span>;
+        }
+        return (
+          <div className="flex flex-col min-w-0 py-0.5">
+            <span className="text-xs font-semibold text-slate-200 truncate">
+              {latestCase.product?.name || 'Chưa chọn sản phẩm'}
             </span>
-            <DateDisplay date={act.occurredAt} relativeContext className="text-[10px]" />
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <StatusBadge status={latestCase.caseStatus} className="text-[10px] py-0 px-1.5" />
+              {latestCase.progress && latestCase.progress !== 'NOT_SELECTED' && (
+                <span className="text-[10px] font-mono text-slate-400 truncate">
+                  ({latestCase.progress})
+                </span>
+              )}
+            </div>
           </div>
         );
       },
     },
     {
-      key: 'nextFollowUp',
-      header: 'Lịch chăm sóc',
-      width: '165px',
-      render: (row) => {
-        const fu = row.followUps?.[0];
-        if (!fu) {
-          return <span className="text-slate-600 font-mono text-[11px]">Chưa lên lịch</span>;
-        }
-        const isOverdue = new Date(fu.dueAt).getTime() < Date.now();
-        return (
-          <div className="flex flex-col min-w-0" title={fu.title}>
-            <div className="flex items-center gap-1">
-              {isOverdue ? (
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-rose-400 bg-rose-950/60 px-1 rounded border border-rose-800/40">
-                  <AlertCircle className="w-2.5 h-2.5" /> Quá hạn
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-cyan-400">
-                  <Clock className="w-2.5 h-2.5" />
-                </span>
-              )}
-              <DateDisplay date={fu.dueAt} relativeContext className="text-[10px]" />
-            </div>
-            <span className="text-[10px] text-slate-400 truncate mt-0.5">{fu.title}</span>
-          </div>
-        );
-      },
+      key: 'createdAt',
+      header: 'Ngày tạo',
+      sortable: true,
+      width: '115px',
+      render: (row) => <DateDisplay date={row.createdAt} className="text-xs font-mono" />,
     },
     {
-      key: 'recommendation',
-      header: 'Đề xuất phù hợp',
-      width: '170px',
-      render: (row) => {
-        const rec = row.recommendations?.[0];
-        if (!rec) {
-          return <span className="text-slate-600 font-mono text-[11px]">Chưa có đề xuất</span>;
-        }
-        return (
-          <div className="flex flex-col min-w-0" title={rec.reason}>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-medium text-purple-300 truncate">
-                {rec.targetProduct?.name || 'Sản phẩm phù hợp'}
-              </span>
-              {rec.score && (
-                <span className="text-[9px] font-mono font-bold px-1 rounded bg-purple-950/80 text-purple-300 border border-purple-800/50 shrink-0">
-                  {Math.round(Number(rec.score))}%
-                </span>
-              )}
-            </div>
-            <span className="text-[10px] text-slate-400 truncate mt-0.5">
-              {rec.reason}
-            </span>
-          </div>
-        );
-      },
+      key: 'updatedAt',
+      header: 'Cập nhật',
+      sortable: true,
+      width: '115px',
+      render: (row) => <DateDisplay date={row.updatedAt} className="text-xs font-mono" />,
     },
     {
       key: 'actions',
@@ -291,7 +308,7 @@ export const CustomersPage: React.FC = () => {
           }}
           className="h-6 px-2 text-[11px] gap-1 hover:border-blue-500/60 hover:text-blue-300 font-mono"
         >
-          <span>360°</span>
+          <span>Chi tiết</span>
           <ExternalLink className="w-3 h-3" />
         </Button>
       ),
@@ -321,7 +338,7 @@ export const CustomersPage: React.FC = () => {
       <PageHeader
         title="Danh bạ khách hàng"
         category="Khách hàng"
-        description="Quản lý thông tin định danh, trạng thái tài khoản, nhu cầu tài chính và lịch sử hồ sơ."
+        description="Quản lý thông tin định danh, trạng thái tài khoản, nhu cầu tài chính và hồ sơ thẩm định."
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -336,7 +353,7 @@ export const CustomersPage: React.FC = () => {
               variant="primary"
               size="sm"
               onClick={() => setIsCreateOpen(true)}
-              className="text-xs h-8 gap-1.5 bg-blue-600 hover:bg-blue-500 text-white"
+              className="text-xs h-8 gap-1.5 bg-blue-600 hover:bg-blue-500 text-white font-medium"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Thêm khách hàng</span>
@@ -372,6 +389,20 @@ export const CustomersPage: React.FC = () => {
           <option value="LOST">Đã mất (LOST)</option>
         </select>
 
+        {/* Source Filter */}
+        <select
+          value={source}
+          onChange={(e) => updateFilters({ source: e.target.value || undefined, page: 1 })}
+          className="h-8 bg-slate-900 border border-slate-800 rounded px-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-sans"
+        >
+          <option value="">Tất cả nguồn khách</option>
+          {(sources || []).map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name} {!s.active ? '(Inactive)' : ''}
+            </option>
+          ))}
+        </select>
+
         {/* Product Filter */}
         <select
           value={product}
@@ -400,15 +431,6 @@ export const CustomersPage: React.FC = () => {
           ))}
         </select>
 
-        {/* Need Filter */}
-        <input
-          type="text"
-          placeholder="Lọc nhu cầu..."
-          value={need}
-          onChange={(e) => updateFilters({ need: e.target.value.trim() || undefined, page: 1 })}
-          className="h-8 w-28 px-2 bg-slate-900 border border-slate-800 rounded text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-blue-500 font-mono"
-        />
-
         {/* Date Filter: Start & End Date */}
         <div className="flex items-center gap-1">
           <input
@@ -436,7 +458,7 @@ export const CustomersPage: React.FC = () => {
         keyExtractor={(row) => row.id}
         isLoading={isLoading}
         isEmpty={customers.length === 0}
-        emptyTitle="Chưa có khách hàng nào"
+        emptyTitle="Chưa có khách hàng phù hợp"
         emptyDescription={
           activeFilterCount > 0
             ? 'Không có khách hàng nào khớp với điều kiện lọc. Vui lòng điều chỉnh hoặc xóa bộ lọc.'

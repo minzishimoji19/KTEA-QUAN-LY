@@ -71,3 +71,17 @@ export const getPushAnalytics = async (
     next(error);
   }
 };
+
+export const getLifecycleFoundation = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const data = await analyticsService.getLifecycleFoundation();
+    sendSuccess(res, data, 'Lifecycle foundation metrics retrieved successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+

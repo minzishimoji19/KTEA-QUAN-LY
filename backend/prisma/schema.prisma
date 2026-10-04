@@ -42,6 +42,19 @@ enum CaseStatus {
   APPROVED
   REJECTED
   CANCELLED
+  ACTIVE
+  COMPLETED
+}
+
+enum CaseProgress {
+  NOT_SELECTED
+  REGISTRATION_CREATED
+  REGISTRATION_COMPLETED
+  UNDER_REVIEW
+  APPROVED
+  CARD_ISSUED
+  CARD_ACTIVATED
+  COMPLETED
 }
 
 enum ActivityType {
@@ -60,6 +73,14 @@ enum ActivityType {
   SYSTEM_EVENT
   PUSH_SENT
   NOTE
+  CREATE_CASE
+  SELECT_PRODUCT
+  PROGRESS_CHANGED
+  REJECTED
+  APPROVED
+  CARD_ISSUED
+  CARD_ACTIVATED
+  COMPLETED
 }
 
 enum FollowUpStatus {
@@ -87,6 +108,18 @@ enum PushStatus {
   CANCELLED
 }
 
+model CustomerSource {
+  id          String     @id @default(uuid())
+  name        String     @unique @map("name")
+  active      Boolean    @default(true) @map("active")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  customers   Customer[]
+
+  @@map("customer_sources")
+}
+
 model Customer {
   id              String            @id @default(uuid())
   fullName        String            @map("full_name")
@@ -96,11 +129,13 @@ model Customer {
   dateOfBirth     DateTime?         @map("date_of_birth")
   address         String?           @map("address")
   source          String?           @map("source")
+  sourceId        String?           @map("source_id")
   overallStatus   CustomerStatus    @default(LEAD) @map("overall_status")
   priority        PriorityLevel?    @map("priority")
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
+  customerSource  CustomerSource?   @relation(fields: [sourceId], references: [id], onDelete: Restrict)
   needs           CustomerNeed[]
   cases           CustomerCase[]
   activities      CustomerActivity[]
@@ -111,6 +146,7 @@ model Customer {
   pushRecords     PushRecord[]
 
   @@index([phone])
+  @@index([sourceId])
   @@index([overallStatus])
   @@index([createdAt])
   @@index([updatedAt])
@@ -154,23 +190,46 @@ model CustomerNeed {
 model CustomerCase {
   id              String            @id @default(uuid())
   customerId      String            @map("customer_id")
-  productId       String            @map("product_id")
-  caseStatus      CaseStatus        @default(DRAFT) @map("case_status")
+  productId       String?           @map("product_id")
+  caseStatus      CaseStatus        @default(ACTIVE) @map("case_status")
+  progress        CaseProgress      @default(NOT_SELECTED) @map("progress")
   applicationDate DateTime?         @map("application_date")
   resultDate      DateTime?         @map("result_date")
+  rejectedAt      DateTime?         @map("rejected_at")
+  rejectionReason String?           @map("rejection_reason") @db.Text
+  rejectionNote   String?           @map("rejection_note") @db.Text
   failureReason   String?           @map("failure_reason") @db.Text
   notes           String?           @map("notes") @db.Text
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
   customer        Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  product         Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  product         Product?          @relation(fields: [productId], references: [id], onDelete: Restrict)
+  progressHistory CaseProgressHistory[]
 
   @@index([customerId])
   @@index([productId])
   @@index([caseStatus])
+  @@index([progress])
   @@index([createdAt])
   @@map("customer_cases")
+}
+
+model CaseProgressHistory {
+  id           String        @id @default(uuid())
+  caseId       String        @map("case_id")
+  fromProgress CaseProgress? @map("from_progress")
+  toProgress   CaseProgress  @map("to_progress")
+  changedAt    DateTime      @default(now()) @map("changed_at")
+  note         String?       @map("note") @db.Text
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  case         CustomerCase  @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@index([toProgress])
+  @@index([changedAt])
+  @@map("case_progress_histories")
 }
 
 model CustomerActivity {

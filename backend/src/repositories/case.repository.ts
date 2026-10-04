@@ -1,11 +1,16 @@
-import { Prisma, CaseStatus } from '@prisma/client';
+import { Prisma, CaseStatus, CaseProgress } from '@prisma/client';
 import BaseRepository from './base.repository.js';
 
 export class CaseRepository extends BaseRepository {
   async findByCustomerId(customerId: string) {
     return this.db.customerCase.findMany({
       where: { customerId },
-      include: { product: true },
+      include: {
+        product: true,
+        progressHistory: {
+          orderBy: { changedAt: 'asc' },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -13,13 +18,20 @@ export class CaseRepository extends BaseRepository {
   async findById(id: string) {
     return this.db.customerCase.findUnique({
       where: { id },
-      include: { product: true, customer: true },
+      include: {
+        product: true,
+        customer: true,
+        progressHistory: {
+          orderBy: { changedAt: 'asc' },
+        },
+      },
     });
   }
 
   async create(customerId: string, data: {
-    productId: string;
+    productId?: string | null;
     caseStatus?: CaseStatus;
+    progress?: CaseProgress;
     applicationDate?: Date | null;
     resultDate?: Date | null;
     failureReason?: string | null;
@@ -27,10 +39,19 @@ export class CaseRepository extends BaseRepository {
   }) {
     return this.db.customerCase.create({
       data: {
-        ...data,
         customerId,
+        productId: data.productId || null,
+        caseStatus: data.caseStatus || CaseStatus.ACTIVE,
+        progress: data.progress || (data.productId ? CaseProgress.REGISTRATION_CREATED : CaseProgress.NOT_SELECTED),
+        applicationDate: data.applicationDate,
+        resultDate: data.resultDate,
+        failureReason: data.failureReason,
+        notes: data.notes,
       },
-      include: { product: true },
+      include: {
+        product: true,
+        progressHistory: true,
+      },
     });
   }
 
@@ -38,7 +59,28 @@ export class CaseRepository extends BaseRepository {
     return this.db.customerCase.update({
       where: { id },
       data,
-      include: { product: true },
+      include: {
+        product: true,
+        progressHistory: {
+          orderBy: { changedAt: 'asc' },
+        },
+      },
+    });
+  }
+
+  async createProgressHistory(data: {
+    caseId: string;
+    fromProgress: CaseProgress;
+    toProgress: CaseProgress;
+    note?: string | null;
+  }) {
+    return this.db.caseProgressHistory.create({
+      data: {
+        caseId: data.caseId,
+        fromProgress: data.fromProgress,
+        toProgress: data.toProgress,
+        note: data.note,
+      },
     });
   }
 
@@ -51,3 +93,4 @@ export class CaseRepository extends BaseRepository {
 
 export const caseRepository = new CaseRepository();
 export default caseRepository;
+

@@ -19,11 +19,13 @@ import {
   Copy,
   Layers,
   Sparkles,
+  Globe,
 } from 'lucide-react';
 import {
   PageHeader,
   ConfirmDialog,
   ErrorState,
+  DateDisplay,
 } from '../components/common';
 import { Skeleton } from '../components/ui/Skeleton';
 import { Button } from '../components/ui/Button';
@@ -37,15 +39,18 @@ import {
 } from '../hooks/useSettings';
 import { useProducts, useUpdateProduct } from '../hooks/useProducts';
 import { useTags, useDeleteTag } from '../hooks/useTags';
+import { useCustomerSources, useUpdateCustomerSource } from '../hooks/useCustomerSources';
 import { Product, Tag } from '../types/models';
 import { NeedCategorySetting } from '../types/settings';
 import settingsService from '../services/settingsService';
 import { ProductModal } from '../features/settings/ProductModal';
 import { TagModal } from '../features/settings/TagModal';
 import { NeedCategoryModal } from '../features/settings/NeedCategoryModal';
+import { CustomerSourceModal } from '../features/settings/CustomerSourceModal';
 
 type SettingsTab =
   | 'general'
+  | 'sources'
   | 'products'
   | 'tags'
   | 'needs'
@@ -59,16 +64,21 @@ export const SettingsPage: React.FC = () => {
 
   // Queries
   const { data: settings, isLoading: isSettingsLoading, isError: isSettingsError, refetch: refetchSettings } = useSettings();
+  const { data: sources, isLoading: isSourcesLoading } = useCustomerSources();
   const { data: products, isLoading: isProductsLoading } = useProducts(false);
   const { data: tags, isLoading: isTagsLoading } = useTags();
   const { data: dataGov, isLoading: isDataGovLoading, refetch: refetchDataGov } = useDataGovernanceStatus();
 
   // Mutations
   const updateGeneral = useUpdateGeneralSettings();
+  const updateSource = useUpdateCustomerSource();
   const updateNeedCategories = useUpdateNeedCategories();
   const updateRecommendations = useUpdateRecommendationSettings();
   const updateProduct = useUpdateProduct();
   const deleteTag = useDeleteTag();
+
+  // Customer Source Modal State
+  const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
 
   // General Form State
   const [appName, setAppName] = useState('');
@@ -256,6 +266,7 @@ export const SettingsPage: React.FC = () => {
       <div className="flex items-center gap-1.5 border-b border-slate-800 pb-2 overflow-x-auto text-xs font-mono">
         {[
           { key: 'general', label: 'Cài đặt chung', icon: <Settings className="w-3.5 h-3.5" /> },
+          { key: 'sources', label: `Nguồn khách (${sources?.length || 0})`, icon: <Globe className="w-3.5 h-3.5" /> },
           { key: 'products', label: `Sản phẩm (${products?.length || 0})`, icon: <Package className="w-3.5 h-3.5" /> },
           { key: 'tags', label: `Thẻ khách hàng (${tags?.length || 0})`, icon: <TagIcon className="w-3.5 h-3.5" /> },
           { key: 'needs', label: `Nhóm nhu cầu (${settings.needCategories.length})`, icon: <Target className="w-3.5 h-3.5" /> },
@@ -375,6 +386,114 @@ export const SettingsPage: React.FC = () => {
             <p>
               Tuân thủ các nguyên tắc thiết kế của dự án, hệ thống này hoạt động theo mô hình vận hành chuyên dụng không có rào cản phân quyền đa người dùng, hạn sử dụng mật khẩu hay các bảng phân quyền phức tạp.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SECTION: CUSTOMER SOURCES (Section 14)                                    */}
+      {/* ========================================================================= */}
+      {activeTab === 'sources' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-100 font-mono">
+                Nguồn khách hàng (Customer Sources)
+              </h3>
+              <p className="text-xs text-slate-400">
+                Quản lý danh sách các nguồn tiếp cận khách hàng. Nguồn đã tạm dừng sẽ không xuất hiện khi tạo khách mới nhưng vẫn lưu trữ trong lịch sử.
+              </p>
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setIsSourceModalOpen(true)}
+              className="bg-blue-600 hover:bg-blue-500 text-white gap-1.5 text-xs h-8 font-medium"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Thêm nguồn khách</span>
+            </Button>
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-950/80 text-slate-400 font-mono text-[10px] border-b border-slate-800">
+                <tr>
+                  <th className="py-2.5 px-4">Tên nguồn khách</th>
+                  <th className="py-2.5 px-4">Trạng thái</th>
+                  <th className="py-2.5 px-4">Ngày tạo</th>
+                  <th className="py-2.5 px-4 text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 font-sans">
+                {isSourcesLoading ? (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-slate-500 text-xs">
+                      Đang tải danh sách nguồn khách...
+                    </td>
+                  </tr>
+                ) : !sources || sources.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-slate-500 text-xs">
+                      Chưa có nguồn khách hàng nào được cấu hình.
+                    </td>
+                  </tr>
+                ) : (
+                  sources.map((s) => (
+                    <tr key={s.id} className="hover:bg-slate-800/30 transition-colors">
+                      <td className="py-3 px-4 font-semibold text-slate-100">
+                        {s.name}
+                      </td>
+                      <td className="py-3 px-4">
+                        {s.active ? (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono bg-emerald-950/60 text-emerald-400 border border-emerald-800/50">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                            Đang hoạt động (Active)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono bg-slate-900 text-slate-400 border border-slate-800">
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                            Tạm dừng (Inactive)
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-slate-400 font-mono text-[11px]">
+                        <DateDisplay date={s.createdAt} />
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              await updateSource.mutateAsync({
+                                id: s.id,
+                                data: { active: !s.active },
+                              });
+                              toast.success(
+                                'Cập nhật thành công',
+                                `Nguồn "${s.name}" đã được ${!s.active ? 'kích hoạt' : 'vô hiệu hóa'}.`
+                              );
+                            } catch (err: unknown) {
+                              const message = err instanceof Error ? err.message : 'Không thể thay đổi trạng thái nguồn.';
+                              toast.error('Lỗi cập nhật', message);
+                            }
+                          }}
+                          disabled={updateSource.isPending}
+                          className={`h-6 px-2.5 text-[11px] font-mono ${
+                            s.active
+                              ? 'border-amber-800/80 text-amber-300 hover:bg-amber-950/40'
+                              : 'border-emerald-800/80 text-emerald-300 hover:bg-emerald-950/40'
+                          }`}
+                        >
+                          {s.active ? 'Vô hiệu hóa' : 'Kích hoạt'}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -1415,6 +1534,13 @@ export const SettingsPage: React.FC = () => {
           onClose={() => setIsCategoryModalOpen(false)}
           category={editingCategory}
           onSave={handleSaveNeedCategory}
+        />
+      )}
+
+      {isSourceModalOpen && (
+        <CustomerSourceModal
+          isOpen={isSourceModalOpen}
+          onClose={() => setIsSourceModalOpen(false)}
         />
       )}
 
