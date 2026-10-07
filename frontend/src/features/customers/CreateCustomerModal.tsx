@@ -18,8 +18,8 @@ const createCustomerSchema = z.object({
   address: z.string().max(500).optional().or(z.literal('')),
   sourceId: z.string().optional().or(z.literal('')),
   source: z.string().max(100).optional().or(z.literal('')),
-  overallStatus: z.enum(['LEAD', 'PROSPECT', 'ACTIVE', 'DORMANT', 'LOST']).default('LEAD'),
-  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional().or(z.literal('')),
+  overallStatus: z.enum(['LEAD_MOI', 'DANG_TIEP_CAN', 'DANG_TU_VAN', 'THANH_CONG', 'KHONG_KHA_THI']).default('LEAD_MOI'),
+  priority: z.enum(['CHUA_CO_NHU_CAU', 'THANH_KHOAN', 'TIN_DUNG', 'THANH_KHOAN_TIN_DUNG']).default('CHUA_CO_NHU_CAU'),
 });
 
 type CreateCustomerFormData = z.infer<typeof createCustomerSchema>;
@@ -65,8 +65,8 @@ export const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({
       address: '',
       sourceId: '',
       source: '',
-      overallStatus: 'LEAD',
-      priority: 'MEDIUM',
+      overallStatus: 'LEAD_MOI',
+      priority: 'CHUA_CO_NHU_CAU',
     },
   });
 
@@ -259,11 +259,11 @@ export const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({
                   {...register('overallStatus')}
                   className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
                 >
-                  <option value="LEAD">Đầu mối (LEAD)</option>
-                  <option value="PROSPECT">Tiềm năng (PROSPECT)</option>
-                  <option value="ACTIVE">Đang hoạt động (ACTIVE)</option>
-                  <option value="DORMANT">Không tương tác (DORMANT)</option>
-                  <option value="LOST">Đã mất (LOST)</option>
+                  <option value="LEAD_MOI">Lead mới (LEAD_MOI)</option>
+                  <option value="DANG_TIEP_CAN">Đang tiếp cận (DANG_TIEP_CAN)</option>
+                  <option value="DANG_TU_VAN">Đang tư vấn (DANG_TU_VAN)</option>
+                  <option value="THANH_CONG">Thành công (THANH_CONG)</option>
+                  <option value="KHONG_KHA_THI">Không khả thi (KHONG_KHA_THI)</option>
                 </select>
               </div>
 
@@ -275,10 +275,10 @@ export const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({
                   {...register('priority')}
                   className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
                 >
-                  <option value="LOW">Thấp (LOW)</option>
-                  <option value="MEDIUM">Trung bình (MEDIUM)</option>
-                  <option value="HIGH">Cao (HIGH)</option>
-                  <option value="URGENT">Khẩn cấp (URGENT)</option>
+                  <option value="CHUA_CO_NHU_CAU">Chưa có nhu cầu</option>
+                  <option value="THANH_KHOAN">Thanh khoản</option>
+                  <option value="TIN_DUNG">Tín dụng</option>
+                  <option value="THANH_KHOAN_TIN_DUNG">Thanh khoản & Tín dụng</option>
                 </select>
               </div>
             </div>

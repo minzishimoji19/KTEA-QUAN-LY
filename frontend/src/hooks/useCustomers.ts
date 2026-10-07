@@ -76,3 +76,16 @@ export const useRemoveCustomerTag = (customerId: string) => {
     },
   });
 };
+
+export const useBulkAction = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: import('../types/models').BulkActionRequest) =>
+      customerService.executeBulkAction(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    },
+  });
+};

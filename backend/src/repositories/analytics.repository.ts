@@ -62,9 +62,9 @@ export class AnalyticsRepository extends BaseRepository {
         where: dateFilter ? { createdAt: dateFilter } : undefined,
       }),
 
-      // Active customers
+      // Customers being actively consulted (DANG_TU_VAN)
       this.db.customer.count({
-        where: { overallStatus: CustomerStatus.ACTIVE },
+        where: { overallStatus: CustomerStatus.DANG_TU_VAN },
       }),
 
       // Customers by status

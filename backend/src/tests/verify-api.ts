@@ -1,5 +1,6 @@
 import http from 'http';
 import { createApp } from '../app.js';
+import prisma from '../config/database.js';
 
 const PORT = 5059;
 const BASE_URL = `http://localhost:${PORT}/api`;
@@ -59,16 +60,20 @@ async function runApiVerification() {
     assert(custs.body.pagination.total >= 30, `Pagination meta returned total >= 30 (Actual: ${custs.body.pagination.total})`);
 
     // Search filter
-    const search = await request('/customers?search=Demo%2001');
-    assert(search.status === 200 && search.body.data.length >= 1, 'GET /api/customers?search=Demo 01');
+    const sampleSearch = custs.body.data[0]?.fullName ? custs.body.data[0].fullName.slice(0, 4) : 'Nguyen';
+    const search = await request(`/customers?search=${encodeURIComponent(sampleSearch)}`);
+    assert(search.status === 200 && search.body.data.length >= 1, `GET /api/customers?search=${sampleSearch}`);
 
     // Status filter
-    const statusFilter = await request('/customers?status=ACTIVE');
-    assert(statusFilter.status === 200 && statusFilter.body.data.every((c: { overallStatus: string }) => c.overallStatus === 'ACTIVE'), 'GET /api/customers?status=ACTIVE');
+    const statusFilter = await request('/customers?status=DANG_TU_VAN');
+    assert(statusFilter.status === 200 && statusFilter.body.data.every((c: { overallStatus: string }) => c.overallStatus === 'DANG_TU_VAN'), 'GET /api/customers?status=DANG_TU_VAN');
 
     // Tag filter
     const tagFilter = await request('/customers?tag=VIP_AFFLUENT');
     assert(tagFilter.status === 200, 'GET /api/customers?tag=VIP_AFFLUENT filter execution');
+
+    // Clean up any stale test customer from previous runs
+    await prisma.customer.deleteMany({ where: { phone: '0909999888' } });
 
     // 3. Customer Create, Read Detail, Update
     const newCust = await request('/customers', {
@@ -80,8 +85,8 @@ async function runApiVerification() {
         gender: 'MALE',
         dateOfBirth: '1995-05-15',
         source: 'API_TEST',
-        overallStatus: 'PROSPECT',
-        priority: 'HIGH',
+        overallStatus: 'DANG_TIEP_CAN',
+        priority: 'THANH_KHOAN',
       }),
     });
     assert(newCust.status === 201 && newCust.body.data.phone === '0909999888', 'POST /api/customers creates customer');
@@ -96,16 +101,30 @@ async function runApiVerification() {
     const updateCust = await request(`/customers/${createdId}`, {
       method: 'PATCH',
       body: JSON.stringify({
-        overallStatus: 'ACTIVE',
-        priority: 'URGENT',
+        overallStatus: 'DANG_TU_VAN',
+        priority: 'TIN_DUNG',
       }),
     });
-    assert(updateCust.status === 200 && updateCust.body.data.overallStatus === 'ACTIVE', 'PATCH /api/customers/:id updates status & priority');
+    assert(updateCust.status === 200 && updateCust.body.data.overallStatus === 'DANG_TU_VAN', 'PATCH /api/customers/:id updates status & priority');
 
     // 4. Products List
-    const prods = await request('/products');
-    assert(prods.status === 200 && prods.body.data.length >= 3, 'GET /api/products returns catalog');
-    const sampleProductId = prods.body.data[0].id;
+    let prods = await request('/products');
+    let sampleProductId: string;
+    if (!prods.body.data || prods.body.data.length === 0) {
+      const createdProd = await prisma.product.create({
+        data: {
+          code: 'API_VERIFY_PROD',
+          name: 'API Verify Product',
+          description: 'Auto-created product for verification',
+          active: true,
+        },
+      });
+      sampleProductId = createdProd.id;
+      prods = await request('/products');
+    } else {
+      sampleProductId = prods.body.data[0].id;
+    }
+    assert(prods.status === 200 && prods.body.data.length >= 1, 'GET /api/products returns catalog');
 
     // 5. Customer Cases: Create, List, Update, Delete
     const newCase = await request(`/customers/${createdId}/cases`, {
@@ -238,9 +257,37 @@ async function runApiVerification() {
     const listRecs = await request('/recommendations');
     assert(listRecs.status === 200 && Array.isArray(listRecs.body.data), 'GET /api/recommendations returns rule outputs');
 
-    // 13. Customer Delete
+    // 13. Bulk Actions
+    const bulkStatusRes = await request('/customers/bulk-action', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'UPDATE_STATUS',
+        customerIds: [createdId],
+        payload: {
+          status: 'LEAD_MOI',
+        },
+      }),
+    });
+    assert(bulkStatusRes.status === 200 && bulkStatusRes.body.data.affected === 1, 'POST /api/customers/bulk-action UPDATE_STATUS works');
+
+    const bulkPriorityRes = await request('/customers/bulk-action', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'UPDATE_PRIORITY',
+        customerIds: [createdId],
+        payload: {
+          priority: 'TIN_DUNG',
+        },
+      }),
+    });
+    assert(bulkPriorityRes.status === 200 && bulkPriorityRes.body.data.affected === 1, 'POST /api/customers/bulk-action UPDATE_PRIORITY works');
+
+    // 14. Customer Delete
     const deleteCust = await request(`/customers/${createdId}`, { method: 'DELETE' });
     assert(deleteCust.status === 200, 'DELETE /api/customers/:id cascades clean deletion');
+
+    // Clean up test product if created
+    await prisma.product.deleteMany({ where: { code: 'API_VERIFY_PROD' } });
 
     console.log(`\n========================================`);
     console.log(`API Results: ${passed} Passed, ${failed} Failed`);

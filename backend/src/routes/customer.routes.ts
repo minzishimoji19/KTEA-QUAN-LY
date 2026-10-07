@@ -8,6 +8,7 @@ import {
   addCustomerTag,
   removeCustomerTag,
 } from '../controllers/customer.controller.js';
+import { executeBulkAction } from '../controllers/bulkAction.controller.js';
 import {
   getCasesByCustomer,
   createCase,
@@ -39,6 +40,7 @@ import {
   customerIdParamSchema,
   customerTagParamSchema,
 } from '../validations/customer.validation.js';
+import { bulkActionSchema } from '../validations/bulkAction.validation.js';
 import { createCaseSchema } from '../validations/case.validation.js';
 import { createNeedSchema } from '../validations/need.validation.js';
 import { createActivitySchema } from '../validations/activity.validation.js';
@@ -58,6 +60,13 @@ router.post(
   '/',
   validateRequest({ body: createCustomerSchema }),
   createCustomer
+);
+
+// Bulk Customer Action Endpoint
+router.post(
+  '/bulk-action',
+  validateRequest({ body: bulkActionSchema }),
+  executeBulkAction
 );
 
 router.get(

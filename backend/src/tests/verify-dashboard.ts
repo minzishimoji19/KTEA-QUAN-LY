@@ -79,7 +79,7 @@ async function runDashboardVerification() {
 
     // Reconcile with Database directly
     const dbTotalCustomers = await prisma.customer.count();
-    const dbActiveCustomers = await prisma.customer.count({ where: { overallStatus: 'ACTIVE' } });
+    const dbActiveCustomers = await prisma.customer.count({ where: { overallStatus: 'DANG_TU_VAN' } });
     assert(data.overview.totalCustomers === dbTotalCustomers, `Reconcile totalCustomers: DB(${dbTotalCustomers}) === API(${data.overview.totalCustomers})`);
     assert(data.overview.activeCustomers === dbActiveCustomers, `Reconcile activeCustomers: DB(${dbActiveCustomers}) === API(${data.overview.activeCustomers})`);
 

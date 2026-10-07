@@ -14,18 +14,18 @@ enum Gender {
 }
 
 enum CustomerStatus {
-  LEAD
-  PROSPECT
-  ACTIVE
-  DORMANT
-  LOST
+  LEAD_MOI
+  DANG_TIEP_CAN
+  DANG_TU_VAN
+  THANH_CONG
+  KHONG_KHA_THI
 }
 
 enum PriorityLevel {
-  LOW
-  MEDIUM
-  HIGH
-  URGENT
+  CHUA_CO_NHU_CAU
+  THANH_KHOAN
+  TIN_DUNG
+  THANH_KHOAN_TIN_DUNG
 }
 
 enum NeedStatus {
@@ -130,8 +130,8 @@ model Customer {
   address         String?           @map("address")
   source          String?           @map("source")
   sourceId        String?           @map("source_id")
-  overallStatus   CustomerStatus    @default(LEAD) @map("overall_status")
-  priority        PriorityLevel?    @map("priority")
+  overallStatus   CustomerStatus    @default(LEAD_MOI) @map("overall_status")
+  priority        PriorityLevel?    @default(CHUA_CO_NHU_CAU) @map("priority")
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 

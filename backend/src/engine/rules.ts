@@ -97,9 +97,10 @@ export const ruleCardInterest: IRecommendationRule = {
     let targetCode = 'CC_CASHBACK_TITANIUM';
 
     if (
-      features.priority === 'HIGH' ||
-      features.priority === 'URGENT' ||
-      features.overallStatus === 'ACTIVE'
+      features.priority === 'THANH_KHOAN_TIN_DUNG' ||
+      features.priority === 'TIN_DUNG' ||
+      features.overallStatus === 'DANG_TU_VAN' ||
+      features.overallStatus === 'THANH_CONG'
     ) {
       targetCode = 'CC_MILES_PLATINUM';
     }

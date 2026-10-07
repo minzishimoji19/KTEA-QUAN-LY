@@ -257,9 +257,9 @@ async function runCaseLifecycleAndSourcesVerification() {
     const sourceKtea = await customerSourceRepository.findByName('KTEA');
     assert(sourceKtea !== null && sourceKtea.active === true, '20. Source KTEA exists and is active');
 
-    // Test 21: Source VIB exists
-    const sourceVib = await customerSourceRepository.findByName('VIB');
-    assert(sourceVib !== null && sourceVib.active === true, '21. Source VIB exists and is active');
+    // Test 21: Source VIB Times City exists (renamed from VIB)
+    const sourceVib = await customerSourceRepository.findByName('VIB Times City');
+    assert(sourceVib !== null && sourceVib.active === true, '21. Source VIB Times City exists and is active (renamed from VIB)');
 
     // Test 22: New source can be created
     const newSource = await customerSourceService.createSource({

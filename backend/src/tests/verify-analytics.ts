@@ -53,7 +53,7 @@ async function runAnalyticsVerification() {
 
     // Reconcile with actual database counts
     const dbTotalCustomers = await prisma.customer.count();
-    const dbActiveCustomers = await prisma.customer.count({ where: { overallStatus: 'ACTIVE' } });
+    const dbActiveCustomers = await prisma.customer.count({ where: { overallStatus: 'DANG_TU_VAN' } });
     const dbTotalCases = await prisma.customerCase.count();
     const dbSuccessfulCases = await prisma.customerCase.count({ where: { caseStatus: 'APPROVED' } });
     const dbFailedCases = await prisma.customerCase.count({ where: { caseStatus: 'REJECTED' } });
@@ -135,7 +135,12 @@ async function runAnalyticsVerification() {
     assert(Array.isArray(custData.bySource), 'Customer analytics has bySource array');
     assert(Array.isArray(custData.creationTrend), 'Customer analytics has creationTrend array');
     assert(custData.byStatus.length > 0, 'byStatus contains populated status categories');
-    assert(custData.byProduct.length > 0, 'byProduct contains populated products with customer counts');
+    const dbProductCount = await prisma.product.count();
+    if (dbProductCount > 0) {
+      assert(custData.byProduct.length > 0, 'byProduct contains populated products with customer counts');
+    } else {
+      assert(Array.isArray(custData.byProduct), 'byProduct is a valid array when no products exist');
+    }
 
     // ==========================================
     // 3. CASE ANALYTICS

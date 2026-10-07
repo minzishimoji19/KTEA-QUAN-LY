@@ -328,8 +328,9 @@ export class CaseService extends BaseService {
       ? (data.resultDate ? new Date(data.resultDate) : null)
       : undefined;
 
-    return prisma.$transaction(async (tx) => {
-      const updated = await tx.customerCase.update({
+    return prisma.$transaction(
+      async (tx) => {
+        const updated = await tx.customerCase.update({
         where: { id },
         data: {
           ...data,
@@ -356,7 +357,7 @@ export class CaseService extends BaseService {
       }
 
       return updated;
-    });
+    }, { timeout: 20000, maxWait: 10000 });
   }
 
   async deleteCase(id: string) {

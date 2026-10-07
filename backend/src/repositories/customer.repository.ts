@@ -6,6 +6,8 @@ export interface CustomerQueryFilters {
   pageSize: number;
   search?: string;
   status?: CustomerStatus;
+  priority?: PriorityLevel;
+  sourceId?: string;
   product?: string;
   need?: string;
   tag?: string;
@@ -22,6 +24,8 @@ export class CustomerRepository extends BaseRepository {
       pageSize,
       search,
       status,
+      priority,
+      sourceId,
       product,
       need,
       tag,
@@ -46,6 +50,19 @@ export class CustomerRepository extends BaseRepository {
     // 2. Status filter
     if (status) {
       where.overallStatus = status;
+    }
+
+    // 2b. Priority filter
+    if (priority) {
+      where.priority = priority;
+    }
+
+    // 2c. Source filter
+    if (sourceId) {
+      where.OR = [
+        ...(where.OR || []),
+        { sourceId },
+      ];
     }
 
     // 3. Product filter (customer has case for product id or code)

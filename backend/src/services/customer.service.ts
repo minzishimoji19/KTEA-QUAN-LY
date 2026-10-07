@@ -94,7 +94,7 @@ export class CustomerService extends BaseService {
           address: data.address,
           source: resolvedSourceName,
           sourceId: resolvedSourceId,
-          overallStatus: data.overallStatus || CustomerStatus.LEAD,
+          overallStatus: data.overallStatus || CustomerStatus.LEAD_MOI,
           priority: data.priority,
         },
         include: {

@@ -33,7 +33,7 @@ export class DashboardRepository extends BaseRepository {
       this.db.customer.count(),
 
       this.db.customer.count({
-        where: { overallStatus: CustomerStatus.ACTIVE },
+        where: { overallStatus: CustomerStatus.DANG_TU_VAN },
       }),
 
       this.db.customerCase.count({

@@ -169,7 +169,7 @@ export class AnalyticsService extends BaseService {
       summary: {
         totalCustomers: totalCustomersInGroups,
         activeCustomers:
-          data.statusGroups.find((g) => g.overallStatus === 'ACTIVE')?._count.id || 0,
+          data.statusGroups.find((g) => g.overallStatus === 'DANG_TU_VAN')?._count.id || 0,
       },
       byStatus,
       byProduct,

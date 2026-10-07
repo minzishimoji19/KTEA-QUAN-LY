@@ -1,4 +1,4 @@
-import apiClient from './apiClient';
+import apiClient, { getApiBaseUrl } from './apiClient';
 import {
   AppSettings,
   GeneralSettings,
@@ -36,8 +36,7 @@ export const settingsService = {
   },
 
   exportData: async (): Promise<void> => {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
-    const cleanUrl = baseUrl.replace(/\/$/, '');
+    const cleanUrl = getApiBaseUrl();
     const res = await fetch(`${cleanUrl}/data/export`, {
       headers: {
         Accept: 'application/json',

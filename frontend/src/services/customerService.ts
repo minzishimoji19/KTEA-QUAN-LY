@@ -1,4 +1,4 @@
-import apiClient from './apiClient';
+import apiClient, { getApiBaseUrl } from './apiClient';
 import { CustomerSummary, CustomerDetail } from '../types/models';
 import { PaginatedResponse } from '../types/api';
 
@@ -7,6 +7,8 @@ export interface CustomerQueryParams {
   pageSize?: number;
   search?: string;
   status?: string;
+  priority?: string;
+  sourceId?: string;
   product?: string;
   need?: string;
   tag?: string;
@@ -23,6 +25,8 @@ export const customerService = {
     if (params.pageSize) query.append('pageSize', params.pageSize.toString());
     if (params.search) query.append('search', params.search);
     if (params.status) query.append('status', params.status);
+    if (params.priority) query.append('priority', params.priority);
+    if (params.sourceId) query.append('sourceId', params.sourceId);
     if (params.product) query.append('product', params.product);
     if (params.need) query.append('need', params.need);
     if (params.tag) query.append('tag', params.tag);
@@ -32,7 +36,7 @@ export const customerService = {
     if (params.sortOrder) query.append('sortOrder', params.sortOrder);
 
     const queryString = query.toString() ? `?${query.toString()}` : '';
-    const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || '/api'}/customers${queryString}`);
+    const res = await fetch(`${getApiBaseUrl()}/customers${queryString}`);
     if (!res.ok) {
       throw new Error(`Failed to load customers (${res.status})`);
     }
@@ -61,6 +65,15 @@ export const customerService = {
 
   removeTag: async (customerId: string, tagId: string): Promise<{ success: boolean }> => {
     return apiClient.delete<{ success: boolean }>(`/customers/${customerId}/tags/${tagId}`);
+  },
+
+  executeBulkAction: async (
+    data: import('../types/models').BulkActionRequest
+  ): Promise<{ affected: number; action: string; customerIds: string[] }> => {
+    return apiClient.post<{ affected: number; action: string; customerIds: string[] }>(
+      '/customers/bulk-action',
+      data
+    );
   },
 };
 

@@ -14,7 +14,7 @@ function buildMockFeatures(overrides: Partial<CustomerFeatures> = {}): CustomerF
     customerId: 'cust-mock-01',
     fullName: 'Test Customer',
     phone: '0901234567',
-    overallStatus: CustomerStatus.ACTIVE,
+    overallStatus: CustomerStatus.DANG_TU_VAN,
     priority: null,
     activeNeeds: [],
     resolvedNeeds: [],

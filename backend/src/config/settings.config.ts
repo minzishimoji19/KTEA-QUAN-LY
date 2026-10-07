@@ -104,12 +104,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
     },
   ],
   statuses: [
-    // Customer Statuses
-    { domain: 'Customer', code: 'LEAD', label: 'Lead', color: 'blue', description: 'Prospective lead undergoing initial verification', isTerminal: false },
-    { domain: 'Customer', code: 'PROSPECT', label: 'Prospect', color: 'indigo', description: 'Qualified client with confirmed financing needs', isTerminal: false },
-    { domain: 'Customer', code: 'ACTIVE', label: 'Active', color: 'emerald', description: 'Active client with active accounts or live facilities', isTerminal: false },
-    { domain: 'Customer', code: 'DORMANT', label: 'Dormant', color: 'amber', description: 'Client without transaction or engagement for >90 days', isTerminal: false },
-    { domain: 'Customer', code: 'LOST', label: 'Lost', color: 'slate', description: 'Closed or churned account relationship', isTerminal: true },
+    // Customer Statuses (Vietnamese business lifecycle)
+    { domain: 'Customer', code: 'LEAD_MOI', label: 'Lead mới', color: 'blue', description: 'Khách hàng mới tiếp nhận, chưa tiếp cận', isTerminal: false },
+    { domain: 'Customer', code: 'DANG_TIEP_CAN', label: 'Đang tiếp cận', color: 'indigo', description: 'Đang trong quá trình tiếp cận và giới thiệu dịch vụ', isTerminal: false },
+    { domain: 'Customer', code: 'DANG_TU_VAN', label: 'Đang tư vấn', color: 'amber', description: 'Đang tư vấn chi tiết sản phẩm và giải pháp', isTerminal: false },
+    { domain: 'Customer', code: 'THANH_CONG', label: 'Thành công', color: 'emerald', description: 'Khách hàng đã hoàn tất và sử dụng dịch vụ thành công', isTerminal: true },
+    { domain: 'Customer', code: 'KHONG_KHA_THI', label: 'Không khả thi', color: 'slate', description: 'Không thể tiếp tục do điều kiện không phù hợp', isTerminal: true },
 
     // Case Statuses
     { domain: 'Case', code: 'DRAFT', label: 'Draft', color: 'slate', description: 'In-progress dossier preparation before submission', isTerminal: false },

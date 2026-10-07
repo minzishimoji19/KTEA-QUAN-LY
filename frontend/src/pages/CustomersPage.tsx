@@ -17,11 +17,11 @@ import {
   ErrorState,
 } from '../components/common';
 import { Button } from '../components/ui/Button';
-import { useCustomers } from '../hooks/useCustomers';
+import { useCustomers, useBulkAction } from '../hooks/useCustomers';
 import { useProducts } from '../hooks/useProducts';
 import { useTags } from '../hooks/useTags';
 import { useCustomerSources } from '../hooks/useCustomerSources';
-import { CustomerSummary } from '../types/models';
+import { CustomerSummary, CustomerStatus, PriorityLevel } from '../types/models';
 import { CreateCustomerModal } from '../features/customers/CreateCustomerModal';
 
 export const CustomersPage: React.FC = () => {
@@ -36,6 +36,7 @@ export const CustomersPage: React.FC = () => {
   // Direct source of truth from URL query params
   const search = searchParams.get('search') || '';
   const status = searchParams.get('status') || '';
+  const priority = searchParams.get('priority') || '';
   const source = searchParams.get('source') || '';
   const product = searchParams.get('product') || '';
   const tag = searchParams.get('tag') || '';
@@ -51,6 +52,15 @@ export const CustomersPage: React.FC = () => {
 
   // Quick create modal state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+
+  // Bulk action selection state
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
+  const [bulkStatus, setBulkStatus] = useState<string>('');
+  const [bulkPriority, setBulkPriority] = useState<string>('');
+  const [bulkTagId, setBulkTagId] = useState<string>('');
+  const [bulkNotification, setBulkNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const bulkAction = useBulkAction();
 
   // Sync local search term if URL changes externally
   useEffect(() => {
@@ -76,6 +86,7 @@ export const CustomersPage: React.FC = () => {
     pageSize,
     search: search.trim() || undefined,
     status: status || undefined,
+    priority: priority || undefined,
     product: product || undefined,
     tag: tag || undefined,
     startDate: startDate || undefined,
@@ -107,6 +118,7 @@ export const CustomersPage: React.FC = () => {
   const activeFilterCount = [
     Boolean(search.trim()),
     Boolean(status),
+    Boolean(priority),
     Boolean(source),
     Boolean(product),
     Boolean(tag),
@@ -127,6 +139,72 @@ export const CustomersPage: React.FC = () => {
     }
   };
 
+  const handleApplyBulkStatus = async () => {
+    if (!bulkStatus || selectedCustomerIds.length === 0) return;
+    try {
+      const res = await bulkAction.mutateAsync({
+        action: 'UPDATE_STATUS',
+        customerIds: selectedCustomerIds,
+        payload: { status: bulkStatus as CustomerStatus },
+      });
+      setBulkNotification({
+        type: 'success',
+        message: `Đã cập nhật trạng thái cho ${res.affected} khách hàng thành công.`,
+      });
+      setSelectedCustomerIds([]);
+      setBulkStatus('');
+    } catch (err: any) {
+      setBulkNotification({
+        type: 'error',
+        message: err.message || 'Không thể cập nhật trạng thái hàng loạt.',
+      });
+    }
+  };
+
+  const handleApplyBulkPriority = async () => {
+    if (!bulkPriority || selectedCustomerIds.length === 0) return;
+    try {
+      const res = await bulkAction.mutateAsync({
+        action: 'UPDATE_PRIORITY',
+        customerIds: selectedCustomerIds,
+        payload: { priority: bulkPriority as PriorityLevel },
+      });
+      setBulkNotification({
+        type: 'success',
+        message: `Đã cập nhật nhu cầu cho ${res.affected} khách hàng thành công.`,
+      });
+      setSelectedCustomerIds([]);
+      setBulkPriority('');
+    } catch (err: any) {
+      setBulkNotification({
+        type: 'error',
+        message: err.message || 'Không thể cập nhật nhu cầu hàng loạt.',
+      });
+    }
+  };
+
+  const handleApplyBulkTag = async () => {
+    if (!bulkTagId || selectedCustomerIds.length === 0) return;
+    try {
+      const res = await bulkAction.mutateAsync({
+        action: 'ADD_TAG',
+        customerIds: selectedCustomerIds,
+        payload: { tagId: bulkTagId },
+      });
+      setBulkNotification({
+        type: 'success',
+        message: `Đã gắn nhãn cho ${res.affected} khách hàng thành công.`,
+      });
+      setSelectedCustomerIds([]);
+      setBulkTagId('');
+    } catch (err: any) {
+      setBulkNotification({
+        type: 'error',
+        message: err.message || 'Không thể gắn nhãn hàng loạt.',
+      });
+    }
+  };
+
   // Table Columns strictly matching business requirements:
   // - Customer name
   // - Phone
@@ -138,7 +216,53 @@ export const CustomersPage: React.FC = () => {
   // - Created date
   // - Updated date
   // - Actions
+  const isAllSelected =
+    customers.length > 0 &&
+    customers.every((c) => selectedCustomerIds.includes(c.id));
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      const pageCustomerIds = new Set(customers.map((c) => c.id));
+      setSelectedCustomerIds(selectedCustomerIds.filter((id) => !pageCustomerIds.has(id)));
+    } else {
+      const pageCustomerIds = customers.map((c) => c.id);
+      setSelectedCustomerIds(Array.from(new Set([...selectedCustomerIds, ...pageCustomerIds])));
+    }
+  };
+
+  const handleToggleSelectCustomer = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (selectedCustomerIds.includes(id)) {
+      setSelectedCustomerIds(selectedCustomerIds.filter((selectedId) => selectedId !== id));
+    } else {
+      setSelectedCustomerIds([...selectedCustomerIds, id]);
+    }
+  };
+
   const columns: Column<CustomerSummary>[] = [
+    {
+      key: 'select',
+      header: (
+        <input
+          type="checkbox"
+          checked={isAllSelected}
+          onChange={handleToggleSelectAll}
+          className="rounded border-slate-700 bg-slate-900 text-blue-500 focus:ring-0 cursor-pointer w-3.5 h-3.5"
+          title="Chọn tất cả trên trang này"
+        />
+      ),
+      width: '36px',
+      align: 'center',
+      render: (row) => (
+        <input
+          type="checkbox"
+          checked={selectedCustomerIds.includes(row.id)}
+          onClick={(e) => handleToggleSelectCustomer(row.id, e)}
+          onChange={() => {}}
+          className="rounded border-slate-700 bg-slate-900 text-blue-500 focus:ring-0 cursor-pointer w-3.5 h-3.5"
+        />
+      ),
+    },
     {
       key: 'fullName',
       header: 'Khách hàng',
@@ -209,26 +333,34 @@ export const CustomersPage: React.FC = () => {
       key: 'overallStatus',
       header: 'Trạng thái',
       sortable: true,
-      width: '110px',
+      width: '120px',
       render: (row) => <StatusBadge status={row.overallStatus} />,
     },
     {
       key: 'priority',
-      header: 'Độ ưu tiên',
-      width: '100px',
+      header: 'Nhu cầu / Ưu tiên',
+      width: '130px',
       render: (row) => {
-        if (!row.priority || row.priority === 'LOW') {
-          return <span className="text-slate-500 font-mono text-[11px]">Thấp</span>;
+        if (!row.priority || row.priority === 'CHUA_CO_NHU_CAU') {
+          return <span className="text-slate-500 font-sans text-xs">Chưa có nhu cầu</span>;
+        }
+        if (row.priority === 'THANH_KHOAN') {
+          return (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded font-semibold bg-blue-950/60 text-blue-300 border border-blue-800/40">
+              Thanh khoản
+            </span>
+          );
+        }
+        if (row.priority === 'TIN_DUNG') {
+          return (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded font-semibold bg-amber-950/60 text-amber-300 border border-amber-800/40">
+              Tín dụng
+            </span>
+          );
         }
         return (
-          <span
-            className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-semibold uppercase ${
-              row.priority === 'URGENT' || row.priority === 'HIGH'
-                ? 'bg-rose-950/80 text-rose-300 border border-rose-800/60'
-                : 'bg-amber-950/60 text-amber-300 border border-amber-800/40'
-            }`}
-          >
-            {row.priority === 'URGENT' ? 'Khẩn cấp' : 'Cao'}
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded font-semibold bg-purple-950/80 text-purple-300 border border-purple-800/60">
+            Thanh khoản & Tín dụng
           </span>
         );
       },
@@ -382,11 +514,24 @@ export const CustomersPage: React.FC = () => {
           className="h-8 bg-slate-900 border border-slate-800 rounded px-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
         >
           <option value="">Tất cả trạng thái</option>
-          <option value="LEAD">Tiềm năng (LEAD)</option>
-          <option value="PROSPECT">Triển vọng (PROSPECT)</option>
-          <option value="ACTIVE">Đang hoạt động (ACTIVE)</option>
-          <option value="DORMANT">Không hoạt động (DORMANT)</option>
-          <option value="LOST">Đã mất (LOST)</option>
+          <option value="LEAD_MOI">Lead mới (LEAD_MOI)</option>
+          <option value="DANG_TIEP_CAN">Đang tiếp cận (DANG_TIEP_CAN)</option>
+          <option value="DANG_TU_VAN">Đang tư vấn (DANG_TU_VAN)</option>
+          <option value="THANH_CONG">Thành công (THANH_CONG)</option>
+          <option value="KHONG_KHA_THI">Không khả thi (KHONG_KHA_THI)</option>
+        </select>
+
+        {/* Priority / Need Filter */}
+        <select
+          value={priority}
+          onChange={(e) => updateFilters({ priority: e.target.value || undefined, page: 1 })}
+          className="h-8 bg-slate-900 border border-slate-800 rounded px-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-sans"
+        >
+          <option value="">Tất cả nhu cầu</option>
+          <option value="CHUA_CO_NHU_CAU">Chưa có nhu cầu</option>
+          <option value="THANH_KHOAN">Thanh khoản</option>
+          <option value="TIN_DUNG">Tín dụng</option>
+          <option value="THANH_KHOAN_TIN_DUNG">Thanh khoản & Tín dụng</option>
         </select>
 
         {/* Source Filter */}
@@ -450,6 +595,121 @@ export const CustomersPage: React.FC = () => {
           />
         </div>
       </FilterBar>
+
+      {/* Notification banner for bulk operations */}
+      {bulkNotification && (
+        <div
+          className={`flex items-center justify-between px-3 py-2 rounded text-xs border ${
+            bulkNotification.type === 'success'
+              ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60'
+              : 'bg-rose-950/60 text-rose-300 border-rose-800/60'
+          }`}
+        >
+          <span>{bulkNotification.message}</span>
+          <button
+            onClick={() => setBulkNotification(null)}
+            className="text-slate-400 hover:text-slate-200 text-xs ml-3"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Sticky Bulk Action Toolbar */}
+      {selectedCustomerIds.length > 0 && (
+        <div className="bg-slate-900/95 border border-blue-500/40 rounded-lg p-2.5 shadow-xl flex flex-wrap items-center justify-between gap-3 backdrop-blur animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center justify-center bg-blue-600 text-white font-mono text-xs font-semibold px-2 py-0.5 rounded-full">
+              {selectedCustomerIds.length}
+            </span>
+            <span className="text-xs font-medium text-slate-200">
+              khách hàng được chọn
+            </span>
+            <button
+              onClick={() => setSelectedCustomerIds([])}
+              className="text-[11px] text-slate-400 hover:text-slate-200 underline ml-1 cursor-pointer"
+            >
+              Bỏ chọn
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Bulk Update Status */}
+            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded border border-slate-800">
+              <select
+                value={bulkStatus}
+                onChange={(e) => setBulkStatus(e.target.value)}
+                className="h-7 bg-slate-900 border-0 rounded px-2 text-xs text-slate-200 focus:outline-none"
+              >
+                <option value="">Trạng thái...</option>
+                <option value="LEAD_MOI">Lead mới</option>
+                <option value="DANG_TIEP_CAN">Đang tiếp cận</option>
+                <option value="DANG_TU_VAN">Đang tư vấn</option>
+                <option value="THANH_CONG">Thành công</option>
+                <option value="KHONG_KHA_THI">Không khả thi</option>
+              </select>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!bulkStatus || bulkAction.isPending}
+                onClick={handleApplyBulkStatus}
+                className="h-7 text-xs px-2"
+              >
+                Cập nhật
+              </Button>
+            </div>
+
+            {/* Bulk Update Priority */}
+            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded border border-slate-800">
+              <select
+                value={bulkPriority}
+                onChange={(e) => setBulkPriority(e.target.value)}
+                className="h-7 bg-slate-900 border-0 rounded px-2 text-xs text-slate-200 focus:outline-none"
+              >
+                <option value="">Nhu cầu...</option>
+                <option value="CHUA_CO_NHU_CAU">Chưa có nhu cầu</option>
+                <option value="THANH_KHOAN">Thanh khoản</option>
+                <option value="TIN_DUNG">Tín dụng</option>
+                <option value="THANH_KHOAN_TIN_DUNG">Thanh khoản & Tín dụng</option>
+              </select>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!bulkPriority || bulkAction.isPending}
+                onClick={handleApplyBulkPriority}
+                className="h-7 text-xs px-2"
+              >
+                Cập nhật
+              </Button>
+            </div>
+
+            {/* Bulk Add Tag */}
+            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded border border-slate-800">
+              <select
+                value={bulkTagId}
+                onChange={(e) => setBulkTagId(e.target.value)}
+                className="h-7 bg-slate-900 border-0 rounded px-2 text-xs text-slate-200 focus:outline-none max-w-[120px]"
+              >
+                <option value="">Gắn nhãn...</option>
+                {(tags || []).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!bulkTagId || bulkAction.isPending}
+                onClick={handleApplyBulkTag}
+                className="h-7 text-xs px-2"
+              >
+                Gắn
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Table */}
       <DataTable

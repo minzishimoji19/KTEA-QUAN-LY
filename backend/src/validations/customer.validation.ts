@@ -6,6 +6,8 @@ export const listCustomersQuerySchema = z.object({
   pageSize: z.string().optional().default('25').transform((val) => Math.min(100, Math.max(1, parseInt(val, 10) || 25))),
   search: z.string().optional(),
   status: z.nativeEnum(CustomerStatus).optional(),
+  priority: z.nativeEnum(PriorityLevel).optional(),
+  sourceId: z.string().optional(),
   product: z.string().optional(),
   need: z.string().optional(),
   tag: z.string().optional(),
@@ -24,8 +26,8 @@ export const createCustomerSchema = z.object({
   address: z.string().max(500).optional().nullable(),
   source: z.string().max(100).optional().nullable(),
   sourceId: z.string().optional().nullable(),
-  overallStatus: z.nativeEnum(CustomerStatus).optional().default(CustomerStatus.LEAD),
-  priority: z.nativeEnum(PriorityLevel).optional().nullable(),
+  overallStatus: z.nativeEnum(CustomerStatus).optional().default(CustomerStatus.LEAD_MOI),
+  priority: z.nativeEnum(PriorityLevel).optional().nullable().default(PriorityLevel.CHUA_CO_NHU_CAU),
 });
 
 export const updateCustomerSchema = createCustomerSchema.partial();

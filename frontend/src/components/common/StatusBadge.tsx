@@ -16,17 +16,17 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
 
   let styles = 'bg-slate-800 text-slate-300 border-slate-700/60';
 
-  if (['ACTIVE', 'APPROVED', 'SUCCESS', 'COMPLETED', 'RESOLVED', 'ACCEPTED', 'CONVERTED_TO_PUSH', 'CARD_ACTIVATED'].includes(normalized)) {
+  if (['ACTIVE', 'APPROVED', 'SUCCESS', 'COMPLETED', 'RESOLVED', 'ACCEPTED', 'CONVERTED_TO_PUSH', 'CARD_ACTIVATED', 'THANH_CONG'].includes(normalized)) {
     styles = 'bg-emerald-950/60 text-emerald-400 border-emerald-800/50';
-  } else if (['NEW', 'CARD_ISSUED'].includes(normalized)) {
+  } else if (['NEW', 'CARD_ISSUED', 'LEAD_MOI', 'THANH_KHOAN_TIN_DUNG'].includes(normalized)) {
     styles = 'bg-purple-950/60 text-purple-300 border-purple-800/50';
-  } else if (['PROSPECT', 'IN_PROGRESS', 'SUBMITTED', 'OPEN', 'MEDIUM', 'REVIEWED', 'REGISTRATION_CREATED', 'REGISTRATION_COMPLETED'].includes(normalized)) {
+  } else if (['PROSPECT', 'IN_PROGRESS', 'SUBMITTED', 'OPEN', 'MEDIUM', 'REVIEWED', 'REGISTRATION_CREATED', 'REGISTRATION_COMPLETED', 'DANG_TIEP_CAN', 'THANH_KHOAN'].includes(normalized)) {
     styles = 'bg-blue-950/60 text-blue-400 border-blue-800/50';
-  } else if (['LEAD', 'UNDER_REVIEW', 'PENDING', 'HIGH'].includes(normalized)) {
+  } else if (['LEAD', 'UNDER_REVIEW', 'PENDING', 'HIGH', 'DANG_TU_VAN', 'TIN_DUNG'].includes(normalized)) {
     styles = 'bg-amber-950/60 text-amber-400 border-amber-800/50';
-  } else if (['LOST', 'REJECTED', 'FAILED', 'OVERDUE', 'URGENT', 'DROPPED'].includes(normalized)) {
+  } else if (['LOST', 'REJECTED', 'FAILED', 'OVERDUE', 'URGENT', 'DROPPED', 'KHONG_KHA_THI'].includes(normalized)) {
     styles = 'bg-rose-950/60 text-rose-400 border-rose-800/50';
-  } else if (['DORMANT', 'DRAFT', 'CANCELLED', 'LOW', 'DISMISSED', 'EXPIRED', 'NOT_SELECTED'].includes(normalized)) {
+  } else if (['DORMANT', 'DRAFT', 'CANCELLED', 'LOW', 'DISMISSED', 'EXPIRED', 'NOT_SELECTED', 'CHUA_CO_NHU_CAU'].includes(normalized)) {
     styles = 'bg-slate-900 text-slate-400 border-slate-800';
   }
 

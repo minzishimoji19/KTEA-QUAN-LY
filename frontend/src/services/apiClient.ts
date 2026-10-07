@@ -15,11 +15,23 @@ export class ApiClientError extends Error {
   }
 }
 
+export function normalizeApiUrl(rawUrl?: string): string {
+  let url = (rawUrl || '/api').trim().replace(/\/+$/, '');
+  if (/^https?:\/\/[^/]+$/.test(url)) {
+    url = `${url}/api`;
+  }
+  return url;
+}
+
+export function getApiBaseUrl(): string {
+  return normalizeApiUrl(import.meta.env.VITE_API_BASE_URL);
+}
+
 class ApiClient {
   private baseUrl: string;
 
-  constructor(baseUrl = import.meta.env.VITE_API_BASE_URL || '/api') {
-    this.baseUrl = baseUrl.replace(/\/$/, '');
+  constructor(baseUrl?: string) {
+    this.baseUrl = normalizeApiUrl(baseUrl || import.meta.env.VITE_API_BASE_URL);
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {

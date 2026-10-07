@@ -27,10 +27,10 @@ interface FailureDetail {
 }
 
 const SAMPLE_CSV = `fullName,phone,email,overallStatus,source
-Nguyen Van An,0901234567,an.nguyen@example.com,LEAD,Website
-Tran Thi Bich,0912345678,bich.tran@example.com,PROSPECT,Referral
-Le Hoang Minh,0987654321,minh.le@example.com,ACTIVE,Direct Outreach
-Pham Duc Nam,0978123456,nam.pham@example.com,LEAD,Branch Walk-in`;
+Nguyen Van An,0901234567,an.nguyen@example.com,LEAD_MOI,Website
+Tran Thi Bich,0912345678,bich.tran@example.com,DANG_TIEP_CAN,Referral
+Le Hoang Minh,0987654321,minh.le@example.com,DANG_TU_VAN,Direct Outreach
+Pham Duc Nam,0978123456,nam.pham@example.com,LEAD_MOI,Branch Walk-in`;
 
 export const ImportDataModal: React.FC<ImportDataModalProps> = ({ isOpen, onClose }) => {
   const queryClient = useQueryClient();
@@ -79,11 +79,22 @@ export const ImportDataModal: React.FC<ImportDataModalProps> = ({ isOpen, onClos
       const fullName = parts[0] || '';
       const phone = parts[1] || '';
       const email = parts[2] || '';
-      const overallStatus = parts[3] ? parts[3].toUpperCase() : 'LEAD';
+      const overallStatus = parts[3] ? parts[3].toUpperCase() : 'LEAD_MOI';
       const source = parts[4] || 'Batch Import';
 
-      const validStatuses = ['LEAD', 'PROSPECT', 'ACTIVE', 'DORMANT', 'LOST'];
-      const statusFinal = validStatuses.includes(overallStatus) ? overallStatus : 'LEAD';
+      const statusMap: Record<string, string> = {
+        LEAD: 'LEAD_MOI',
+        PROSPECT: 'DANG_TIEP_CAN',
+        ACTIVE: 'DANG_TU_VAN',
+        DORMANT: 'KHONG_KHA_THI',
+        LOST: 'KHONG_KHA_THI',
+        LEAD_MOI: 'LEAD_MOI',
+        DANG_TIEP_CAN: 'DANG_TIEP_CAN',
+        DANG_TU_VAN: 'DANG_TU_VAN',
+        THANH_CONG: 'THANH_CONG',
+        KHONG_KHA_THI: 'KHONG_KHA_THI',
+      };
+      const statusFinal = statusMap[overallStatus] || 'LEAD_MOI';
 
       if (!fullName) {
         return { fullName, phone, email, overallStatus: statusFinal, source, isValid: false, error: `Dòng ${idx + 1}: Thiếu họ tên` };

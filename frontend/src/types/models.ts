@@ -1,8 +1,29 @@
 export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
 
-export type CustomerStatus = 'LEAD' | 'PROSPECT' | 'ACTIVE' | 'DORMANT' | 'LOST';
+export type CustomerStatus =
+  | 'LEAD_MOI'
+  | 'DANG_TIEP_CAN'
+  | 'DANG_TU_VAN'
+  | 'THANH_CONG'
+  | 'KHONG_KHA_THI';
 
-export type PriorityLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+export type PriorityLevel =
+  | 'CHUA_CO_NHU_CAU'
+  | 'THANH_KHOAN'
+  | 'TIN_DUNG'
+  | 'THANH_KHOAN_TIN_DUNG';
+
+export type BulkActionType = 'UPDATE_STATUS' | 'UPDATE_PRIORITY' | 'ADD_TAG';
+
+export interface BulkActionRequest {
+  action: BulkActionType;
+  customerIds: string[];
+  payload: {
+    status?: CustomerStatus;
+    priority?: PriorityLevel;
+    tagId?: string;
+  };
+}
 
 export type NeedStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'DROPPED';
 

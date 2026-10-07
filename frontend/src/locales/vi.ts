@@ -89,12 +89,18 @@ export const vi = {
   },
 
   status: {
-    // Customer statuses
-    LEAD: 'Tiềm năng',
-    PROSPECT: 'Triển vọng',
-    ACTIVE: 'Đang hoạt động',
-    DORMANT: 'Không hoạt động',
-    LOST: 'Đã mất',
+    // Customer statuses (Vietnamese business lifecycle)
+    LEAD_MOI: 'Lead mới',
+    DANG_TIEP_CAN: 'Đang tiếp cận',
+    DANG_TU_VAN: 'Đang tư vấn',
+    THANH_CONG: 'Thành công',
+    KHONG_KHA_THI: 'Không khả thi',
+    // Legacy mapping support
+    LEAD: 'Lead mới',
+    PROSPECT: 'Đang tiếp cận',
+    ACTIVE: 'Đang tư vấn',
+    DORMANT: 'Không khả thi',
+    LOST: 'Không khả thi',
 
     // Case statuses
     DRAFT: 'Bản nháp',
@@ -134,11 +140,16 @@ export const vi = {
     ACCEPTED: 'Đã chấp nhận',
     EXPIRED: 'Đã hết hạn',
 
-    // Priority levels
-    LOW: 'Thấp',
-    MEDIUM: 'Trung bình',
-    HIGH: 'Cao',
-    URGENT: 'Khẩn cấp',
+    // Priority levels (Product demand orientation)
+    CHUA_CO_NHU_CAU: 'Chưa có nhu cầu',
+    THANH_KHOAN: 'Thanh khoản',
+    TIN_DUNG: 'Tín dụng',
+    THANH_KHOAN_TIN_DUNG: 'Thanh khoản & Tín dụng',
+    // Legacy priority levels
+    LOW: 'Chưa có nhu cầu',
+    MEDIUM: 'Thanh khoản',
+    HIGH: 'Tín dụng',
+    URGENT: 'Thanh khoản & Tín dụng',
 
     // Gender
     MALE: 'Nam',

@@ -87,12 +87,18 @@ export const AnalyticsPage: React.FC = () => {
   // Status Color Helper
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'THANH_CONG':
       case 'ACTIVE':
         return 'bg-emerald-500';
+      case 'DANG_TU_VAN':
+        return 'bg-teal-500';
+      case 'DANG_TIEP_CAN':
       case 'PROSPECT':
         return 'bg-blue-500';
+      case 'LEAD_MOI':
       case 'LEAD':
         return 'bg-amber-500';
+      case 'KHONG_KHA_THI':
       case 'DORMANT':
         return 'bg-slate-500';
       case 'LOST':

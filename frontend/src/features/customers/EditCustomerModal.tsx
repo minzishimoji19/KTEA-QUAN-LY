@@ -18,8 +18,8 @@ const editCustomerSchema = z.object({
   address: z.string().max(500).optional().or(z.literal('')),
   sourceId: z.string().optional().or(z.literal('')),
   source: z.string().max(100).optional().or(z.literal('')),
-  overallStatus: z.enum(['LEAD', 'PROSPECT', 'ACTIVE', 'DORMANT', 'LOST']),
-  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional().or(z.literal('')),
+  overallStatus: z.enum(['LEAD_MOI', 'DANG_TIEP_CAN', 'DANG_TU_VAN', 'THANH_CONG', 'KHONG_KHA_THI']),
+  priority: z.enum(['CHUA_CO_NHU_CAU', 'THANH_KHOAN', 'TIN_DUNG', 'THANH_KHOAN_TIN_DUNG']).optional().or(z.literal('')),
 });
 
 type EditCustomerFormData = z.infer<typeof editCustomerSchema>;
@@ -56,7 +56,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
       sourceId: customer.sourceId || customer.customerSource?.id || '',
       source: customer.source || '',
       overallStatus: customer.overallStatus,
-      priority: customer.priority || 'MEDIUM',
+      priority: customer.priority || 'CHUA_CO_NHU_CAU',
     },
   });
 
@@ -72,7 +72,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
         sourceId: customer.sourceId || customer.customerSource?.id || '',
         source: customer.source || '',
         overallStatus: customer.overallStatus,
-        priority: customer.priority || 'MEDIUM',
+        priority: customer.priority || 'CHUA_CO_NHU_CAU',
       });
     }
   }, [customer, isOpen, reset]);
@@ -246,11 +246,11 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                   {...register('overallStatus')}
                   className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono focus:outline-none focus:border-blue-500"
                 >
-                  <option value="LEAD">Khách tiềm năng (LEAD)</option>
-                  <option value="PROSPECT">Khách triển vọng (PROSPECT)</option>
-                  <option value="ACTIVE">Đang hoạt động (ACTIVE)</option>
-                  <option value="DORMANT">Tạm ngưng (DORMANT)</option>
-                  <option value="LOST">Đã mất (LOST)</option>
+                  <option value="LEAD_MOI">Lead mới (LEAD_MOI)</option>
+                  <option value="DANG_TIEP_CAN">Đang tiếp cận (DANG_TIEP_CAN)</option>
+                  <option value="DANG_TU_VAN">Đang tư vấn (DANG_TU_VAN)</option>
+                  <option value="THANH_CONG">Thành công (THANH_CONG)</option>
+                  <option value="KHONG_KHA_THI">Không khả thi (KHONG_KHA_THI)</option>
                 </select>
               </div>
 
@@ -260,10 +260,10 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                   {...register('priority')}
                   className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono focus:outline-none focus:border-blue-500"
                 >
-                  <option value="LOW">Thấp (LOW)</option>
-                  <option value="MEDIUM">Trung bình (MEDIUM)</option>
-                  <option value="HIGH">Cao (HIGH)</option>
-                  <option value="URGENT">Khẩn cấp (URGENT)</option>
+                  <option value="CHUA_CO_NHU_CAU">Chưa có nhu cầu</option>
+                  <option value="THANH_KHOAN">Thanh khoản</option>
+                  <option value="TIN_DUNG">Tín dụng</option>
+                  <option value="THANH_KHOAN_TIN_DUNG">Thanh khoản & Tín dụng</option>
                 </select>
               </div>
             </div>
