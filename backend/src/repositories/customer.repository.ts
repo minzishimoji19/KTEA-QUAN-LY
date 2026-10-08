@@ -59,10 +59,7 @@ export class CustomerRepository extends BaseRepository {
 
     // 2c. Source filter
     if (sourceId) {
-      where.OR = [
-        ...(where.OR || []),
-        { sourceId },
-      ];
+      where.sourceId = sourceId;
     }
 
     // 3. Product filter (customer has case for product id or code)

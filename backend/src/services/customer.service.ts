@@ -9,6 +9,19 @@ import prisma from '../config/database.js';
 
 export class CustomerService extends BaseService {
   async getCustomers(filters: CustomerQueryFilters) {
+    if (filters.sourceId) {
+      const trimmedSourceId = filters.sourceId.trim();
+      const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmedSourceId);
+      if (!isValidUUID) {
+        throw new BadRequestError(`Invalid customer source ID format: '${filters.sourceId}'`);
+      }
+      const source = await customerSourceRepository.findById(trimmedSourceId);
+      if (!source) {
+        throw new NotFoundError(`Customer source with ID '${filters.sourceId}' not found`);
+      }
+      filters.sourceId = trimmedSourceId;
+    }
+
     const { total, customers } = await customerRepository.findMany(filters);
     const pagination = buildPaginationMeta(total, filters.page, filters.pageSize);
 

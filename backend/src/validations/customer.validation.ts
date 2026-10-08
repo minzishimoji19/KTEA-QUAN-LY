@@ -7,7 +7,7 @@ export const listCustomersQuerySchema = z.object({
   search: z.string().optional(),
   status: z.nativeEnum(CustomerStatus).optional(),
   priority: z.nativeEnum(PriorityLevel).optional(),
-  sourceId: z.string().optional(),
+  sourceId: z.string().trim().optional().transform((val) => (val && val !== 'all' ? val : undefined)),
   product: z.string().optional(),
   need: z.string().optional(),
   tag: z.string().optional(),

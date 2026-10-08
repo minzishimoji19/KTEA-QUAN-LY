@@ -37,7 +37,7 @@ export const CustomersPage: React.FC = () => {
   const search = searchParams.get('search') || '';
   const status = searchParams.get('status') || '';
   const priority = searchParams.get('priority') || '';
-  const source = searchParams.get('source') || '';
+  const sourceId = searchParams.get('sourceId') || searchParams.get('source') || '';
   const product = searchParams.get('product') || '';
   const tag = searchParams.get('tag') || '';
   const startDate = searchParams.get('startDate') || '';
@@ -87,6 +87,7 @@ export const CustomersPage: React.FC = () => {
     search: search.trim() || undefined,
     status: status || undefined,
     priority: priority || undefined,
+    sourceId: sourceId || undefined,
     product: product || undefined,
     tag: tag || undefined,
     startDate: startDate || undefined,
@@ -95,18 +96,7 @@ export const CustomersPage: React.FC = () => {
     sortOrder,
   });
 
-  let customers = data?.data || [];
-
-  // Client-side refinement for source filter if needed
-  if (source && customers.length > 0) {
-    customers = customers.filter(
-      (c) =>
-        c.sourceId === source ||
-        c.customerSource?.id === source ||
-        c.customerSource?.name === source ||
-        c.source === source
-    );
-  }
+  const customers = data?.data || [];
 
   const pagination = data?.pagination || {
     page: 1,
@@ -115,11 +105,13 @@ export const CustomersPage: React.FC = () => {
     totalPages: 1,
   };
 
+  const selectedSource = sources?.find((s) => s.id === sourceId);
+
   const activeFilterCount = [
     Boolean(search.trim()),
     Boolean(status),
     Boolean(priority),
-    Boolean(source),
+    Boolean(sourceId),
     Boolean(product),
     Boolean(tag),
     Boolean(startDate),
@@ -536,8 +528,15 @@ export const CustomersPage: React.FC = () => {
 
         {/* Source Filter */}
         <select
-          value={source}
-          onChange={(e) => updateFilters({ source: e.target.value || undefined, page: 1 })}
+          value={sourceId}
+          onChange={(e) => {
+            const val = e.target.value;
+            updateFilters({
+              sourceId: val || undefined,
+              source: undefined,
+              page: 1,
+            });
+          }}
           className="h-8 bg-slate-900 border border-slate-800 rounded px-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-sans"
         >
           <option value="">Tất cả nguồn khách</option>
@@ -720,7 +719,9 @@ export const CustomersPage: React.FC = () => {
         isEmpty={customers.length === 0}
         emptyTitle="Chưa có khách hàng phù hợp"
         emptyDescription={
-          activeFilterCount > 0
+          selectedSource
+            ? `Không có khách hàng thuộc nguồn ${selectedSource.name}.`
+            : activeFilterCount > 0
             ? 'Không có khách hàng nào khớp với điều kiện lọc. Vui lòng điều chỉnh hoặc xóa bộ lọc.'
             : 'Danh bạ khách hàng hiện đang trống. Nhấn "Thêm khách hàng" để tạo hồ sơ đầu tiên.'
         }
