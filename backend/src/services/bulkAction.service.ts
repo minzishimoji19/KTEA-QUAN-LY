@@ -23,28 +23,31 @@ export class BulkActionService {
       throw new BadRequestError('Không có danh sách khách hàng được cung cấp');
     }
 
+    // Deduplicate customer IDs to prevent duplicate processing
+    const uniqueCustomerIds = Array.from(new Set(customerIds));
+
     // Validate that all provided customer IDs actually exist
     const existingCount = await prisma.customer.count({
-      where: { id: { in: customerIds } },
+      where: { id: { in: uniqueCustomerIds } },
     });
 
-    if (existingCount !== customerIds.length) {
+    if (existingCount !== uniqueCustomerIds.length) {
       throw new NotFoundError(
-        `Một số khách hàng không tồn tại. Yêu cầu: ${customerIds.length}, tìm thấy: ${existingCount}.`
+        `Một số khách hàng không tồn tại. Yêu cầu: ${uniqueCustomerIds.length}, tìm thấy: ${existingCount}.`
       );
     }
 
     switch (action) {
       case 'UPDATE_STATUS':
-        return this.bulkUpdateStatus(customerIds, input.payload.status);
+        return this.bulkUpdateStatus(uniqueCustomerIds, input.payload.status);
       case 'UPDATE_PRIORITY':
-        return this.bulkUpdatePriority(customerIds, input.payload.priority);
+        return this.bulkUpdatePriority(uniqueCustomerIds, input.payload.priority);
       case 'ADD_TAG':
-        return this.bulkAddTag(customerIds, input.payload.tagId);
+        return this.bulkAddTag(uniqueCustomerIds, input.payload.tagId);
       case 'ASSIGN_SOURCE':
-        return this.bulkAssignSource(customerIds, input.payload.sourceId);
+        return this.bulkAssignSource(uniqueCustomerIds, input.payload.sourceId);
       case 'DELETE_CUSTOMERS':
-        return this.bulkDeleteCustomers(customerIds);
+        return this.bulkDeleteCustomers(uniqueCustomerIds);
       default:
         throw new BadRequestError(`Thao tác hàng loạt không được hỗ trợ`);
     }
@@ -54,21 +57,25 @@ export class BulkActionService {
     customerIds: string[],
     status: string
   ) {
+    const BATCH_SIZE = 250;
     await prisma.$transaction(async (tx) => {
       await tx.customer.updateMany({
         where: { id: { in: customerIds } },
         data: { overallStatus: status as any },
       });
 
-      // Log bulk activity for each customer
-      await tx.customerActivity.createMany({
-        data: customerIds.map((customerId) => ({
-          customerId,
-          type: ActivityType.SYSTEM_EVENT,
-          title: 'Cập nhật trạng thái (Hàng loạt)',
-          description: `Trạng thái khách hàng được cập nhật thành "${status}" thông qua thao tác hàng loạt.`,
-        })),
-      });
+      // Log bulk activity for each customer in batches
+      for (let i = 0; i < customerIds.length; i += BATCH_SIZE) {
+        const batch = customerIds.slice(i, i + BATCH_SIZE);
+        await tx.customerActivity.createMany({
+          data: batch.map((customerId) => ({
+            customerId,
+            type: ActivityType.SYSTEM_EVENT,
+            title: 'Cập nhật trạng thái (Hàng loạt)',
+            description: `Trạng thái khách hàng được cập nhật thành "${status}" thông qua thao tác hàng loạt.`,
+          })),
+        });
+      }
     });
 
     return {
@@ -82,20 +89,24 @@ export class BulkActionService {
     customerIds: string[],
     priority: string
   ) {
+    const BATCH_SIZE = 250;
     await prisma.$transaction(async (tx) => {
       await tx.customer.updateMany({
         where: { id: { in: customerIds } },
         data: { priority: priority as any },
       });
 
-      await tx.customerActivity.createMany({
-        data: customerIds.map((customerId) => ({
-          customerId,
-          type: ActivityType.SYSTEM_EVENT,
-          title: 'Cập nhật mức độ nhu cầu (Hàng loạt)',
-          description: `Mức độ nhu cầu khách hàng được cập nhật thành "${priority}" thông qua thao tác hàng loạt.`,
-        })),
-      });
+      for (let i = 0; i < customerIds.length; i += BATCH_SIZE) {
+        const batch = customerIds.slice(i, i + BATCH_SIZE);
+        await tx.customerActivity.createMany({
+          data: batch.map((customerId) => ({
+            customerId,
+            type: ActivityType.SYSTEM_EVENT,
+            title: 'Cập nhật mức độ nhu cầu (Hàng loạt)',
+            description: `Mức độ nhu cầu khách hàng được cập nhật thành "${priority}" thông qua thao tác hàng loạt.`,
+          })),
+        });
+      }
     });
 
     return {
@@ -112,25 +123,31 @@ export class BulkActionService {
       throw new NotFoundError(`Tag with ID '${tagId}' not found`);
     }
 
+    const BATCH_SIZE = 250;
+
     await prisma.$transaction(async (tx) => {
-      // Use upsert for each customer to ensure idempotency (no duplicate tags)
-      for (const customerId of customerIds) {
-        await tx.customerTag.upsert({
-          where: { customerId_tagId: { customerId, tagId } },
-          create: { customerId, tagId },
-          update: {},
+      for (let i = 0; i < customerIds.length; i += BATCH_SIZE) {
+        const batch = customerIds.slice(i, i + BATCH_SIZE);
+
+        // Bulk insert CustomerTag with skipDuplicates to ensure idempotency and prevent duplicate records
+        await tx.customerTag.createMany({
+          data: batch.map((customerId) => ({
+            customerId,
+            tagId,
+          })),
+          skipDuplicates: true,
+        });
+
+        // Log bulk activity for each customer in batch
+        await tx.customerActivity.createMany({
+          data: batch.map((customerId) => ({
+            customerId,
+            type: ActivityType.SYSTEM_EVENT,
+            title: 'Gắn nhãn (Hàng loạt)',
+            description: `Tag "${tag.name}" được gắn thông qua thao tác hàng loạt.`,
+          })),
         });
       }
-
-      // Log bulk activity
-      await tx.customerActivity.createMany({
-        data: customerIds.map((customerId) => ({
-          customerId,
-          type: ActivityType.SYSTEM_EVENT,
-          title: 'Gắn nhãn (Hàng loạt)',
-          description: `Tag "${tag.name}" được gắn thông qua thao tác hàng loạt.`,
-        })),
-      });
     });
 
     return {
@@ -149,6 +166,8 @@ export class BulkActionService {
       throw new BadRequestError(`Nguồn khách hàng '${source.name}' đã ngưng hoạt động và không thể gán`);
     }
 
+    const BATCH_SIZE = 250;
+
     await prisma.$transaction(async (tx) => {
       await tx.customer.updateMany({
         where: { id: { in: customerIds } },
@@ -158,14 +177,17 @@ export class BulkActionService {
         },
       });
 
-      await tx.customerActivity.createMany({
-        data: customerIds.map((customerId) => ({
-          customerId,
-          type: ActivityType.SYSTEM_EVENT,
-          title: 'Gán nguồn khách hàng (Hàng loạt)',
-          description: `Nguồn khách hàng được gán thành "${source.name}" thông qua thao tác hàng loạt.`,
-        })),
-      });
+      for (let i = 0; i < customerIds.length; i += BATCH_SIZE) {
+        const batch = customerIds.slice(i, i + BATCH_SIZE);
+        await tx.customerActivity.createMany({
+          data: batch.map((customerId) => ({
+            customerId,
+            type: ActivityType.SYSTEM_EVENT,
+            title: 'Gán nguồn khách hàng (Hàng loạt)',
+            description: `Nguồn khách hàng được gán thành "${source.name}" thông qua thao tác hàng loạt.`,
+          })),
+        });
+      }
     });
 
     return {

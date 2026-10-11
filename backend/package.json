@@ -20,6 +20,7 @@
     "test:settings": "tsx src/tests/verify-settings.ts",
     "test:source-filter": "tsx src/tests/verify-customer-source-filter.ts",
     "test:improvements": "tsx src/tests/verify-customer-improvements.ts",
+    "test:bulk-tags": "tsx src/tests/verify-bulk-tags.ts",
     "test": "tsx src/tests/verify-customer-improvements.ts"
   },
   "prisma": {
