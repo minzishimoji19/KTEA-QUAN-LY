@@ -1,22 +1,17 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import { env } from './config/env.js';
+import { corsOptions } from './config/cors.js';
 import apiRoutes from './routes/index.js';
+import { getHealth } from './controllers/health.controller.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { NotFoundError } from './utils/errors.js';
 
 export const createApp = (): Express => {
   const app = express();
 
-  // 1. Core Middlewares
-  app.use(
-    cors({
-      origin: [env.CORS_ORIGIN, env.FRONTEND_API_URL, 'http://localhost:5173', 'http://127.0.0.1:5173'],
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
-    })
-  );
+  // 1. Core Middlewares: CORS configuration & preflight
+  app.use(cors(corsOptions));
+  app.options('*', cors(corsOptions));
 
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
@@ -28,15 +23,18 @@ export const createApp = (): Express => {
     next();
   });
 
-  // 3. Mount Routes
+  // 3. Direct Health Probes (supports root /health as well as /api/health)
+  app.get('/health', getHealth);
+
+  // 4. Mount API Routes
   app.use('/api', apiRoutes);
 
-  // 4. Catch-all 404 Handler for undefined API routes
+  // 5. Catch-all 404 Handler for undefined API routes
   app.use((req: Request, _res: Response, next: NextFunction) => {
     next(new NotFoundError(`Endpoint ${req.method} ${req.originalUrl} not found`));
   });
 
-  // 5. Centralized Error Handler
+  // 6. Centralized Error Handler
   app.use(errorHandler);
 
   return app;

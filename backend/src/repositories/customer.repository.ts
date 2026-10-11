@@ -231,6 +231,7 @@ export class CustomerRepository extends BaseRepository {
     gender?: Gender | null;
     dateOfBirth?: Date | null;
     address?: string | null;
+    note?: string | null;
     source?: string | null;
     sourceId?: string | null;
     overallStatus?: CustomerStatus;

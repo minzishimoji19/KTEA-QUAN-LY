@@ -1,28 +1,26 @@
 import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { X, UserCheck, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useUpdateCustomer } from '../../hooks/useCustomers';
-import { useCreateActivity } from '../../hooks/useActivities';
 import { useCustomerSources } from '../../hooks/useCustomerSources';
 import { CustomerDetail } from '../../types/models';
 
-const editCustomerSchema = z.object({
+const editCustomerFormSchema = z.object({
   fullName: z.string().min(1, 'Họ và tên là bắt buộc').max(255),
-  phone: z.string().min(8, 'Số điện thoại phải có ít nhất 8 chữ số').max(20),
+  phone: z.string().min(8, 'Số điện thoại phải có ít nhất 8 số').max(20),
   email: z.string().email('Địa chỉ email không hợp lệ').optional().or(z.literal('')),
-  gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional().or(z.literal('')),
-  dateOfBirth: z.string().optional().or(z.literal('')),
-  address: z.string().max(500).optional().or(z.literal('')),
-  sourceId: z.string().optional().or(z.literal('')),
-  source: z.string().max(100).optional().or(z.literal('')),
-  overallStatus: z.enum(['LEAD_MOI', 'DANG_TIEP_CAN', 'DANG_TU_VAN', 'THANH_CONG', 'KHONG_KHA_THI']),
-  priority: z.enum(['CHUA_CO_NHU_CAU', 'THANH_KHOAN', 'TIN_DUNG', 'THANH_KHOAN_TIN_DUNG']).optional().or(z.literal('')),
+  gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional().nullable(),
+  dateOfBirth: z.string().optional().nullable(),
+  note: z.string().max(2000, 'Ghi chú tối đa 2000 ký tự').optional().nullable(),
+  sourceId: z.string().optional().nullable(),
+  overallStatus: z.enum(['LEAD_MOI', 'DANG_TIEP_CAN', 'DANG_TU_VAN', 'THANH_CONG', 'KHONG_KHA_THI']).optional(),
+  priority: z.enum(['CHUA_CO_NHU_CAU', 'THANH_KHOAN', 'TIN_DUNG', 'THANH_KHOAN_TIN_DUNG']).optional().nullable(),
 });
 
-type EditCustomerFormData = z.infer<typeof editCustomerSchema>;
+type CustomerFormData = z.infer<typeof editCustomerFormSchema>;
 
 export interface EditCustomerModalProps {
   isOpen: boolean;
@@ -36,42 +34,37 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
   customer,
 }) => {
   const updateCustomer = useUpdateCustomer(customer.id);
-  const createActivity = useCreateActivity(customer.id);
-  const { data: allSources, isLoading: isSourcesLoading } = useCustomerSources(false);
+  const { data: sources, isLoading: isSourcesLoading } = useCustomerSources();
 
   const {
     register,
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm<EditCustomerFormData>({
-    resolver: zodResolver(editCustomerSchema),
-    defaultValues: {
-      fullName: customer.fullName || '',
-      phone: customer.phone || '',
-      email: customer.email || '',
-      gender: customer.gender || '',
-      dateOfBirth: customer.dateOfBirth ? customer.dateOfBirth.split('T')[0] : '',
-      address: customer.address || '',
-      sourceId: customer.sourceId || customer.customerSource?.id || '',
-      source: customer.source || '',
-      overallStatus: customer.overallStatus,
-      priority: customer.priority || 'CHUA_CO_NHU_CAU',
-    },
+  } = useForm<CustomerFormData>({
+    resolver: zodResolver(editCustomerFormSchema),
   });
 
   useEffect(() => {
     if (customer && isOpen) {
+      let formattedDob = '';
+      if (customer.dateOfBirth) {
+        try {
+          formattedDob = new Date(customer.dateOfBirth).toISOString().slice(0, 10);
+        } catch {
+          formattedDob = '';
+        }
+      }
+
       reset({
         fullName: customer.fullName || '',
         phone: customer.phone || '',
         email: customer.email || '',
-        gender: customer.gender || '',
-        dateOfBirth: customer.dateOfBirth ? customer.dateOfBirth.split('T')[0] : '',
-        address: customer.address || '',
-        sourceId: customer.sourceId || customer.customerSource?.id || '',
-        source: customer.source || '',
-        overallStatus: customer.overallStatus,
+        gender: customer.gender || null,
+        dateOfBirth: formattedDob,
+        note: customer.note || customer.address || '',
+        sourceId: customer.sourceId || '',
+        overallStatus: customer.overallStatus || 'LEAD_MOI',
         priority: customer.priority || 'CHUA_CO_NHU_CAU',
       });
     }
@@ -79,47 +72,31 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Filter sources: include all active sources + current customer's source even if inactive
-  const availableSources = (allSources || []).filter(
-    (s) =>
-      s.active ||
-      s.id === customer.sourceId ||
-      s.id === customer.customerSource?.id
-  );
-
-  const onSubmit = async (data: EditCustomerFormData) => {
+  const onSubmit = async (data: CustomerFormData) => {
     try {
-      const payload: Partial<CustomerDetail> = {
-        fullName: data.fullName.trim(),
-        phone: data.phone.trim(),
-        overallStatus: data.overallStatus,
-        email: data.email?.trim() || null,
-        gender: data.gender || null,
-        dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth).toISOString() : null,
-        address: data.address?.trim() || null,
-        sourceId: data.sourceId || null,
-        source: data.sourceId
-          ? allSources?.find((s) => s.id === data.sourceId)?.name || data.source?.trim() || null
-          : data.source?.trim() || null,
-        priority: data.priority || null,
-      };
-
-      await updateCustomer.mutateAsync({ customerId: customer.id, data: payload });
-
-      // If status changed meaningfully, log audit activity without deleting previous activities
-      if (data.overallStatus !== customer.overallStatus) {
-        await createActivity.mutateAsync({
-          type: 'SYSTEM_EVENT',
-          title: `Chuyển trạng thái sang ${data.overallStatus}`,
-          description: `Chuyên viên đã cập nhật trạng thái khách hàng từ ${customer.overallStatus} sang ${data.overallStatus}.`,
-        });
-      }
-
+      const noteValue = data.note?.trim() || null;
+      await updateCustomer.mutateAsync({
+        customerId: customer.id,
+        data: {
+          fullName: data.fullName.trim(),
+          phone: data.phone.trim(),
+          email: data.email?.trim() || null,
+          gender: data.gender || null,
+          dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth).toISOString() : null,
+          note: noteValue,
+          address: noteValue, // Keep address synced safely
+          sourceId: data.sourceId || null,
+          overallStatus: data.overallStatus,
+          priority: data.priority || null,
+        },
+      });
       onClose();
-    } catch (err) {
-      console.error('Failed to update customer:', err);
+    } catch {
+      // Handled by mutation state
     }
   };
+
+  const availableSources = sources || [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-100">
@@ -268,12 +245,14 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
               </div>
             </div>
 
+            {/* Ghi chú (Đổi từ Địa chỉ theo Yêu cầu 3) */}
             <div>
-              <label className="block text-[11px] font-medium text-slate-400 mb-1">Địa chỉ</label>
-              <input
-                type="text"
-                {...register('address')}
-                className="w-full h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-blue-500"
+              <label className="block text-[11px] font-medium text-slate-300 mb-1">Ghi chú</label>
+              <textarea
+                rows={3}
+                placeholder="Nhập ghi chú về khách hàng..."
+                {...register('note')}
+                className="w-full p-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-blue-500 font-sans text-xs resize-y"
               />
             </div>
           </div>

@@ -5,7 +5,6 @@ import {
   User,
   Phone,
   Mail,
-  MapPin,
   Briefcase,
   Layers,
   Clock,
@@ -383,10 +382,11 @@ export const CustomerDetailPage: React.FC = () => {
                   <span>{customer.email}</span>
                 </span>
               )}
-              {customer.address && (
-                <span className="flex items-center gap-1.5 text-slate-400">
-                  <MapPin className="w-3.5 h-3.5 text-slate-500" />
-                  <span>{customer.address}</span>
+              {(customer.note || customer.address) && (
+                <span className="flex items-center gap-1.5 text-amber-300 bg-amber-950/30 px-2 py-0.5 rounded border border-amber-800/40" title="Ghi chú khách hàng">
+                  <FileText className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="text-slate-400 font-sans">Ghi chú:</span>
+                  <span className="text-slate-200 font-sans max-w-[300px] truncate">{customer.note || customer.address}</span>
                 </span>
               )}
 
@@ -603,6 +603,14 @@ export const CustomerDetailPage: React.FC = () => {
                     )}
                   </div>
                 </div>
+                {(customer.note || customer.address) && (
+                  <div className="flex justify-between py-1 border-b border-slate-800/60">
+                    <span className="text-slate-400">Ghi chú</span>
+                    <span className="font-sans text-slate-200 text-right max-w-[220px] whitespace-pre-wrap">
+                      {customer.note || customer.address}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between py-1 border-b border-slate-800/60">
                   <span className="text-slate-400">Ngày tạo hồ sơ</span>
                   <span className="font-mono text-slate-300">
@@ -1269,6 +1277,11 @@ export const CustomerDetailPage: React.FC = () => {
                       <h3 className="text-sm font-semibold text-slate-100 font-sans">
                         {nextPending.title}
                       </h3>
+                      {nextPending.assignedTo && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-800/60 font-semibold" title="Người phụ trách chăm sóc">
+                          👤 {nextPending.assignedTo}
+                        </span>
+                      )}
                     </div>
                     <DateDisplay
                       date={nextPending.dueAt}
@@ -1363,6 +1376,11 @@ export const CustomerDetailPage: React.FC = () => {
                               {fu.title}
                             </span>
                             <StatusBadge status={fu.status} />
+                            {fu.assignedTo && (
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-800/60 font-semibold" title="Người phụ trách">
+                                👤 {fu.assignedTo}
+                              </span>
+                            )}
                             {isOverdue && (
                               <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-red-950 text-red-400 border border-red-800/60">
                                 Quá hạn
@@ -1449,6 +1467,11 @@ export const CustomerDetailPage: React.FC = () => {
                             {fu.title}
                           </span>
                           <StatusBadge status={fu.status} />
+                          {fu.assignedTo && (
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-800/60 font-semibold" title="Người phụ trách">
+                              👤 {fu.assignedTo}
+                            </span>
+                          )}
                         </div>
                         {fu.description && (
                           <p className="text-xs text-slate-500 leading-relaxed">

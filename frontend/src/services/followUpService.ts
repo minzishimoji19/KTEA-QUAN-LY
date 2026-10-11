@@ -22,6 +22,17 @@ export const followUpService = {
     return apiClient.post<FollowUp>('/follow-ups', data);
   },
 
+  createBulkFollowUps: async (data: {
+    customerIds: string[];
+    title: string;
+    description?: string | null;
+    dueAt: string;
+    status?: FollowUpStatus;
+    assignedTo?: string | null;
+  }): Promise<{ count: number; followUps: FollowUp[] }> => {
+    return apiClient.post<{ count: number; followUps: FollowUp[] }>('/follow-ups/bulk', data);
+  },
+
   updateFollowUp: async (id: string, data: Partial<FollowUp>): Promise<FollowUp> => {
     return apiClient.patch<FollowUp>(`/follow-ups/${id}`, data);
   },

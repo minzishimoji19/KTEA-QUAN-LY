@@ -69,8 +69,8 @@ export const customerService = {
 
   executeBulkAction: async (
     data: import('../types/models').BulkActionRequest
-  ): Promise<{ affected: number; action: string; customerIds: string[] }> => {
-    return apiClient.post<{ affected: number; action: string; customerIds: string[] }>(
+  ): Promise<import('../types/models').BulkActionResult> => {
+    return apiClient.post<import('../types/models').BulkActionResult>(
       '/customers/bulk-action',
       data
     );

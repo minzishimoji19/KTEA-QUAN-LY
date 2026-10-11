@@ -25,6 +25,15 @@ export const createFollowUp = async (req: Request, res: Response, next: NextFunc
   }
 };
 
+export const createBulkFollowUps = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const result = await followUpService.createBulkFollowUps(req.body);
+    sendCreated(res, result, 'Bulk follow-up tasks scheduled');
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const updateFollowUp = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const updated = await followUpService.updateFollowUp(req.params.id, req.body);

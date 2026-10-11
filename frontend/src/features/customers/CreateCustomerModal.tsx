@@ -1,70 +1,51 @@
 import React from 'react';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { X, UserPlus, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useCreateCustomer } from '../../hooks/useCustomers';
 import { useCustomerSources } from '../../hooks/useCustomerSources';
-import { CustomerDetail } from '../../types/models';
-import { useToast } from '../../context/ToastContext';
 
-const createCustomerSchema = z.object({
-  fullName: z.string().min(1, 'Vui lòng nhập họ và tên').max(255),
-  phone: z.string().min(8, 'Số điện thoại phải có ít nhất 8 chữ số').max(20),
+const createCustomerFormSchema = z.object({
+  fullName: z.string().min(1, 'Họ và tên là bắt buộc').max(255),
+  phone: z.string().min(8, 'Số điện thoại phải có ít nhất 8 số').max(20),
   email: z.string().email('Địa chỉ email không hợp lệ').optional().or(z.literal('')),
-  gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional().or(z.literal('')),
-  dateOfBirth: z.string().optional().or(z.literal('')),
-  address: z.string().max(500).optional().or(z.literal('')),
-  sourceId: z.string().optional().or(z.literal('')),
-  source: z.string().max(100).optional().or(z.literal('')),
-  overallStatus: z.enum(['LEAD_MOI', 'DANG_TIEP_CAN', 'DANG_TU_VAN', 'THANH_CONG', 'KHONG_KHA_THI']).default('LEAD_MOI'),
-  priority: z.enum(['CHUA_CO_NHU_CAU', 'THANH_KHOAN', 'TIN_DUNG', 'THANH_KHOAN_TIN_DUNG']).default('CHUA_CO_NHU_CAU'),
+  gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional().nullable(),
+  dateOfBirth: z.string().optional().nullable(),
+  note: z.string().max(2000, 'Ghi chú tối đa 2000 ký tự').optional().nullable(),
+  sourceId: z.string().optional().nullable(),
+  overallStatus: z.enum(['LEAD_MOI', 'DANG_TIEP_CAN', 'DANG_TU_VAN', 'THANH_CONG', 'KHONG_KHA_THI']).optional().default('LEAD_MOI'),
+  priority: z.enum(['CHUA_CO_NHU_CAU', 'THANH_KHOAN', 'TIN_DUNG', 'THANH_KHOAN_TIN_DUNG']).optional().nullable().default('CHUA_CO_NHU_CAU'),
 });
 
-type CreateCustomerFormData = z.infer<typeof createCustomerSchema>;
+type CustomerFormData = z.infer<typeof createCustomerFormSchema>;
 
 export interface CreateCustomerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess?: (customerId: string) => void;
+  onSuccess?: (newId: string) => void;
 }
 
-export const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({
-  isOpen,
-  onClose,
-  onSuccess,
-}) => {
+export const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const createCustomer = useCreateCustomer();
-  const { data: sources, isLoading: isSourcesLoading } = useCustomerSources(true);
-  const { toast } = useToast();
-
-  React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  const { data: sources, isLoading: isSourcesLoading } = useCustomerSources();
 
   const {
     register,
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm<CreateCustomerFormData>({
-    resolver: zodResolver(createCustomerSchema),
+  } = useForm<CustomerFormData>({
+    resolver: zodResolver(createCustomerFormSchema),
     defaultValues: {
       fullName: '',
       phone: '',
       email: '',
-      gender: '',
+      gender: null,
       dateOfBirth: '',
-      address: '',
+      note: '',
       sourceId: '',
-      source: '',
       overallStatus: 'LEAD_MOI',
       priority: 'CHUA_CO_NHU_CAU',
     },
@@ -72,62 +53,46 @@ export const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({
 
   if (!isOpen) return null;
 
-  const onSubmit = async (data: CreateCustomerFormData) => {
+  const onSubmit = async (data: CustomerFormData) => {
     try {
-      const payload: Partial<CustomerDetail> = {
+      const noteValue = data.note?.trim() || null;
+      const created = await createCustomer.mutateAsync({
         fullName: data.fullName.trim(),
         phone: data.phone.trim(),
-        overallStatus: data.overallStatus,
-      };
-
-      if (data.email?.trim()) payload.email = data.email.trim();
-      if (data.gender) payload.gender = data.gender;
-      if (data.dateOfBirth) payload.dateOfBirth = new Date(data.dateOfBirth).toISOString();
-      if (data.address?.trim()) payload.address = data.address.trim();
-      if (data.sourceId) {
-        payload.sourceId = data.sourceId;
-        const matched = sources?.find((s) => s.id === data.sourceId);
-        if (matched) payload.source = matched.name;
-      } else if (data.source?.trim()) {
-        payload.source = data.source.trim();
-      }
-      if (data.priority) payload.priority = data.priority;
-
-      const created = await createCustomer.mutateAsync(payload);
-      toast.success('Đã thêm khách hàng', `Đã tạo thành công khách hàng "${data.fullName.trim()}".`);
+        email: data.email?.trim() || null,
+        gender: data.gender || null,
+        dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth).toISOString() : null,
+        note: noteValue,
+        address: noteValue, // Retain address in backend payload for full backward compatibility
+        sourceId: data.sourceId || null,
+        overallStatus: data.overallStatus || 'LEAD_MOI',
+        priority: data.priority || 'CHUA_CO_NHU_CAU',
+      });
       reset();
       onClose();
       if (onSuccess && created?.id) {
         onSuccess(created.id);
       }
-    } catch (err: unknown) {
-      console.error('Failed to create customer:', err);
-      const message = err instanceof Error ? err.message : 'Vui lòng kiểm tra lại các trường dữ liệu.';
-      toast.error('Đăng ký thất bại', message);
+    } catch {
+      // Handled by mutation state
     }
   };
 
   return (
-    <div
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-100"
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-100">
       <div
         className="w-full max-w-lg rounded-lg border border-slate-800 bg-slate-900 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-100"
         role="dialog"
         aria-modal="true"
       >
-        {/* Header */}
         <div className="flex items-center justify-between p-3.5 border-b border-slate-800 bg-slate-950/60">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
               <UserPlus className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-slate-100 font-mono">Thêm nhanh khách hàng</h3>
-              <p className="text-[10px] text-slate-400">Ghi nhận hồ sơ khách hàng mới trực tiếp vào danh bạ vận hành</p>
+              <h3 className="text-sm font-semibold text-slate-100 font-mono">Thêm khách hàng mới</h3>
+              <p className="text-[10px] text-slate-400">Nhập thông tin định danh và khởi tạo hồ sơ</p>
             </div>
           </div>
           <button
@@ -139,9 +104,8 @@ export const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit(onSubmit)}>
-          <div className="p-4 space-y-3.5 max-h-[75vh] overflow-y-auto text-xs">
+          <div className="p-4 space-y-3 max-h-[75vh] overflow-y-auto text-xs">
             {createCustomer.isError && (
               <div className="p-2.5 rounded bg-red-950/50 border border-red-800/60 text-red-300 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
@@ -242,7 +206,7 @@ export const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({
                   <option value="">-- Chưa chọn nguồn --</option>
                   {(sources || []).map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name}
+                      {s.name} {!s.active ? '(Inactive)' : ''}
                     </option>
                   ))}
                 </select>
@@ -283,16 +247,16 @@ export const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({
               </div>
             </div>
 
-            {/* Address */}
+            {/* Ghi chú (Thay thế nhãn Địa chỉ theo Yêu cầu 3) */}
             <div>
-              <label className="block text-[11px] font-medium text-slate-400 mb-1">
-                Địa chỉ nơi ở / Khu vực
+              <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                Ghi chú
               </label>
-              <input
-                type="text"
-                placeholder="VD: Quận 1, TP. Hồ Chí Minh"
-                {...register('address')}
-                className="w-full h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 font-sans"
+              <textarea
+                rows={3}
+                placeholder="Nhập ghi chú về khách hàng (nhu cầu, lưu ý thẩm định, lịch sử trao đổi...)"
+                {...register('note')}
+                className="w-full p-2 bg-slate-950 border border-slate-800 rounded text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 font-sans text-xs resize-y"
               />
             </div>
           </div>

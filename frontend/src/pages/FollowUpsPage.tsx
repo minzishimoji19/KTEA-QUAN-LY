@@ -101,6 +101,11 @@ export const FollowUpsPage: React.FC = () => {
               </span>
             )}
             <StatusBadge status={task.status} />
+            {task.assignedTo && (
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-800/60 font-semibold" title="Người phụ trách chăm sóc">
+                👤 {task.assignedTo}
+              </span>
+            )}
           </div>
 
           <h4
@@ -443,7 +448,6 @@ export const FollowUpsPage: React.FC = () => {
       <ScheduleFollowUpModal
         isOpen={isScheduleOpen}
         onClose={() => setIsScheduleOpen(false)}
-        customerId={allTasks[0]?.customerId || ''}
       />
 
       {/* Delete Confirmation Dialog */}

@@ -1,5 +1,5 @@
 import { CustomerStatus, Gender, PriorityLevel, ActivityType } from '@prisma/client';
-import { customerRepository, CustomerQueryFilters } from '../repositories/customer.repository.js';
+import { customerRepository } from '../repositories/customer.repository.js';
 import { customerSourceRepository } from '../repositories/customerSource.repository.js';
 import { tagRepository } from '../repositories/tag.repository.js';
 import { NotFoundError, ConflictError, BadRequestError } from '../utils/errors.js';
@@ -7,14 +7,12 @@ import { buildPaginationMeta } from '../utils/db.js';
 import BaseService from './base.service.js';
 import prisma from '../config/database.js';
 
+import { CustomerQueryFilters } from '../repositories/customer.repository.js';
+
 export class CustomerService extends BaseService {
   async getCustomers(filters: CustomerQueryFilters) {
     if (filters.sourceId) {
       const trimmedSourceId = filters.sourceId.trim();
-      const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmedSourceId);
-      if (!isValidUUID) {
-        throw new BadRequestError(`Invalid customer source ID format: '${filters.sourceId}'`);
-      }
       const source = await customerSourceRepository.findById(trimmedSourceId);
       if (!source) {
         throw new NotFoundError(`Customer source with ID '${filters.sourceId}' not found`);
@@ -48,6 +46,7 @@ export class CustomerService extends BaseService {
     return {
       ...customer,
       source: customer.source || customer.customerSource?.name || null,
+      note: customer.note || customer.address || null,
     };
   }
 
@@ -58,6 +57,7 @@ export class CustomerService extends BaseService {
     gender?: Gender | null;
     dateOfBirth?: string | Date | null;
     address?: string | null;
+    note?: string | null;
     source?: string | null;
     sourceId?: string | null;
     overallStatus?: CustomerStatus;
@@ -94,6 +94,7 @@ export class CustomerService extends BaseService {
     }
 
     const birthDate = data.dateOfBirth ? new Date(data.dateOfBirth) : null;
+    const resolvedNote = data.note !== undefined ? data.note : (data.address || null);
 
     // Execute atomic creation + initial lifecycle activity event
     return prisma.$transaction(async (tx) => {
@@ -105,6 +106,7 @@ export class CustomerService extends BaseService {
           gender: data.gender,
           dateOfBirth: birthDate,
           address: data.address,
+          note: resolvedNote,
           source: resolvedSourceName,
           sourceId: resolvedSourceId,
           overallStatus: data.overallStatus || CustomerStatus.LEAD_MOI,
@@ -135,6 +137,7 @@ export class CustomerService extends BaseService {
     gender?: Gender | null;
     dateOfBirth?: string | Date | null;
     address?: string | null;
+    note?: string | null;
     source?: string | null;
     sourceId?: string | null;
     overallStatus?: CustomerStatus;
@@ -187,6 +190,7 @@ export class CustomerService extends BaseService {
         data: {
           ...data,
           dateOfBirth: birthDate,
+          ...(data.note !== undefined ? { note: data.note } : {}),
           ...(updateSourceId !== undefined ? { sourceId: updateSourceId } : {}),
           ...(updateSourceName !== undefined ? { source: updateSourceName } : {}),
         },
@@ -212,8 +216,34 @@ export class CustomerService extends BaseService {
   }
 
   async deleteCustomer(id: string) {
-    await this.getCustomerById(id);
-    return customerRepository.delete(id);
+    const customer = await this.getCustomerById(id);
+    // Protect business relations
+    const relatedCount = await prisma.customer.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: { cases: true, notes: true, followUps: true, pushRecords: true },
+        },
+      },
+    });
+
+    if (
+      relatedCount &&
+      (relatedCount._count.cases > 0 ||
+        relatedCount._count.notes > 0 ||
+        relatedCount._count.followUps > 0 ||
+        relatedCount._count.pushRecords > 0)
+    ) {
+      throw new BadRequestError('Không thể xóa khách hàng có hồ sơ vay, ghi chú, lịch chăm sóc hoặc dữ liệu chuyển khách đang hoạt động.');
+    }
+
+    return prisma.$transaction(async (tx) => {
+      await tx.customerTag.deleteMany({ where: { customerId: id } });
+      await tx.customerActivity.deleteMany({ where: { customerId: id } });
+      await tx.customerNeed.deleteMany({ where: { customerId: id } });
+      await tx.recommendation.deleteMany({ where: { customerId: id } });
+      return tx.customer.delete({ where: { id } });
+    });
   }
 
   async addTag(customerId: string, tagId: string) {

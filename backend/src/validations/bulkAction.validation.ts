@@ -23,6 +23,18 @@ export const bulkActionSchema = z.discriminatedUnion('action', [
       tagId: z.string().min(1, 'Tag ID is required'),
     }),
   }),
+  z.object({
+    action: z.literal('ASSIGN_SOURCE'),
+    customerIds: z.array(z.string().min(1)).min(1, 'Phải chọn ít nhất một khách hàng'),
+    payload: z.object({
+      sourceId: z.string().min(1, 'Source ID is required'),
+    }),
+  }),
+  z.object({
+    action: z.literal('DELETE_CUSTOMERS'),
+    customerIds: z.array(z.string().min(1)).min(1, 'Phải chọn ít nhất một khách hàng'),
+    payload: z.object({}).optional().default({}),
+  }),
 ]);
 
 export type BulkActionInput = z.infer<typeof bulkActionSchema>;

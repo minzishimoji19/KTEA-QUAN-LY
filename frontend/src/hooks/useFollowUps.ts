@@ -45,3 +45,21 @@ export const useDeleteFollowUp = () => {
     },
   });
 };
+
+export const useCreateBulkFollowUp = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      customerIds: string[];
+      title: string;
+      description?: string | null;
+      dueAt: string;
+      status?: import('../types/models').FollowUpStatus;
+      assignedTo?: string | null;
+    }) => followUpService.createBulkFollowUps(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['follow-ups'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+    },
+  });
+};

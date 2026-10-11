@@ -1,5 +1,6 @@
 import prisma from '../config/database.js';
 import { tagRepository } from '../repositories/tag.repository.js';
+import { customerSourceRepository } from '../repositories/customerSource.repository.js';
 import { NotFoundError, BadRequestError } from '../utils/errors.js';
 import { BulkActionInput } from '../validations/bulkAction.validation.js';
 import { ActivityType } from '@prisma/client';
@@ -13,11 +14,13 @@ export class BulkActionService {
     affected: number;
     action: string;
     customerIds: string[];
+    failedCount?: number;
+    failedDetails?: Array<{ id: string; name?: string; reason: string }>;
   }> {
     const { action, customerIds } = input;
 
-    if (customerIds.length === 0) {
-      throw new BadRequestError('No customer IDs provided');
+    if (!customerIds || customerIds.length === 0) {
+      throw new BadRequestError('Không có danh sách khách hàng được cung cấp');
     }
 
     // Validate that all provided customer IDs actually exist
@@ -27,7 +30,7 @@ export class BulkActionService {
 
     if (existingCount !== customerIds.length) {
       throw new NotFoundError(
-        `Some customer IDs do not exist. Expected ${customerIds.length}, found ${existingCount}.`
+        `Một số khách hàng không tồn tại. Yêu cầu: ${customerIds.length}, tìm thấy: ${existingCount}.`
       );
     }
 
@@ -38,8 +41,12 @@ export class BulkActionService {
         return this.bulkUpdatePriority(customerIds, input.payload.priority);
       case 'ADD_TAG':
         return this.bulkAddTag(customerIds, input.payload.tagId);
+      case 'ASSIGN_SOURCE':
+        return this.bulkAssignSource(customerIds, input.payload.sourceId);
+      case 'DELETE_CUSTOMERS':
+        return this.bulkDeleteCustomers(customerIds);
       default:
-        throw new BadRequestError(`Unsupported bulk action`);
+        throw new BadRequestError(`Thao tác hàng loạt không được hỗ trợ`);
     }
   }
 
@@ -120,7 +127,7 @@ export class BulkActionService {
         data: customerIds.map((customerId) => ({
           customerId,
           type: ActivityType.SYSTEM_EVENT,
-          title: 'Gắn tag (Hàng loạt)',
+          title: 'Gắn nhãn (Hàng loạt)',
           description: `Tag "${tag.name}" được gắn thông qua thao tác hàng loạt.`,
         })),
       });
@@ -130,6 +137,108 @@ export class BulkActionService {
       affected: customerIds.length,
       action: 'ADD_TAG',
       customerIds,
+    };
+  }
+
+  private async bulkAssignSource(customerIds: string[], sourceId: string) {
+    const source = await customerSourceRepository.findById(sourceId);
+    if (!source) {
+      throw new NotFoundError(`Nguồn khách hàng với ID '${sourceId}' không tồn tại`);
+    }
+    if (!source.active) {
+      throw new BadRequestError(`Nguồn khách hàng '${source.name}' đã ngưng hoạt động và không thể gán`);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.customer.updateMany({
+        where: { id: { in: customerIds } },
+        data: {
+          sourceId: source.id,
+          source: source.name,
+        },
+      });
+
+      await tx.customerActivity.createMany({
+        data: customerIds.map((customerId) => ({
+          customerId,
+          type: ActivityType.SYSTEM_EVENT,
+          title: 'Gán nguồn khách hàng (Hàng loạt)',
+          description: `Nguồn khách hàng được gán thành "${source.name}" thông qua thao tác hàng loạt.`,
+        })),
+      });
+    });
+
+    return {
+      affected: customerIds.length,
+      action: 'ASSIGN_SOURCE',
+      customerIds,
+    };
+  }
+
+  private async bulkDeleteCustomers(customerIds: string[]) {
+    // Check relations and protect business data
+    const customers = await prisma.customer.findMany({
+      where: { id: { in: customerIds } },
+      include: {
+        _count: {
+          select: {
+            cases: true,
+            notes: true,
+            followUps: true,
+            pushRecords: true,
+          },
+        },
+      },
+    });
+
+    const deletableIds: string[] = [];
+    const failedDetails: Array<{ id: string; name?: string; reason: string }> = [];
+
+    for (const customer of customers) {
+      const reasons: string[] = [];
+      if (customer._count.cases > 0) {
+        reasons.push(`có ${customer._count.cases} hồ sơ vay đang lưu trữ`);
+      }
+      if (customer._count.notes > 0) {
+        reasons.push(`có ${customer._count.notes} ghi chú nghiệp vụ`);
+      }
+      if (customer._count.followUps > 0) {
+        reasons.push(`có ${customer._count.followUps} lịch chăm sóc`);
+      }
+      if (customer._count.pushRecords > 0) {
+        reasons.push(`có ${customer._count.pushRecords} lịch sử chuyển khách`);
+      }
+
+      if (reasons.length > 0) {
+        failedDetails.push({
+          id: customer.id,
+          name: customer.fullName,
+          reason: `Không thể xóa vì ${reasons.join(', ')}.`,
+        });
+      } else {
+        deletableIds.push(customer.id);
+      }
+    }
+
+    if (deletableIds.length > 0) {
+      await prisma.$transaction(async (tx) => {
+        // Clean auxiliary relations first for data consistency
+        await tx.customerTag.deleteMany({ where: { customerId: { in: deletableIds } } });
+        await tx.customerActivity.deleteMany({ where: { customerId: { in: deletableIds } } });
+        await tx.customerNeed.deleteMany({ where: { customerId: { in: deletableIds } } });
+        await tx.recommendation.deleteMany({ where: { customerId: { in: deletableIds } } });
+        await tx.customer.deleteMany({
+          where: { id: { in: deletableIds } },
+        });
+      });
+    }
+
+    return {
+      affected: deletableIds.length,
+      action: 'DELETE_CUSTOMERS',
+      customerIds: deletableIds,
+      failedCount: failedDetails.length,
+      failedDetails,
     };
   }
 }

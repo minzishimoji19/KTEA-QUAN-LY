@@ -12,7 +12,10 @@ export async function checkDatabaseHealth(): Promise<{
 }> {
   const start = Date.now();
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Database health ping timed out (3s)')), 3000)),
+    ]);
     return {
       connected: true,
       latencyMs: Date.now() - start,

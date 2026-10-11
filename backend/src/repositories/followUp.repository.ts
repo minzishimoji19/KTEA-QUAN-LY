@@ -73,6 +73,7 @@ export class FollowUpRepository extends BaseRepository {
     description?: string | null;
     dueAt: Date;
     status?: FollowUpStatus;
+    assignedTo?: string | null;
   }) {
     return this.db.followUp.create({
       data,

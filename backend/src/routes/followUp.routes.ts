@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   getFollowUps,
   createFollowUp,
+  createBulkFollowUps,
   updateFollowUp,
   deleteFollowUp,
 } from '../controllers/followUp.controller.js';
@@ -9,6 +10,7 @@ import { validateRequest } from '../middleware/validate.js';
 import {
   listFollowUpsQuerySchema,
   createFollowUpSchema,
+  createBulkFollowUpSchema,
   updateFollowUpSchema,
   followUpIdParamSchema,
 } from '../validations/followUp.validation.js';
@@ -25,6 +27,12 @@ router.post(
   '/',
   validateRequest({ body: createFollowUpSchema }),
   createFollowUp
+);
+
+router.post(
+  '/bulk',
+  validateRequest({ body: createBulkFollowUpSchema }),
+  createBulkFollowUps
 );
 
 router.patch(

@@ -13,15 +13,27 @@ export type PriorityLevel =
   | 'TIN_DUNG'
   | 'THANH_KHOAN_TIN_DUNG';
 
-export type BulkActionType = 'UPDATE_STATUS' | 'UPDATE_PRIORITY' | 'ADD_TAG';
+export type BulkActionType = 'UPDATE_STATUS' | 'UPDATE_PRIORITY' | 'ADD_TAG' | 'ASSIGN_SOURCE' | 'DELETE_CUSTOMERS';
+
+export const CARETAKERS = ['Ktea', 'xoaicaldez', 'mfast'] as const;
+export type Caretaker = typeof CARETAKERS[number];
+
+export interface BulkActionResult {
+  affected: number;
+  action: string;
+  customerIds: string[];
+  failedCount?: number;
+  failedDetails?: Array<{ id: string; name?: string; reason: string }>;
+}
 
 export interface BulkActionRequest {
   action: BulkActionType;
   customerIds: string[];
-  payload: {
+  payload?: {
     status?: CustomerStatus;
     priority?: PriorityLevel;
     tagId?: string;
+    sourceId?: string;
   };
 }
 
@@ -183,6 +195,7 @@ export interface FollowUp {
   dueAt: string;
   status: FollowUpStatus;
   completedAt?: string | null;
+  assignedTo?: string | null;
   createdAt: string;
   updatedAt: string;
   customer?: {
@@ -250,6 +263,7 @@ export interface CustomerSummary {
   gender?: Gender | null;
   dateOfBirth?: string | null;
   address?: string | null;
+  note?: string | null;
   source?: string | null;
   sourceId?: string | null;
   customerSource?: CustomerSource | null;

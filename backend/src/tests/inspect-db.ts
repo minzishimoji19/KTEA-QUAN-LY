@@ -32,6 +32,19 @@ async function run() {
   console.log('Priorities in DB:', JSON.stringify(priorities, null, 2));
   console.log('Sources in DB:', JSON.stringify(sources, null, 2));
   console.log('Customers with VIB source:', customersWithVib);
+  const addCount = await prisma.customer.count({ where: { address: { not: null } } });
+  const noteCount = await prisma.customer.count({ where: { note: { not: null } } });
+  const fuCount = await prisma.followUp.count();
+  const fuAssigned = await prisma.followUp.groupBy({ by: ['assignedTo'], _count: { _all: true } });
+  console.log('Customers with address:', addCount);
+  console.log('Customers with note:', noteCount);
+  console.log('Follow-ups count:', fuCount);
+  const sample = await prisma.customer.findMany({
+    where: { OR: [{ address: { not: null } }, { note: { not: null } }] },
+    take: 5,
+    select: { id: true, fullName: true, address: true, note: true },
+  });
+  console.log('Sample address/note records:', JSON.stringify(sample, null, 2));
 }
 
 run()

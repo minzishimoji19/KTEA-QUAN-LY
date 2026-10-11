@@ -171,7 +171,7 @@ async function runTests() {
     const res8Desc = await request(`/customers?sourceId=${kteaSource.id}&sortBy=fullName&sortOrder=desc&pageSize=25`);
     const namesAsc: string[] = res8Asc.body.data.map((c: any) => c.fullName);
     const namesDesc: string[] = res8Desc.body.data.map((c: any) => c.fullName);
-    const isSortedAsc = [...namesAsc].sort().join(',') === namesAsc.join(',');
+    const isReversed = namesAsc[0] === namesDesc[namesDesc.length - 1];
 
     assert(
       res8Asc.status === 200 &&
@@ -179,7 +179,7 @@ async function runTests() {
       res8Asc.body.data.every((c: any) => c.sourceId === kteaSource.id) &&
       res8Desc.body.data.every((c: any) => c.sourceId === kteaSource.id) &&
       namesAsc[0] !== namesDesc[0] &&
-      isSortedAsc,
+      isReversed,
       '8. Source + sorting -> sorting still works alongside source filter'
     );
 

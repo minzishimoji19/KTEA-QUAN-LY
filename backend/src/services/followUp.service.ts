@@ -1,7 +1,7 @@
 import { FollowUpStatus, ActivityType } from '@prisma/client';
 import { followUpRepository } from '../repositories/followUp.repository.js';
 import { customerRepository } from '../repositories/customer.repository.js';
-import { NotFoundError } from '../utils/errors.js';
+import { NotFoundError, BadRequestError } from '../utils/errors.js';
 import BaseService from './base.service.js';
 import prisma from '../config/database.js';
 
@@ -30,6 +30,7 @@ export class FollowUpService extends BaseService {
     description?: string | null;
     dueAt: string | Date;
     status?: FollowUpStatus;
+    assignedTo?: string | null;
   }) {
     const customer = await customerRepository.findById(data.customerId);
     if (!customer) {
@@ -46,6 +47,7 @@ export class FollowUpService extends BaseService {
           description: data.description,
           dueAt: dueDate,
           status: data.status || FollowUpStatus.PENDING,
+          assignedTo: data.assignedTo || null,
         },
         include: {
           customer: {
@@ -59,11 +61,74 @@ export class FollowUpService extends BaseService {
           customerId: data.customerId,
           type: ActivityType.SYSTEM_EVENT,
           title: `Follow-up Scheduled: ${data.title}`,
-          description: `Due date set for ${dueDate.toISOString().split('T')[0]}.`,
+          description: `Due date set for ${dueDate.toISOString().split('T')[0]}${data.assignedTo ? ` | Người chăm sóc: ${data.assignedTo}` : ''}.`,
         },
       });
 
       return followUp;
+    });
+  }
+
+  async createBulkFollowUps(data: {
+    customerIds: string[];
+    title: string;
+    description?: string | null;
+    dueAt: string | Date;
+    status?: FollowUpStatus;
+    assignedTo?: string | null;
+  }) {
+    const { customerIds, title, description, dueAt, status, assignedTo } = data;
+    if (!customerIds || customerIds.length === 0) {
+      throw new BadRequestError('Phải chọn ít nhất một khách hàng');
+    }
+
+    const customers = await prisma.customer.findMany({
+      where: { id: { in: customerIds } },
+      select: { id: true, fullName: true, phone: true },
+    });
+
+    if (customers.length !== customerIds.length) {
+      throw new NotFoundError('Một số khách hàng được chọn không tồn tại trong hệ thống');
+    }
+
+    const dueDate = new Date(dueAt);
+
+    return prisma.$transaction(async (tx) => {
+      const createdList = [];
+
+      for (const customer of customers) {
+        const followUp = await tx.followUp.create({
+          data: {
+            customerId: customer.id,
+            title,
+            description,
+            dueAt: dueDate,
+            status: status || FollowUpStatus.PENDING,
+            assignedTo: assignedTo || null,
+          },
+          include: {
+            customer: {
+              select: { id: true, fullName: true, phone: true },
+            },
+          },
+        });
+
+        await tx.customerActivity.create({
+          data: {
+            customerId: customer.id,
+            type: ActivityType.SYSTEM_EVENT,
+            title: `Lên lịch chăm sóc: ${title}`,
+            description: `Hạn chăm sóc: ${dueDate.toISOString().split('T')[0]}${assignedTo ? ` | Người chăm sóc: ${assignedTo}` : ''}.`,
+          },
+        });
+
+        createdList.push(followUp);
+      }
+
+      return {
+        count: createdList.length,
+        followUps: createdList,
+      };
     });
   }
 
@@ -72,6 +137,7 @@ export class FollowUpService extends BaseService {
     description?: string | null;
     dueAt?: string | Date;
     status?: FollowUpStatus;
+    assignedTo?: string | null;
     completedAt?: string | Date | null;
   }) {
     const current = await this.getFollowUpById(id);
@@ -96,6 +162,7 @@ export class FollowUpService extends BaseService {
           description: data.description,
           dueAt: dueDate,
           status: data.status,
+          assignedTo: data.assignedTo !== undefined ? data.assignedTo : undefined,
           completedAt: completionDate,
         },
         include: {

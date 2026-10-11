@@ -3,6 +3,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
   ExternalLink,
+  Trash2,
+  Layers,
+  CalendarCheck,
+  AlertTriangle,
+  X,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -21,8 +28,9 @@ import { useCustomers, useBulkAction } from '../hooks/useCustomers';
 import { useProducts } from '../hooks/useProducts';
 import { useTags } from '../hooks/useTags';
 import { useCustomerSources } from '../hooks/useCustomerSources';
-import { CustomerSummary, CustomerStatus, PriorityLevel } from '../types/models';
+import { CustomerSummary, CustomerStatus, PriorityLevel, BulkActionResult } from '../types/models';
 import { CreateCustomerModal } from '../features/customers/CreateCustomerModal';
+import { ScheduleFollowUpModal } from '../features/customers/ScheduleFollowUpModal';
 
 export const CustomersPage: React.FC = () => {
   const navigate = useNavigate();
@@ -58,7 +66,17 @@ export const CustomersPage: React.FC = () => {
   const [bulkStatus, setBulkStatus] = useState<string>('');
   const [bulkPriority, setBulkPriority] = useState<string>('');
   const [bulkTagId, setBulkTagId] = useState<string>('');
-  const [bulkNotification, setBulkNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [bulkNotification, setBulkNotification] = useState<{
+    type: 'success' | 'error' | 'warning';
+    message: string;
+    details?: Array<{ id: string; name?: string; reason: string }>;
+  } | null>(null);
+
+  // Requirement 1 & 4 Modals State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isAssignSourceModalOpen, setIsAssignSourceModalOpen] = useState(false);
+  const [selectedBulkSourceId, setSelectedBulkSourceId] = useState('');
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
 
   const bulkAction = useBulkAction();
 
@@ -131,6 +149,7 @@ export const CustomersPage: React.FC = () => {
     }
   };
 
+  // Bulk status update
   const handleApplyBulkStatus = async () => {
     if (!bulkStatus || selectedCustomerIds.length === 0) return;
     try {
@@ -153,6 +172,7 @@ export const CustomersPage: React.FC = () => {
     }
   };
 
+  // Bulk priority update
   const handleApplyBulkPriority = async () => {
     if (!bulkPriority || selectedCustomerIds.length === 0) return;
     try {
@@ -175,6 +195,7 @@ export const CustomersPage: React.FC = () => {
     }
   };
 
+  // Bulk tag assignment
   const handleApplyBulkTag = async () => {
     if (!bulkTagId || selectedCustomerIds.length === 0) return;
     try {
@@ -197,28 +218,78 @@ export const CustomersPage: React.FC = () => {
     }
   };
 
-  // Table Columns strictly matching business requirements:
-  // - Customer name
-  // - Phone
-  // - Source
-  // - Overall customer status
-  // - Priority
-  // - Number of cases (real API data)
-  // - Latest case status/progress
-  // - Created date
-  // - Updated date
-  // - Actions
-  const isAllSelected =
-    customers.length > 0 &&
-    customers.every((c) => selectedCustomerIds.includes(c.id));
+  // Requirement 1.3: Gán nguồn khách hàng hàng loạt
+  const handleConfirmAssignSource = async () => {
+    if (!selectedBulkSourceId || selectedCustomerIds.length === 0) return;
+    try {
+      const res = await bulkAction.mutateAsync({
+        action: 'ASSIGN_SOURCE',
+        customerIds: selectedCustomerIds,
+        payload: { sourceId: selectedBulkSourceId },
+      });
+      setBulkNotification({
+        type: 'success',
+        message: `Đã gán nguồn cho ${res.affected} khách hàng thành công.`,
+      });
+      setSelectedCustomerIds([]);
+      setIsAssignSourceModalOpen(false);
+      setSelectedBulkSourceId('');
+    } catch (err: any) {
+      setBulkNotification({
+        type: 'error',
+        message: err.message || 'Không thể gán nguồn khách hàng hàng loạt.',
+      });
+    }
+  };
 
-  const handleToggleSelectAll = () => {
-    if (isAllSelected) {
-      const pageCustomerIds = new Set(customers.map((c) => c.id));
-      setSelectedCustomerIds(selectedCustomerIds.filter((id) => !pageCustomerIds.has(id)));
+  // Requirement 1.2: Xóa khách hàng đã chọn hàng loạt (có bảo vệ dữ liệu)
+  const handleConfirmBulkDelete = async () => {
+    if (selectedCustomerIds.length === 0) return;
+    try {
+      const res = (await bulkAction.mutateAsync({
+        action: 'DELETE_CUSTOMERS',
+        customerIds: selectedCustomerIds,
+        payload: {},
+      })) as BulkActionResult;
+
+      if (res.failedCount && res.failedCount > 0) {
+        setBulkNotification({
+          type: res.affected > 0 ? 'warning' : 'error',
+          message: `Đã xóa thành công ${res.affected} khách hàng. Có ${res.failedCount} khách hàng không thể xóa vì có dữ liệu liên quan (hồ sơ vay, ghi chú hoặc lịch chăm sóc).`,
+          details: res.failedDetails,
+        });
+      } else {
+        setBulkNotification({
+          type: 'success',
+          message: `Đã xóa thành công toàn bộ ${res.affected} khách hàng đã chọn.`,
+        });
+      }
+
+      setSelectedCustomerIds([]);
+      setIsDeleteModalOpen(false);
+    } catch (err: any) {
+      setBulkNotification({
+        type: 'error',
+        message: err.message || 'Đã xảy ra lỗi khi thực hiện xóa hàng loạt.',
+      });
+      setIsDeleteModalOpen(false);
+    }
+  };
+
+  // Phân biệt rõ chọn trong trang hiện tại và chọn xuyên nhiều trang
+  const pageCustomerIds = customers.map((c) => c.id);
+  const selectedOnCurrentPage = pageCustomerIds.filter((id) => selectedCustomerIds.includes(id));
+  const isAllPageSelected =
+    customers.length > 0 && selectedOnCurrentPage.length === customers.length;
+
+  const handleToggleSelectAllPage = () => {
+    if (isAllPageSelected) {
+      // Bỏ chọn các khách hàng trên trang hiện tại
+      setSelectedCustomerIds(selectedCustomerIds.filter((id) => !pageCustomerIds.includes(id)));
     } else {
-      const pageCustomerIds = customers.map((c) => c.id);
-      setSelectedCustomerIds(Array.from(new Set([...selectedCustomerIds, ...pageCustomerIds])));
+      // Chọn tất cả khách hàng trên trang này
+      const nextSelection = Array.from(new Set([...selectedCustomerIds, ...pageCustomerIds]));
+      setSelectedCustomerIds(nextSelection);
     }
   };
 
@@ -231,16 +302,17 @@ export const CustomersPage: React.FC = () => {
     }
   };
 
+  // Table Columns
   const columns: Column<CustomerSummary>[] = [
     {
       key: 'select',
       header: (
         <input
           type="checkbox"
-          checked={isAllSelected}
-          onChange={handleToggleSelectAll}
+          checked={isAllPageSelected}
+          onChange={handleToggleSelectAllPage}
           className="rounded border-slate-700 bg-slate-900 text-blue-500 focus:ring-0 cursor-pointer w-3.5 h-3.5"
-          title="Chọn tất cả trên trang này"
+          title="Chọn / bỏ chọn tất cả khách hàng trên trang này"
         />
       ),
       width: '36px',
@@ -312,7 +384,7 @@ export const CustomersPage: React.FC = () => {
             {isInactive && (
               <span
                 className="text-[9px] font-mono px-1 rounded bg-slate-800 text-slate-400 border border-slate-700 shrink-0"
-                title="Nguồn khách này hiện đã ngừng hoạt động"
+                title="Nguồn khách này hiện đã ngưng hoạt động"
               >
                 Inactive
               </span>
@@ -456,6 +528,14 @@ export const CustomersPage: React.FC = () => {
     );
   }
 
+  // Active sources for bulk assign
+  const activeSources = (sources || []).filter((s) => s.active);
+
+  // Selected customer list items for schedule modal
+  const selectedCustomerObjects = customers
+    .filter((c) => selectedCustomerIds.includes(c.id))
+    .map((c) => ({ id: c.id, fullName: c.fullName, phone: c.phone }));
+
   return (
     <div className="space-y-3.5 max-w-7xl mx-auto">
       {/* Page Header */}
@@ -598,42 +678,102 @@ export const CustomersPage: React.FC = () => {
       {/* Notification banner for bulk operations */}
       {bulkNotification && (
         <div
-          className={`flex items-center justify-between px-3 py-2 rounded text-xs border ${
+          className={`p-3 rounded text-xs border space-y-1.5 animate-in fade-in duration-150 ${
             bulkNotification.type === 'success'
-              ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60'
-              : 'bg-rose-950/60 text-rose-300 border-rose-800/60'
+              ? 'bg-emerald-950/70 text-emerald-200 border-emerald-800/80'
+              : bulkNotification.type === 'warning'
+              ? 'bg-amber-950/70 text-amber-200 border-amber-800/80'
+              : 'bg-rose-950/70 text-rose-200 border-rose-800/80'
           }`}
         >
-          <span>{bulkNotification.message}</span>
-          <button
-            onClick={() => setBulkNotification(null)}
-            className="text-slate-400 hover:text-slate-200 text-xs ml-3"
-          >
-            ✕
-          </button>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {bulkNotification.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+              )}
+              <span className="font-medium">{bulkNotification.message}</span>
+            </div>
+            <button
+              onClick={() => setBulkNotification(null)}
+              className="text-slate-400 hover:text-slate-200 text-xs ml-3 p-1"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {bulkNotification.details && bulkNotification.details.length > 0 && (
+            <div className="mt-1.5 pl-6 space-y-0.5 text-[11px] font-mono text-slate-300">
+              {bulkNotification.details.slice(0, 5).map((d) => (
+                <p key={d.id}>• {d.name || d.id}: {d.reason}</p>
+              ))}
+              {bulkNotification.details.length > 5 && (
+                <p className="italic text-slate-400">và {bulkNotification.details.length - 5} khách hàng khác...</p>
+              )}
+            </div>
+          )}
         </div>
       )}
 
       {/* Sticky Bulk Action Toolbar */}
       {selectedCustomerIds.length > 0 && (
         <div className="bg-slate-900/95 border border-blue-500/40 rounded-lg p-2.5 shadow-xl flex flex-wrap items-center justify-between gap-3 backdrop-blur animate-in fade-in duration-200">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center justify-center bg-blue-600 text-white font-mono text-xs font-semibold px-2 py-0.5 rounded-full">
+          {/* Left: Selection Counter & Clear */}
+          <div className="flex items-center flex-wrap gap-2">
+            <span className="inline-flex items-center justify-center bg-blue-600 text-white font-mono text-xs font-bold px-2.5 py-0.5 rounded-full">
               {selectedCustomerIds.length}
             </span>
-            <span className="text-xs font-medium text-slate-200">
+            <span className="text-xs font-semibold text-slate-100">
               khách hàng được chọn
             </span>
+            <span className="text-[11px] text-slate-400 font-mono">
+              (trên trang này: {selectedOnCurrentPage.length}/{customers.length})
+            </span>
+            {!isAllPageSelected && (
+              <button
+                type="button"
+                onClick={handleToggleSelectAllPage}
+                className="text-[11px] text-blue-400 hover:text-blue-300 underline cursor-pointer ml-1"
+              >
+                Chọn tất cả trang này
+              </button>
+            )}
             <button
               onClick={() => setSelectedCustomerIds([])}
               className="text-[11px] text-slate-400 hover:text-slate-200 underline ml-1 cursor-pointer"
             >
-              Bỏ chọn
+              Bỏ chọn tất cả
             </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Bulk Update Status */}
+          {/* Right: Actions */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* 1. Lên lịch chăm sóc cho nhiều khách hàng (Req 4) */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsScheduleModalOpen(true)}
+              className="h-7 text-xs px-2.5 gap-1.5 border-amber-800/80 text-amber-300 hover:bg-amber-950/40 font-medium"
+              title="Lên lịch chăm sóc đồng thời cho các khách hàng đã chọn"
+            >
+              <CalendarCheck className="w-3.5 h-3.5 text-amber-400" />
+              <span>Lên lịch chăm sóc</span>
+            </Button>
+
+            {/* 2. Gán nguồn khách hàng (Req 1.3) */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAssignSourceModalOpen(true)}
+              className="h-7 text-xs px-2.5 gap-1.5 border-blue-800/80 text-blue-300 hover:bg-blue-950/40 font-medium"
+              title="Gán nguồn khách hàng cho các khách đã chọn"
+            >
+              <Layers className="w-3.5 h-3.5 text-blue-400" />
+              <span>Thêm nguồn khách hàng</span>
+            </Button>
+
+            {/* 3. Cập nhật trạng thái */}
             <div className="flex items-center gap-1 bg-slate-950 p-1 rounded border border-slate-800">
               <select
                 value={bulkStatus}
@@ -658,7 +798,7 @@ export const CustomersPage: React.FC = () => {
               </Button>
             </div>
 
-            {/* Bulk Update Priority */}
+            {/* 4. Cập nhật nhu cầu */}
             <div className="flex items-center gap-1 bg-slate-950 p-1 rounded border border-slate-800">
               <select
                 value={bulkPriority}
@@ -682,12 +822,12 @@ export const CustomersPage: React.FC = () => {
               </Button>
             </div>
 
-            {/* Bulk Add Tag */}
+            {/* 5. Gắn nhãn */}
             <div className="flex items-center gap-1 bg-slate-950 p-1 rounded border border-slate-800">
               <select
                 value={bulkTagId}
                 onChange={(e) => setBulkTagId(e.target.value)}
-                className="h-7 bg-slate-900 border-0 rounded px-2 text-xs text-slate-200 focus:outline-none max-w-[120px]"
+                className="h-7 bg-slate-900 border-0 rounded px-2 text-xs text-slate-200 focus:outline-none max-w-[110px]"
               >
                 <option value="">Gắn nhãn...</option>
                 {(tags || []).map((t) => (
@@ -706,6 +846,18 @@ export const CustomersPage: React.FC = () => {
                 Gắn
               </Button>
             </div>
+
+            {/* 6. Xóa khách hàng đã chọn (Req 1.2) */}
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setIsDeleteModalOpen(true)}
+              className="h-7 text-xs px-2.5 gap-1.5 bg-rose-600 hover:bg-rose-500 text-white font-medium ml-1"
+              title="Xóa các khách hàng đã chọn"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Xóa khách hàng đã chọn</span>
+            </Button>
           </div>
         </div>
       )}
@@ -714,6 +866,9 @@ export const CustomersPage: React.FC = () => {
       <DataTable
         columns={columns}
         data={customers}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSort={handleSort}
         keyExtractor={(row) => row.id}
         isLoading={isLoading}
         isEmpty={customers.length === 0}
@@ -729,19 +884,16 @@ export const CustomersPage: React.FC = () => {
         onEmptyAction={
           activeFilterCount > 0 ? handleResetFilters : () => setIsCreateOpen(true)
         }
-        sortBy={sortBy}
-        sortOrder={sortOrder}
-        onSort={handleSort}
         onRowClick={(row) => navigate(`/customers/${row.id}`)}
       />
 
-      {/* Pagination */}
-      {customers.length > 0 && (
+      {/* Pagination Controls */}
+      {pagination.total > 0 && (
         <Pagination
-          page={pagination.page}
-          pageSize={pagination.pageSize || pagination.limit || pageSize}
-          total={pagination.total}
-          totalPages={pagination.totalPages}
+          page={pagination.page || 1}
+          totalPages={pagination.totalPages || 1}
+          pageSize={pagination.pageSize || 10}
+          total={pagination.total || 0}
           onPageChange={(newPage) => updateFilters({ page: newPage })}
           onPageSizeChange={(newSize) => {
             updateFilters({ pageSize: newSize, page: 1 });
@@ -753,9 +905,171 @@ export const CustomersPage: React.FC = () => {
       <CreateCustomerModal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        onSuccess={(newId) => {
-          navigate(`/customers/${newId}`);
-        }}
+      />
+
+      {/* Requirement 1.3: Modal Gán Nguồn Khách Hàng */}
+      {isAssignSourceModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-100">
+          <div
+            className="w-full max-w-md rounded-lg border border-slate-800 bg-slate-900 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-100"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex items-center justify-between p-3.5 border-b border-slate-800 bg-slate-950/60">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                  <Layers className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-100 font-mono">Thêm nguồn khách hàng</h3>
+                  <p className="text-[10px] text-slate-400">Gán nguồn phân loại cho các khách hàng được chọn</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAssignSourceModalOpen(false)}
+                className="text-slate-500 hover:text-slate-300 p-1 rounded"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3 text-xs">
+              <p className="text-slate-200">
+                Bạn đang chuẩn bị gán nguồn cho{' '}
+                <strong className="text-blue-400 font-mono font-bold">
+                  {selectedCustomerIds.length}
+                </strong>{' '}
+                khách hàng đã chọn.
+              </p>
+
+              <div>
+                <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                  Chọn nguồn cần gán <span className="text-red-400">*</span>
+                </label>
+                <select
+                  value={selectedBulkSourceId}
+                  onChange={(e) => setSelectedBulkSourceId(e.target.value)}
+                  className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-blue-500 font-sans"
+                >
+                  <option value="">-- Chọn nguồn khách hàng đang hoạt động --</option>
+                  {activeSources.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="p-2.5 rounded bg-blue-950/30 border border-blue-800/40 text-[11px] text-blue-300">
+                Lưu ý: Nguồn của các khách hàng được chọn sẽ chỉ được cập nhật sau khi bạn nhấn xác nhận.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 p-3 bg-slate-950/80 border-t border-slate-800">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsAssignSourceModalOpen(false)}
+                disabled={bulkAction.isPending}
+                className="text-xs h-8"
+              >
+                Hủy
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                disabled={!selectedBulkSourceId || bulkAction.isPending}
+                onClick={handleConfirmAssignSource}
+                className="text-xs h-8 bg-blue-600 hover:bg-blue-500 text-white font-medium"
+              >
+                {bulkAction.isPending ? 'Đang cập nhật...' : 'Xác nhận gán nguồn'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Requirement 1.2: Modal Xác Nhận Xóa Hàng Loạt */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-100">
+          <div
+            className="w-full max-w-md rounded-lg border border-red-900/50 bg-slate-900 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-100"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex items-center justify-between p-3.5 border-b border-slate-800 bg-red-950/30">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400">
+                  <Trash2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-100 font-mono">Xác nhận xóa khách hàng</h3>
+                  <p className="text-[10px] text-slate-400">Thao tác này sẽ xóa hồ sơ khách hàng khỏi hệ thống</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="text-slate-500 hover:text-slate-300 p-1 rounded"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3 text-xs">
+              <p className="text-slate-200">
+                Bạn có chắc chắn muốn xóa{' '}
+                <strong className="text-red-400 font-mono font-bold">
+                  {selectedCustomerIds.length}
+                </strong>{' '}
+                khách hàng đã chọn?
+              </p>
+
+              <div className="p-3 rounded bg-amber-950/40 border border-amber-800/60 text-amber-300 space-y-1 text-[11px]">
+                <div className="flex items-center gap-1.5 font-semibold text-amber-200">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>Chính sách bảo vệ dữ liệu an toàn</span>
+                </div>
+                <p>
+                  Để bảo toàn dữ liệu lịch sử kinh doanh, hệ thống sẽ tự động kiểm tra và <strong>từ chối xóa</strong> các khách hàng đang có <strong>hồ sơ vay, ghi chú nghiệp vụ hoặc lịch chăm sóc</strong>.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 p-3 bg-slate-950/80 border-t border-slate-800">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={bulkAction.isPending}
+                className="text-xs h-8"
+              >
+                Hủy
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                disabled={bulkAction.isPending}
+                onClick={handleConfirmBulkDelete}
+                className="text-xs h-8 bg-rose-600 hover:bg-rose-500 text-white font-medium"
+              >
+                {bulkAction.isPending ? 'Đang xóa...' : `Xác nhận xóa (${selectedCustomerIds.length})`}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Requirement 4: Modal Lên Lịch Chăm Sóc Cho Khách Hàng Đã Chọn */}
+      <ScheduleFollowUpModal
+        isOpen={isScheduleModalOpen}
+        onClose={() => setIsScheduleModalOpen(false)}
+        initialSelectedCustomers={selectedCustomerObjects}
       />
     </div>
   );

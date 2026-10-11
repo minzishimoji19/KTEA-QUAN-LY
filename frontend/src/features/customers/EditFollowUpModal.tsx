@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, CalendarCheck, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useUpdateFollowUp } from '../../hooks/useFollowUps';
-import { FollowUp, FollowUpStatus } from '../../types/models';
+import { FollowUp, FollowUpStatus, CARETAKERS } from '../../types/models';
 
 export interface EditFollowUpModalProps {
   isOpen: boolean;
@@ -21,12 +21,12 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
   const [dueAt, setDueAt] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<FollowUpStatus>('PENDING');
+  const [assignedTo, setAssignedTo] = useState<string>('');
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (followUp && isOpen) {
       setTitle(followUp.title);
-      // Format to YYYY-MM-DDTHH:mm
       try {
         const d = new Date(followUp.dueAt);
         const isoLocal = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
@@ -38,6 +38,7 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
       }
       setDescription(followUp.description || '');
       setStatus(followUp.status);
+      setAssignedTo(followUp.assignedTo || '');
       setError('');
     }
   }, [followUp, isOpen]);
@@ -51,7 +52,7 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
       return;
     }
     if (!dueAt) {
-      setError('Vui lòng chọn ngày giờ hẹn');
+      setError('Vui lòng chọn ngày giờ hạn');
       return;
     }
 
@@ -63,6 +64,7 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
           description: description.trim() || null,
           dueAt: new Date(dueAt).toISOString(),
           status,
+          assignedTo: assignedTo || null,
           completedAt:
             status === 'COMPLETED'
               ? followUp.completedAt || new Date().toISOString()
@@ -89,7 +91,7 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-semibold text-slate-100 font-mono">Chỉnh sửa nhiệm vụ chăm sóc</h3>
-              <p className="text-[10px] text-slate-400">Điều chỉnh nội dung hướng dẫn hoặc dời lại hạn hoàn thành</p>
+              <p className="text-[10px] text-slate-400">Điều chỉnh nội dung, người chăm sóc hoặc dời lịch hẹn</p>
             </div>
           </div>
           <button
@@ -122,10 +124,10 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                  Ngày giờ hẹn <span className="text-red-400">*</span>
+                  Ngày giờ hạn <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="datetime-local"
@@ -137,19 +139,37 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
 
               <div>
                 <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                  Trạng thái
+                  Người chăm sóc
                 </label>
                 <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as FollowUpStatus)}
-                  className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono focus:outline-none focus:border-blue-500"
+                  value={assignedTo}
+                  onChange={(e) => setAssignedTo(e.target.value)}
+                  className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-medium focus:outline-none focus:border-blue-500"
                 >
-                  <option value="PENDING">Đang chờ xử lý (PENDING)</option>
-                  <option value="IN_PROGRESS">Đang thực hiện (IN_PROGRESS)</option>
-                  <option value="COMPLETED">Đã hoàn thành (COMPLETED)</option>
-                  <option value="CANCELLED">Đã hủy (CANCELLED)</option>
+                  <option value="">-- Chưa phân công --</option>
+                  {CARETAKERS.map((caretaker) => (
+                    <option key={caretaker} value={caretaker}>
+                      {caretaker}
+                    </option>
+                  ))}
                 </select>
               </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                Trạng thái
+              </label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as FollowUpStatus)}
+                className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono focus:outline-none focus:border-blue-500"
+              >
+                <option value="PENDING">Đang chờ xử lý (PENDING)</option>
+                <option value="IN_PROGRESS">Đang thực hiện (IN_PROGRESS)</option>
+                <option value="COMPLETED">Đã hoàn thành (COMPLETED)</option>
+                <option value="CANCELLED">Đã hủy (CANCELLED)</option>
+              </select>
             </div>
 
             <div>

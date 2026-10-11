@@ -24,6 +24,7 @@ export const createCustomerSchema = z.object({
   gender: z.nativeEnum(Gender).optional().nullable(),
   dateOfBirth: z.string().datetime().optional().nullable().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable()),
   address: z.string().max(500).optional().nullable(),
+  note: z.string().max(2000).optional().nullable(),
   source: z.string().max(100).optional().nullable(),
   sourceId: z.string().optional().nullable(),
   overallStatus: z.nativeEnum(CustomerStatus).optional().default(CustomerStatus.LEAD_MOI),
