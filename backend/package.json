@@ -21,7 +21,8 @@
     "test:source-filter": "tsx src/tests/verify-customer-source-filter.ts",
     "test:improvements": "tsx src/tests/verify-customer-improvements.ts",
     "test:bulk-tags": "tsx src/tests/verify-bulk-tags.ts",
-    "test": "tsx src/tests/verify-customer-improvements.ts"
+    "test:followup-bulk": "tsx src/tests/verify-followup-bulk-fix.ts",
+    "test": "tsx src/tests/verify-followup-bulk-fix.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

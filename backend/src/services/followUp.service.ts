@@ -1,4 +1,5 @@
-import { FollowUpStatus, ActivityType } from '@prisma/client';
+import { FollowUpStatus, ActivityType, Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { followUpRepository } from '../repositories/followUp.repository.js';
 import { customerRepository } from '../repositories/customer.repository.js';
 import { NotFoundError, BadRequestError } from '../utils/errors.js';
@@ -24,6 +25,21 @@ export class FollowUpService extends BaseService {
     return followUp;
   }
 
+  /**
+   * Dispatches follow-up notifications asynchronously outside database transactions.
+   * Ensures notification failures never fail the scheduling or roll back data.
+   */
+  async dispatchNotifications(
+    followUps: Array<{ id: string; customerId: string; title: string; dueAt: Date | string; assignedTo?: string | null }>
+  ): Promise<void> {
+    try {
+      // Future Web Push / External notification dispatch logic goes here.
+      // Handled outside of the interactive transaction.
+    } catch (err) {
+      console.warn('[Notification] Failed to dispatch follow-up notifications (non-blocking):', err);
+    }
+  }
+
   async createFollowUp(data: {
     customerId: string;
     title: string;
@@ -38,35 +54,76 @@ export class FollowUpService extends BaseService {
     }
 
     const dueDate = new Date(data.dueAt);
+    if (isNaN(dueDate.getTime())) {
+      throw new BadRequestError('Ngày giờ hẹn không hợp lệ');
+    }
 
-    return prisma.$transaction(async (tx) => {
-      const followUp = await tx.followUp.create({
-        data: {
-          customerId: data.customerId,
-          title: data.title,
-          description: data.description,
-          dueAt: dueDate,
-          status: data.status || FollowUpStatus.PENDING,
-          assignedTo: data.assignedTo || null,
-        },
-        include: {
-          customer: {
-            select: { id: true, fullName: true, phone: true },
+    const followUpStatus = data.status || FollowUpStatus.PENDING;
+    const caretaker = data.assignedTo || null;
+    const desc = data.description !== undefined ? data.description : null;
+    const dueDateStr = dueDate.toISOString().split('T')[0];
+
+    const followUp = await prisma.$transaction(
+      async (tx) => {
+        // Prevent duplicate creation on immediate retry/double click
+        const existing = await tx.followUp.findFirst({
+          where: {
+            customerId: data.customerId,
+            title: data.title,
+            dueAt: dueDate,
+            status: followUpStatus,
+            assignedTo: caretaker,
           },
-        },
-      });
+          include: {
+            customer: {
+              select: { id: true, fullName: true, phone: true },
+            },
+          },
+        });
 
-      await tx.customerActivity.create({
-        data: {
-          customerId: data.customerId,
-          type: ActivityType.SYSTEM_EVENT,
-          title: `Follow-up Scheduled: ${data.title}`,
-          description: `Due date set for ${dueDate.toISOString().split('T')[0]}${data.assignedTo ? ` | Người chăm sóc: ${data.assignedTo}` : ''}.`,
-        },
-      });
+        if (existing) {
+          return existing;
+        }
 
-      return followUp;
+        const created = await tx.followUp.create({
+          data: {
+            customerId: data.customerId,
+            title: data.title,
+            description: desc,
+            dueAt: dueDate,
+            status: followUpStatus,
+            assignedTo: caretaker,
+          },
+          include: {
+            customer: {
+              select: { id: true, fullName: true, phone: true },
+            },
+          },
+        });
+
+        await tx.customerActivity.create({
+          data: {
+            customerId: data.customerId,
+            type: ActivityType.SYSTEM_EVENT,
+            title: `Follow-up Scheduled: ${data.title}`,
+            description: `Due date set for ${dueDateStr}${caretaker ? ` | Người chăm sóc: ${caretaker}` : ''}.`,
+          },
+        });
+
+        return created;
+      },
+      {
+        maxWait: 5000,
+        timeout: 10000,
+      }
+    );
+
+    // Non-blocking notification dispatch outside transaction
+    this.dispatchNotifications([followUp]).catch((err) => {
+      console.warn('[Notification] Dispatch error (non-blocking):', err);
     });
+
+    return followUp;
   }
 
   async createBulkFollowUps(data: {
@@ -78,33 +135,54 @@ export class FollowUpService extends BaseService {
     assignedTo?: string | null;
   }) {
     const { customerIds, title, description, dueAt, status, assignedTo } = data;
-    if (!customerIds || customerIds.length === 0) {
+    if (!customerIds || !Array.isArray(customerIds) || customerIds.length === 0) {
+      throw new BadRequestError('Phải chọn ít nhất một khách hàng');
+    }
+
+    // Deduplicate customer IDs to prevent duplicate processing within request
+    const uniqueCustomerIds = Array.from(
+      new Set(customerIds.map((id) => (typeof id === 'string' ? id.trim() : '')).filter(Boolean))
+    );
+
+    if (uniqueCustomerIds.length === 0) {
       throw new BadRequestError('Phải chọn ít nhất một khách hàng');
     }
 
     const customers = await prisma.customer.findMany({
-      where: { id: { in: customerIds } },
+      where: { id: { in: uniqueCustomerIds } },
       select: { id: true, fullName: true, phone: true },
     });
 
-    if (customers.length !== customerIds.length) {
+    if (customers.length !== uniqueCustomerIds.length) {
       throw new NotFoundError('Một số khách hàng được chọn không tồn tại trong hệ thống');
     }
 
     const dueDate = new Date(dueAt);
+    if (isNaN(dueDate.getTime())) {
+      throw new BadRequestError('Ngày giờ hẹn không hợp lệ');
+    }
 
-    return prisma.$transaction(async (tx) => {
-      const createdList = [];
+    const followUpStatus = status || FollowUpStatus.PENDING;
+    const caretaker = assignedTo || null;
+    const desc = description !== undefined ? description : null;
+    const dueDateStr = dueDate.toISOString().split('T')[0];
+    const BATCH_SIZE = 250;
 
-      for (const customer of customers) {
-        const followUp = await tx.followUp.create({
-          data: {
-            customerId: customer.id,
+    const result = await prisma.$transaction(
+      async (tx) => {
+        // Row-level lock on customers to serialize concurrent requests on the same customers
+        if (uniqueCustomerIds.length > 0) {
+          await tx.$queryRaw`SELECT id FROM customers WHERE id IN (${Prisma.join(uniqueCustomerIds)}) FOR UPDATE`;
+        }
+
+        // Check for existing follow-ups with same criteria to prevent duplicate records on retry
+        const existingFollowUps = await tx.followUp.findMany({
+          where: {
+            customerId: { in: uniqueCustomerIds },
             title,
-            description,
             dueAt: dueDate,
-            status: status || FollowUpStatus.PENDING,
-            assignedTo: assignedTo || null,
+            status: followUpStatus,
+            assignedTo: caretaker,
           },
           include: {
             customer: {
@@ -113,23 +191,83 @@ export class FollowUpService extends BaseService {
           },
         });
 
-        await tx.customerActivity.create({
-          data: {
-            customerId: customer.id,
-            type: ActivityType.SYSTEM_EVENT,
-            title: `Lên lịch chăm sóc: ${title}`,
-            description: `Hạn chăm sóc: ${dueDate.toISOString().split('T')[0]}${assignedTo ? ` | Người chăm sóc: ${assignedTo}` : ''}.`,
-          },
-        });
+        const existingCustomerIds = new Set(existingFollowUps.map((f) => f.customerId));
+        const customersToCreate = customers.filter((c) => !existingCustomerIds.has(c.id));
 
-        createdList.push(followUp);
+        const followUpRecords = customersToCreate.map((customer) => ({
+          id: randomUUID(),
+          customerId: customer.id,
+          title,
+          description: desc,
+          dueAt: dueDate,
+          status: followUpStatus,
+          assignedTo: caretaker,
+        }));
+
+        const activityRecords = customersToCreate.map((customer) => ({
+          id: randomUUID(),
+          customerId: customer.id,
+          type: ActivityType.SYSTEM_EVENT,
+          title: `Lên lịch chăm sóc: ${title}`,
+          description: `Hạn chăm sóc: ${dueDateStr}${caretaker ? ` | Người chăm sóc: ${caretaker}` : ''}.`,
+        }));
+
+        // Batch insert follow-ups
+        for (let i = 0; i < followUpRecords.length; i += BATCH_SIZE) {
+          const batch = followUpRecords.slice(i, i + BATCH_SIZE);
+          await tx.followUp.createMany({
+            data: batch,
+          });
+        }
+
+        // Batch insert customer activities
+        for (let i = 0; i < activityRecords.length; i += BATCH_SIZE) {
+          const batch = activityRecords.slice(i, i + BATCH_SIZE);
+          await tx.customerActivity.createMany({
+            data: batch,
+          });
+        }
+
+        // Query newly created follow-ups with customer relation to preserve API contract
+        const newlyCreatedIds = followUpRecords.map((r) => r.id);
+        const newlyCreatedFollowUps =
+          newlyCreatedIds.length > 0
+            ? await tx.followUp.findMany({
+                where: { id: { in: newlyCreatedIds } },
+                include: {
+                  customer: {
+                    select: { id: true, fullName: true, phone: true },
+                  },
+                },
+              })
+            : [];
+
+        // Combine existing and newly created records
+        const allFollowUps = [...existingFollowUps, ...newlyCreatedFollowUps];
+
+        // Ensure order matches the input customers list
+        const customerOrderMap = new Map(customers.map((c, idx) => [c.id, idx]));
+        allFollowUps.sort(
+          (a, b) => (customerOrderMap.get(a.customerId) ?? 0) - (customerOrderMap.get(b.customerId) ?? 0)
+        );
+
+        return {
+          count: allFollowUps.length,
+          followUps: allFollowUps,
+        };
+      },
+      {
+        maxWait: 5000,
+        timeout: 15000,
       }
+    );
 
-      return {
-        count: createdList.length,
-        followUps: createdList,
-      };
+    // Non-blocking notification dispatch outside transaction
+    this.dispatchNotifications(result.followUps).catch((err) => {
+      console.warn('[Notification] Dispatch error (non-blocking):', err);
     });
+
+    return result;
   }
 
   async updateFollowUp(id: string, data: {
