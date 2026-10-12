@@ -10,7 +10,11 @@ import {
   X,
   CheckCircle2,
   AlertCircle,
+  Copy,
+  Check,
 } from 'lucide-react';
+import { cn } from '../lib/utils';
+import { useToast } from '../context/ToastContext';
 import {
   PageHeader,
   FilterBar,
@@ -31,6 +35,82 @@ import { useCustomerSources } from '../hooks/useCustomerSources';
 import { CustomerSummary, CustomerStatus, PriorityLevel, BulkActionResult } from '../types/models';
 import { CreateCustomerModal } from '../features/customers/CreateCustomerModal';
 import { ScheduleFollowUpModal } from '../features/customers/ScheduleFollowUpModal';
+
+interface CopyPhoneButtonProps {
+  phone?: string | null;
+}
+
+const CopyPhoneButton: React.FC<CopyPhoneButtonProps> = ({ phone }) => {
+  const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
+
+  const phoneStr = typeof phone === 'string' ? phone.trim() : String(phone || '').trim();
+  const hasPhone = phoneStr.length > 0;
+
+  const handleCopy = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    if (!hasPhone) {
+      toast.warning('Không có số điện thoại để copy');
+      return;
+    }
+
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(phoneStr);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = phoneStr;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        if (!successful) throw new Error('execCommand copy failed');
+      }
+
+      setCopied(true);
+      toast.success(`Đã copy số điện thoại ${phoneStr}`);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      toast.error('Lỗi sao chép', 'Không thể truy cập bộ nhớ tạm hoặc trình duyệt chặn quyền clipboard.');
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      disabled={!hasPhone}
+      title={hasPhone ? `Copy ${phoneStr}` : 'Chưa có số điện thoại để copy'}
+      aria-label={hasPhone ? `Copy số điện thoại ${phoneStr}` : 'Chưa có số điện thoại'}
+      className={cn(
+        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono transition-all border shrink-0 select-none cursor-pointer',
+        copied
+          ? 'bg-emerald-950/80 text-emerald-300 border-emerald-600/80 font-medium'
+          : hasPhone
+          ? 'bg-slate-800/90 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white border-slate-700 hover:border-slate-500 shadow-xs'
+          : 'opacity-40 cursor-not-allowed bg-slate-900/60 text-slate-600 border-slate-800'
+      )}
+    >
+      {copied ? (
+        <>
+          <Check className="w-2.5 h-2.5 text-emerald-400" />
+          <span>Đã copy</span>
+        </>
+      ) : (
+        <>
+          <Copy className="w-2.5 h-2.5 text-slate-400 group-hover:text-slate-200" />
+          <span>Copy</span>
+        </>
+      )}
+    </button>
+  );
+};
 
 export const CustomersPage: React.FC = () => {
   const navigate = useNavigate();
@@ -362,11 +442,14 @@ export const CustomersPage: React.FC = () => {
     {
       key: 'phone',
       header: 'Số điện thoại',
-      width: '120px',
+      width: '160px',
       render: (row) => (
-        <span className="text-xs text-slate-300 font-mono">
-          {row.phone}
-        </span>
+        <div className="flex items-center gap-1.5 whitespace-nowrap min-w-0 py-0.5">
+          <span className="text-xs text-slate-200 font-mono font-medium tracking-tight select-all">
+            {row.phone || '--'}
+          </span>
+          <CopyPhoneButton phone={row.phone} />
+        </div>
       ),
     },
     {
