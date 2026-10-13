@@ -14,6 +14,7 @@ import dashboardRoutes from './dashboard.routes.js';
 import settingsRoutes from './settings.routes.js';
 import dataRoutes from './data.routes.js';
 import customerSourceRoutes from './customerSource.routes.js';
+import pushNotificationRoutes from './pushNotification.routes.js';
 
 const router = Router();
 
@@ -31,6 +32,9 @@ router.use('/follow-ups', followUpRoutes);
 router.use('/products', productRoutes);
 router.use('/push-records', pushRecordRoutes);
 router.use('/recommendations', recommendationRoutes);
+
+// Web Push Notification Endpoints
+router.use('/notifications', pushNotificationRoutes);
 
 // Analytics, Dashboard, Settings & Data Governance Endpoints
 router.use('/analytics', analyticsRoutes);

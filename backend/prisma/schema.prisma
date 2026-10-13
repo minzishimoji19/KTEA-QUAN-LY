@@ -352,3 +352,36 @@ model PushRecord {
   @@index([pushedAt])
   @@map("push_records")
 }
+
+model PushSubscription {
+  id         String   @id @default(uuid())
+  recipient  String   @map("recipient")
+  endpoint   String   @unique @map("endpoint") @db.VarChar(500)
+  p256dh     String   @map("p256dh") @db.VarChar(255)
+  auth       String   @map("auth") @db.VarChar(255)
+  deviceName String?  @map("device_name")
+  userAgent  String?  @map("user_agent") @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([recipient])
+  @@map("push_subscriptions")
+}
+
+model PushNotificationLog {
+  id           String   @id @default(uuid())
+  followUpId   String?  @map("follow_up_id")
+  eventType    String   @map("event_type")
+  recipient    String   @map("recipient")
+  status       String   @default("SENT") @map("status")
+  title        String   @map("title")
+  body         String?  @map("body") @db.Text
+  errorMessage String?  @map("error_message") @db.Text
+  sentAt       DateTime @default(now()) @map("sent_at")
+
+  @@unique([followUpId, eventType, recipient])
+  @@index([followUpId])
+  @@index([recipient])
+  @@index([sentAt])
+  @@map("push_notification_logs")
+}

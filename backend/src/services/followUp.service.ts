@@ -5,6 +5,7 @@ import { customerRepository } from '../repositories/customer.repository.js';
 import { NotFoundError, BadRequestError } from '../utils/errors.js';
 import BaseService from './base.service.js';
 import prisma from '../config/database.js';
+import { pushNotificationService } from './pushNotification.service.js';
 
 export class FollowUpService extends BaseService {
   async getFollowUps(filter?: 'today' | 'overdue' | 'upcoming' | 'completed' | 'all', status?: FollowUpStatus, customerId?: string) {
@@ -30,11 +31,10 @@ export class FollowUpService extends BaseService {
    * Ensures notification failures never fail the scheduling or roll back data.
    */
   async dispatchNotifications(
-    followUps: Array<{ id: string; customerId: string; title: string; dueAt: Date | string; assignedTo?: string | null }>
+    followUps: Array<{ id: string; customerId: string; title: string; dueAt: Date | string; assignedTo?: string | null; description?: string | null; customer?: any }>
   ): Promise<void> {
     try {
-      // Future Web Push / External notification dispatch logic goes here.
-      // Handled outside of the interactive transaction.
+      await pushNotificationService.notifyNewFollowUps(followUps);
     } catch (err) {
       console.warn('[Notification] Failed to dispatch follow-up notifications (non-blocking):', err);
     }

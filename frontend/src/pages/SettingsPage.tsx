@@ -20,6 +20,7 @@ import {
   Layers,
   Sparkles,
   Globe,
+  BellRing,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -47,6 +48,7 @@ import { ProductModal } from '../features/settings/ProductModal';
 import { TagModal } from '../features/settings/TagModal';
 import { NeedCategoryModal } from '../features/settings/NeedCategoryModal';
 import { CustomerSourceModal } from '../features/settings/CustomerSourceModal';
+import { NotificationSettings } from '../features/settings/NotificationSettings';
 
 type SettingsTab =
   | 'general'
@@ -56,7 +58,8 @@ type SettingsTab =
   | 'needs'
   | 'statuses'
   | 'rules'
-  | 'data';
+  | 'data'
+  | 'notifications';
 
 export const SettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
@@ -273,6 +276,7 @@ export const SettingsPage: React.FC = () => {
           { key: 'statuses', label: 'Phân loại trạng thái', icon: <Layers className="w-3.5 h-3.5" /> },
           { key: 'rules', label: 'Quy tắc đề xuất', icon: <Sliders className="w-3.5 h-3.5" /> },
           { key: 'data', label: 'Quản trị dữ liệu & Sao lưu', icon: <Database className="w-3.5 h-3.5" /> },
+          { key: 'notifications', label: 'Thông báo đẩy (Web Push)', icon: <BellRing className="w-3.5 h-3.5 text-blue-400" /> },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -1507,6 +1511,13 @@ export const SettingsPage: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SECTION 9: WEB PUSH NOTIFICATION SETTINGS                                 */}
+      {/* ========================================================================= */}
+      {activeTab === 'notifications' && (
+        <NotificationSettings />
       )}
 
       {/* ========================================================================= */}
