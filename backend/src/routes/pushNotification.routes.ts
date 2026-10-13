@@ -13,6 +13,7 @@ const router = Router();
 router.get('/vapid-public-key', getVapidPublicKey);
 router.post('/subscribe', subscribeDevice);
 router.post('/unsubscribe', unsubscribeDevice);
+router.get('/subscriptions', getSubscriptions);
 router.post('/subscriptions', getSubscriptions);
 router.post('/test', sendTestPush);
 router.post('/cron-worker', runCronWorker);

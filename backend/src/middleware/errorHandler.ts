@@ -21,6 +21,12 @@ export const errorHandler = (
     return;
   }
 
+  // 1.5 JSON Body Parser Syntax Errors
+  if (err instanceof SyntaxError && 'status' in err && (err as any).status === 400) {
+    sendError(res, 400, 'BAD_REQUEST', 'Dữ liệu JSON gửi lên không đúng định dạng');
+    return;
+  }
+
   // 2. Direct Zod Validation Errors
   if (err instanceof ZodError) {
     const details = err.errors.map((e) => ({

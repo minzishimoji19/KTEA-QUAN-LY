@@ -28,7 +28,14 @@ export const unsubscribeDevice = async (req: Request, res: Response): Promise<vo
 };
 
 export const getSubscriptions = async (req: Request, res: Response): Promise<void> => {
-  const { recipient, passkey } = req.body;
+  const recipient = (req.body?.recipient || req.query?.recipient) as string;
+  const passkey = (req.body?.passkey || req.query?.passkey || req.headers['x-passkey']) as string;
+  
+  if (!recipient || !passkey) {
+    sendSuccess(res, []);
+    return;
+  }
+
   const devices = await pushNotificationService.getSubscriptionsForRecipient(recipient, passkey);
   sendSuccess(res, devices);
 };

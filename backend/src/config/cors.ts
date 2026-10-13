@@ -69,12 +69,28 @@ export const corsOptions: cors.CorsOptions = {
       return callback(null, true);
     }
 
+    // Match Vercel preview deployment URLs for ktea-quan-ly
+    if (/^https:\/\/ktea-quan-ly-[a-zA-Z0-9_-]+\.vercel\.app$/.test(normalized)) {
+      return callback(null, true);
+    }
+
     // Do not reflect unapproved origins; omit Access-Control-Allow-Origin
     return callback(null, false);
   },
   credentials: false, // CRM uses token/header auth, not cross-origin cookies
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'x-passkey',
+    'x-cron-secret',
+    'Cache-Control',
+    'Pragma',
+    'If-Modified-Since',
+  ],
   optionsSuccessStatus: 204,
   maxAge: 86400, // 24 hours
 };
