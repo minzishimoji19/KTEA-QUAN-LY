@@ -6,6 +6,7 @@ import { NotFoundError, ConflictError, BadRequestError } from '../utils/errors.j
 import { buildPaginationMeta } from '../utils/db.js';
 import BaseService from './base.service.js';
 import prisma from '../config/database.js';
+import { enrichCustomerWithStatus } from './customerStatus.service.js';
 
 import { CustomerQueryFilters } from '../repositories/customer.repository.js';
 
@@ -24,7 +25,7 @@ export class CustomerService extends BaseService {
     const pagination = buildPaginationMeta(total, filters.page, filters.pageSize);
 
     return {
-      items: customers,
+      items: customers.map((c) => enrichCustomerWithStatus(c)),
       pagination,
     };
   }
@@ -34,7 +35,7 @@ export class CustomerService extends BaseService {
     if (!customer) {
       throw new NotFoundError(`Customer with ID '${id}' not found`);
     }
-    return customer;
+    return enrichCustomerWithStatus(customer);
   }
 
   async getCustomerDetail(id: string) {
@@ -43,11 +44,11 @@ export class CustomerService extends BaseService {
       throw new NotFoundError(`Customer with ID '${id}' not found`);
     }
 
-    return {
+    return enrichCustomerWithStatus({
       ...customer,
       source: customer.source || customer.customerSource?.name || null,
       note: customer.note || customer.address || null,
-    };
+    });
   }
 
   async createCustomer(data: {
@@ -126,7 +127,7 @@ export class CustomerService extends BaseService {
         },
       });
 
-      return customer;
+      return enrichCustomerWithStatus(customer);
     });
   }
 
@@ -211,7 +212,7 @@ export class CustomerService extends BaseService {
         });
       }
 
-      return updated;
+      return enrichCustomerWithStatus(updated);
     });
   }
 

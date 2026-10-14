@@ -1,11 +1,22 @@
 export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
 
+export type CaseProgress =
+  | 'NOT_SELECTED'
+  | 'REGISTRATION_CREATED'
+  | 'REGISTRATION_COMPLETED'
+  | 'UNDER_REVIEW'
+  | 'APPROVED'
+  | 'CARD_ISSUED'
+  | 'CARD_ACTIVATED'
+  | 'COMPLETED';
+
 export type CustomerStatus =
   | 'LEAD_MOI'
   | 'DANG_TIEP_CAN'
   | 'DANG_TU_VAN'
   | 'THANH_CONG'
-  | 'KHONG_KHA_THI';
+  | 'KHONG_KHA_THI'
+  | CaseProgress;
 
 export type PriorityLevel =
   | 'CHUA_CO_NHU_CAU'
@@ -41,15 +52,6 @@ export type NeedStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'DROPPED';
 
 export type CaseStatus = 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'ACTIVE' | 'COMPLETED';
 
-export type CaseProgress =
-  | 'NOT_SELECTED'
-  | 'REGISTRATION_CREATED'
-  | 'REGISTRATION_COMPLETED'
-  | 'UNDER_REVIEW'
-  | 'APPROVED'
-  | 'CARD_ISSUED'
-  | 'CARD_ACTIVATED'
-  | 'COMPLETED';
 
 export interface CustomerSource {
   id: string;

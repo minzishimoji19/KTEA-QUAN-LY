@@ -1,11 +1,11 @@
-import { Prisma, CustomerStatus, Gender, PriorityLevel } from '@prisma/client';
+import { Prisma, CustomerStatus, CaseProgress, Gender, PriorityLevel } from '@prisma/client';
 import BaseRepository from './base.repository.js';
 
 export interface CustomerQueryFilters {
   page: number;
   pageSize: number;
   search?: string;
-  status?: CustomerStatus;
+  status?: CustomerStatus | CaseProgress | string;
   priority?: PriorityLevel;
   sourceId?: string;
   product?: string;
@@ -47,9 +47,41 @@ export class CustomerRepository extends BaseRepository {
       ];
     }
 
-    // 2. Status filter
+    // 2. Status filter: sync customer status with latest case progress
     if (status) {
-      where.overallStatus = status;
+      const isCaseProgress = Object.values(CaseProgress).includes(status as CaseProgress);
+      const isCustomerStatus = Object.values(CustomerStatus).includes(status as CustomerStatus);
+
+      if (isCaseProgress) {
+        // Query customers whose latest case (by createdAt desc, id desc) matches progress
+        const matching = await this.db.$queryRaw<{ customer_id: string }[]>`
+          SELECT c.id as customer_id
+          FROM customers c
+          JOIN customer_cases cc ON cc.id = (
+            SELECT id FROM customer_cases
+            WHERE customer_id = c.id
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+          )
+          WHERE cc.progress = ${status}
+        `;
+        const customerIds = matching.map((m) => m.customer_id);
+        where.id = { in: customerIds.length > 0 ? customerIds : ['__none__'] };
+      } else if (isCustomerStatus) {
+        // Customers who have no cases and their overallStatus equals the requested status
+        const matching = await this.db.$queryRaw<{ customer_id: string }[]>`
+          SELECT c.id as customer_id
+          FROM customers c
+          WHERE c.overall_status = ${status}
+          AND NOT EXISTS (
+            SELECT 1 FROM customer_cases WHERE customer_id = c.id
+          )
+        `;
+        const customerIds = matching.map((m) => m.customer_id);
+        where.id = { in: customerIds.length > 0 ? customerIds : ['__none__'] };
+      } else {
+        where.overallStatus = status as any;
+      }
     }
 
     // 2b. Priority filter
@@ -124,7 +156,11 @@ export class CustomerRepository extends BaseRepository {
           },
           cases: {
             include: { product: true },
-            take: 5,
+            orderBy: [
+              { createdAt: 'desc' },
+              { id: 'desc' },
+            ],
+            take: 10,
           },
           needs: {
             select: { id: true, needType: true, status: true },
@@ -170,6 +206,13 @@ export class CustomerRepository extends BaseRepository {
         customerTags: {
           include: { tag: true },
         },
+        cases: {
+          include: { product: true },
+          orderBy: [
+            { createdAt: 'desc' },
+            { id: 'desc' },
+          ],
+        },
       },
     });
   }
@@ -186,7 +229,10 @@ export class CustomerRepository extends BaseRepository {
               orderBy: { changedAt: 'asc' },
             },
           },
-          orderBy: { createdAt: 'desc' },
+          orderBy: [
+            { createdAt: 'desc' },
+            { id: 'desc' },
+          ],
         },
         needs: {
           orderBy: { createdAt: 'desc' },

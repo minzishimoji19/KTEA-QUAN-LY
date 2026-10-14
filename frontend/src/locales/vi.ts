@@ -111,12 +111,12 @@ export const vi = {
     REJECTED: 'Từ chối',
     CANCELLED: 'Đã hủy',
 
-    // Case progress
-    NOT_SELECTED: 'Chưa chọn sản phẩm',
+    // Case progress (8 trạng thái chuẩn theo quy trình hồ sơ)
+    NOT_SELECTED: 'Chưa có sản phẩm',
     REGISTRATION_CREATED: 'Đăng ký tạo',
     REGISTRATION_COMPLETED: 'Hoàn tất đăng ký',
-    CARD_ISSUED: 'Phát hành thẻ',
-    CARD_ACTIVATED: 'Kích hoạt thẻ',
+    CARD_ISSUED: 'Phát hành thẻ / Hợp đồng',
+    CARD_ACTIVATED: 'Kích hoạt',
 
     // Push statuses
     PENDING: 'Đang chờ xử lý',
@@ -124,8 +124,8 @@ export const vi = {
     SUCCESS: 'Thành công',
     FAILED: 'Thất bại',
 
-    // Follow-up statuses
-    COMPLETED: 'Đã hoàn thành',
+    // Follow-up & Case completion
+    COMPLETED: 'Hoàn tất',
     OVERDUE: 'Quá hạn',
 
     // Need statuses

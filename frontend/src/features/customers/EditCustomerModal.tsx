@@ -64,7 +64,8 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
         dateOfBirth: formattedDob,
         note: customer.note || customer.address || '',
         sourceId: customer.sourceId || '',
-        overallStatus: customer.overallStatus || 'LEAD_MOI',
+        // overallStatus may hold a CaseProgress value at runtime (derived from latest case)
+        overallStatus: (customer.overallStatus || 'LEAD_MOI') as any,
         priority: customer.priority || 'CHUA_CO_NHU_CAU',
       });
     }

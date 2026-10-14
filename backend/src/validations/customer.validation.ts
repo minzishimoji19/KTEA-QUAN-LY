@@ -1,11 +1,11 @@
 import { z } from 'zod';
-import { CustomerStatus, Gender, PriorityLevel } from '@prisma/client';
+import { CustomerStatus, CaseProgress, Gender, PriorityLevel } from '@prisma/client';
 
 export const listCustomersQuerySchema = z.object({
   page: z.string().optional().default('1').transform((val) => Math.max(1, parseInt(val, 10) || 1)),
   pageSize: z.string().optional().default('25').transform((val) => Math.min(100, Math.max(1, parseInt(val, 10) || 25))),
   search: z.string().optional(),
-  status: z.nativeEnum(CustomerStatus).optional(),
+  status: z.union([z.nativeEnum(CustomerStatus), z.nativeEnum(CaseProgress), z.string()]).optional(),
   priority: z.nativeEnum(PriorityLevel).optional(),
   sourceId: z.string().trim().optional().transform((val) => (val && val !== 'all' ? val : undefined)),
   product: z.string().optional(),

@@ -22,7 +22,8 @@
     "test:improvements": "tsx src/tests/verify-customer-improvements.ts",
     "test:bulk-tags": "tsx src/tests/verify-bulk-tags.ts",
     "test:followup-bulk": "tsx src/tests/verify-followup-bulk-fix.ts",
-    "test": "tsx src/tests/verify-followup-bulk-fix.ts"
+    "test:status-sync": "tsx src/tests/verify-sync-customer-status.ts",
+    "test": "tsx src/tests/verify-sync-customer-status.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -666,14 +666,26 @@ export const CustomersPage: React.FC = () => {
         <select
           value={status}
           onChange={(e) => updateFilters({ status: e.target.value || undefined, page: 1 })}
-          className="h-8 bg-slate-900 border border-slate-800 rounded px-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
+          className="h-8 bg-slate-900 border border-slate-800 rounded px-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-sans"
         >
           <option value="">Tất cả trạng thái</option>
-          <option value="LEAD_MOI">Lead mới (LEAD_MOI)</option>
-          <option value="DANG_TIEP_CAN">Đang tiếp cận (DANG_TIEP_CAN)</option>
-          <option value="DANG_TU_VAN">Đang tư vấn (DANG_TU_VAN)</option>
-          <option value="THANH_CONG">Thành công (THANH_CONG)</option>
-          <option value="KHONG_KHA_THI">Không khả thi (KHONG_KHA_THI)</option>
+          <optgroup label="Trạng thái hồ sơ">
+            <option value="NOT_SELECTED">1. Chưa có sản phẩm</option>
+            <option value="REGISTRATION_CREATED">2. Đăng ký tạo</option>
+            <option value="REGISTRATION_COMPLETED">3. Hoàn tất đăng ký</option>
+            <option value="UNDER_REVIEW">4. Đang thẩm định</option>
+            <option value="APPROVED">5. Đã duyệt</option>
+            <option value="CARD_ISSUED">6. Phát hành thẻ / Hợp đồng</option>
+            <option value="CARD_ACTIVATED">7. Kích hoạt</option>
+            <option value="COMPLETED">8. Hoàn tất</option>
+          </optgroup>
+          <optgroup label="Khách chưa có hồ sơ">
+            <option value="LEAD_MOI">Lead mới</option>
+            <option value="DANG_TIEP_CAN">Đang tiếp cận</option>
+            <option value="DANG_TU_VAN">Đang tư vấn</option>
+            <option value="THANH_CONG">Thành công</option>
+            <option value="KHONG_KHA_THI">Không khả thi</option>
+          </optgroup>
         </select>
 
         {/* Priority / Need Filter */}
