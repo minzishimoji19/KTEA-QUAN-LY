@@ -2,12 +2,41 @@ import { FollowUpStatus, ActivityType, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { followUpRepository } from '../repositories/followUp.repository.js';
 import { customerRepository } from '../repositories/customer.repository.js';
+import { caretakerRepository } from '../repositories/caretaker.repository.js';
 import { NotFoundError, BadRequestError } from '../utils/errors.js';
 import BaseService from './base.service.js';
 import prisma from '../config/database.js';
 import { pushNotificationService } from './pushNotification.service.js';
 
 export class FollowUpService extends BaseService {
+  /**
+   * Validates assignedTo name against caretakers catalog.
+   * If allowInactiveIfCurrentSame is provided and matches the caretaker, allows keeping inactive caretaker on existing records.
+   */
+  async validateAssignedTo(name?: string | null, allowInactiveIfCurrentSame?: string | null): Promise<string | null> {
+    if (!name || typeof name !== 'string') {
+      return null;
+    }
+    const trimmed = name.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const caretaker = await caretakerRepository.findByName(trimmed);
+    if (!caretaker) {
+      throw new BadRequestError(`Người chăm sóc '${trimmed}' không tồn tại trong hệ thống. Vui lòng thêm người chăm sóc trước.`);
+    }
+
+    if (!caretaker.active) {
+      const isSameAsCurrent = allowInactiveIfCurrentSame && allowInactiveIfCurrentSame.toLowerCase() === caretaker.name.toLowerCase();
+      if (!isSameAsCurrent) {
+        throw new BadRequestError(`Người chăm sóc '${caretaker.name}' đã ngừng hoạt động và không thể phân công mới.`);
+      }
+    }
+
+    return caretaker.name;
+  }
+
   async getFollowUps(
     filter?: 'today' | 'overdue' | 'upcoming' | 'completed' | 'all',
     status?: FollowUpStatus,
@@ -64,7 +93,7 @@ export class FollowUpService extends BaseService {
     }
 
     const followUpStatus = data.status || FollowUpStatus.PENDING;
-    const caretaker = data.assignedTo || null;
+    const caretaker = await this.validateAssignedTo(data.assignedTo);
     const desc = data.description !== undefined ? data.description : null;
     const dueDateStr = dueDate.toISOString().split('T')[0];
 
@@ -168,7 +197,7 @@ export class FollowUpService extends BaseService {
     }
 
     const followUpStatus = status || FollowUpStatus.PENDING;
-    const caretaker = assignedTo || null;
+    const caretaker = await this.validateAssignedTo(assignedTo);
     const desc = description !== undefined ? description : null;
     const dueDateStr = dueDate.toISOString().split('T')[0];
     const BATCH_SIZE = 250;
@@ -297,6 +326,10 @@ export class FollowUpService extends BaseService {
       completionDate = null;
     }
 
+    const validatedCaretaker = data.assignedTo !== undefined
+      ? await this.validateAssignedTo(data.assignedTo, current.assignedTo)
+      : undefined;
+
     return prisma.$transaction(async (tx) => {
       const updated = await tx.followUp.update({
         where: { id },
@@ -305,7 +338,7 @@ export class FollowUpService extends BaseService {
           description: data.description,
           dueAt: dueDate,
           status: data.status,
-          assignedTo: data.assignedTo !== undefined ? data.assignedTo : undefined,
+          assignedTo: validatedCaretaker,
           completedAt: completionDate,
         },
         include: {

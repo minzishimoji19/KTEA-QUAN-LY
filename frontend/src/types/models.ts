@@ -27,7 +27,17 @@ export type PriorityLevel =
 export type BulkActionType = 'UPDATE_STATUS' | 'UPDATE_PRIORITY' | 'ADD_TAG' | 'ASSIGN_SOURCE' | 'DELETE_CUSTOMERS';
 
 export const CARETAKERS = ['Ktea', 'xoaicaldez', 'mfast'] as const;
-export type Caretaker = typeof CARETAKERS[number];
+
+export interface Caretaker {
+  id: string;
+  name: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    followUps: number;
+  };
+}
 
 export interface BulkActionResult {
   affected: number;

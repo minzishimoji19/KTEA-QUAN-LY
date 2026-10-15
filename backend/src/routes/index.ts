@@ -15,6 +15,7 @@ import settingsRoutes from './settings.routes.js';
 import dataRoutes from './data.routes.js';
 import customerSourceRoutes from './customerSource.routes.js';
 import pushNotificationRoutes from './pushNotification.routes.js';
+import caretakerRoutes from './caretaker.routes.js';
 
 const router = Router();
 
@@ -25,6 +26,7 @@ router.use(healthRoutes);
 router.use('/customers', customerRoutes);
 router.use('/cases', caseRoutes);
 router.use('/customer-sources', customerSourceRoutes);
+router.use('/caretakers', caretakerRoutes);
 router.use('/needs', needRoutes);
 router.use('/notes', noteRoutes);
 router.use('/tags', tagRoutes);

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { X, CalendarCheck, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useUpdateFollowUp } from '../../hooks/useFollowUps';
-import { FollowUp, FollowUpStatus, CARETAKERS } from '../../types/models';
+import { useCaretakers } from '../../hooks/useCaretakers';
+import { FollowUp, FollowUpStatus } from '../../types/models';
 
 export interface EditFollowUpModalProps {
   isOpen: boolean;
@@ -16,6 +17,7 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
   followUp,
 }) => {
   const updateFollowUp = useUpdateFollowUp();
+  const { data: caretakers, isLoading: isCaretakersLoading } = useCaretakers();
 
   const [title, setTitle] = useState('');
   const [dueAt, setDueAt] = useState('');
@@ -144,14 +146,21 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
                 <select
                   value={assignedTo}
                   onChange={(e) => setAssignedTo(e.target.value)}
+                  disabled={isCaretakersLoading}
                   className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-medium focus:outline-none focus:border-blue-500"
                 >
                   <option value="">-- Chưa phân công --</option>
-                  {CARETAKERS.map((caretaker) => (
-                    <option key={caretaker} value={caretaker}>
-                      {caretaker}
-                    </option>
-                  ))}
+                  {assignedTo && caretakers && !caretakers.some((c) => c.name.toLowerCase() === assignedTo.toLowerCase()) && (
+                    <option value={assignedTo}>{assignedTo} (Lịch sử)</option>
+                  )}
+                  {caretakers &&
+                    caretakers
+                      .filter((c) => c.active || (assignedTo && c.name.toLowerCase() === assignedTo.toLowerCase()))
+                      .map((c) => (
+                        <option key={c.id} value={c.name}>
+                          {c.name} {!c.active ? '(Đã ngừng hoạt động)' : ''}
+                        </option>
+                      ))}
                 </select>
               </div>
             </div>

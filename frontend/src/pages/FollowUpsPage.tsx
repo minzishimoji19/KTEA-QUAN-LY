@@ -35,7 +35,8 @@ import {
   useBulkCompleteFollowUps,
   useBulkDeleteFollowUps,
 } from '../hooks/useFollowUps';
-import { FollowUp, CARETAKERS } from '../types/models';
+import { useCaretakers } from '../hooks/useCaretakers';
+import { FollowUp } from '../types/models';
 import { categorizeFollowUps } from '../utils/followUpUtils';
 import { EditFollowUpModal } from '../features/customers/EditFollowUpModal';
 import { ScheduleFollowUpModal } from '../features/customers/ScheduleFollowUpModal';
@@ -43,6 +44,7 @@ import { ScheduleFollowUpModal } from '../features/customers/ScheduleFollowUpMod
 export const FollowUpsPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { data: caretakers, isLoading: isCaretakersLoading } = useCaretakers();
   const { toast } = useToast();
 
   const { data: followUps, isLoading, isError, refetch } = useFollowUps({ filter: 'all' });
@@ -108,7 +110,7 @@ export const FollowUpsPage: React.FC = () => {
     return rawList.filter((task) => {
       if (caretakerFilter === 'all') return true;
       if (caretakerFilter === 'unassigned') return !task.assignedTo;
-      return task.assignedTo === caretakerFilter;
+      return task.assignedTo?.toLowerCase() === caretakerFilter.toLowerCase();
     });
   }, [followUps, caretakerFilter]);
 
@@ -493,15 +495,17 @@ export const FollowUpsPage: React.FC = () => {
           <select
             value={caretakerFilter}
             onChange={(e) => handleSelectCaretaker(e.target.value)}
+            disabled={isCaretakersLoading}
             className="h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono text-xs focus:outline-none focus:border-blue-500"
           >
             <option value="all">Tất cả người chăm sóc</option>
             <option value="unassigned">Chưa phân công</option>
-            {CARETAKERS.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
+            {caretakers &&
+              caretakers.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name} {!c.active ? '(Đã ngừng)' : ''}
+                </option>
+              ))}
           </select>
         </div>
       </div>

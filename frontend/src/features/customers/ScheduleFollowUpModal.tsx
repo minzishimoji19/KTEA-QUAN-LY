@@ -3,7 +3,7 @@ import { X, CalendarCheck, AlertCircle, Search, Users, User, Check, Loader2 } fr
 import { Button } from '../../components/ui/Button';
 import { useCreateFollowUp, useCreateBulkFollowUp } from '../../hooks/useFollowUps';
 import { customerService } from '../../services/customerService';
-import { CARETAKERS } from '../../types/models';
+import { useCaretakers } from '../../hooks/useCaretakers';
 
 export interface SelectedCustomerItem {
   id: string;
@@ -28,6 +28,7 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
 }) => {
   const createFollowUp = useCreateFollowUp();
   const createBulkFollowUp = useCreateBulkFollowUp();
+  const { data: caretakers, isLoading: isCaretakersLoading } = useCaretakers(true);
 
   // Tomorrow by default
   const tomorrow = new Date();
@@ -360,12 +361,13 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
                 <select
                   value={assignedTo}
                   onChange={(e) => setAssignedTo(e.target.value)}
+                  disabled={isCaretakersLoading}
                   className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-medium focus:outline-none focus:border-blue-500"
                 >
                   <option value="">-- Chưa phân công --</option>
-                  {CARETAKERS.map((caretaker) => (
-                    <option key={caretaker} value={caretaker}>
-                      {caretaker}
+                  {caretakers && caretakers.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
                     </option>
                   ))}
                 </select>

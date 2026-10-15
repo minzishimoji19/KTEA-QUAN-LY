@@ -20,9 +20,7 @@ export const createFollowUpSchema = z.object({
   description: z.string().max(2000).optional().nullable(),
   dueAt: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)),
   status: z.nativeEnum(FollowUpStatus).optional().default(FollowUpStatus.PENDING),
-  assignedTo: z.enum(VALID_CARETAKERS, {
-    errorMap: () => ({ message: 'Người chăm sóc không hợp lệ. Vui lòng chọn Ktea, xoaicaldez hoặc mfast.' }),
-  }).optional().nullable(),
+  assignedTo: z.string().trim().max(100).optional().nullable().transform((val) => (val === '' ? null : val)),
 });
 
 export const createBulkFollowUpSchema = z.object({
@@ -31,9 +29,7 @@ export const createBulkFollowUpSchema = z.object({
   description: z.string().max(2000).optional().nullable(),
   dueAt: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)),
   status: z.nativeEnum(FollowUpStatus).optional().default(FollowUpStatus.PENDING),
-  assignedTo: z.enum(VALID_CARETAKERS, {
-    errorMap: () => ({ message: 'Người chăm sóc không hợp lệ. Vui lòng chọn Ktea, xoaicaldez hoặc mfast.' }),
-  }).optional().nullable(),
+  assignedTo: z.string().trim().max(100).optional().nullable().transform((val) => (val === '' ? null : val)),
 });
 
 export const updateFollowUpSchema = z.object({
@@ -41,9 +37,7 @@ export const updateFollowUpSchema = z.object({
   description: z.string().max(2000).optional().nullable(),
   dueAt: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)).optional(),
   status: z.nativeEnum(FollowUpStatus).optional(),
-  assignedTo: z.enum(VALID_CARETAKERS, {
-    errorMap: () => ({ message: 'Người chăm sóc không hợp lệ. Vui lòng chọn Ktea, xoaicaldez hoặc mfast.' }),
-  }).optional().nullable(),
+  assignedTo: z.string().trim().max(100).optional().nullable().transform((val) => (val === '' ? null : val)),
   completedAt: z.string().datetime().optional().nullable().or(z.string().regex(/^\d{4}-\d{2}-\d{2}/).optional().nullable()),
 });
 
