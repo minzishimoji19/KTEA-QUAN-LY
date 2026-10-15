@@ -35,13 +35,14 @@ import {
   useSettings,
   useUpdateGeneralSettings,
   useUpdateNeedCategories,
+  useDeleteNeedCategory,
   useUpdateRecommendationSettings,
   useDataGovernanceStatus,
 } from '../hooks/useSettings';
-import { useProducts, useUpdateProduct } from '../hooks/useProducts';
+import { useProducts, useUpdateProduct, useDeleteProduct } from '../hooks/useProducts';
 import { useTags, useDeleteTag } from '../hooks/useTags';
-import { useCustomerSources, useUpdateCustomerSource } from '../hooks/useCustomerSources';
-import { Product, Tag } from '../types/models';
+import { useCustomerSources, useUpdateCustomerSource, useDeleteCustomerSource } from '../hooks/useCustomerSources';
+import { Product, Tag, CustomerSource } from '../types/models';
 import { NeedCategorySetting } from '../types/settings';
 import settingsService from '../services/settingsService';
 import { ProductModal } from '../features/settings/ProductModal';
@@ -75,13 +76,17 @@ export const SettingsPage: React.FC = () => {
   // Mutations
   const updateGeneral = useUpdateGeneralSettings();
   const updateSource = useUpdateCustomerSource();
+  const deleteSource = useDeleteCustomerSource();
   const updateNeedCategories = useUpdateNeedCategories();
+  const deleteNeedCategory = useDeleteNeedCategory();
   const updateRecommendations = useUpdateRecommendationSettings();
   const updateProduct = useUpdateProduct();
+  const deleteProduct = useDeleteProduct();
   const deleteTag = useDeleteTag();
 
   // Customer Source Modal State
   const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
+  const [deletingSource, setDeletingSource] = useState<CustomerSource | null>(null);
 
   // General Form State
   const [appName, setAppName] = useState('');
@@ -103,6 +108,7 @@ export const SettingsPage: React.FC = () => {
   // Product Modal State
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
 
   // Tag Modal State
   const [editingTag, setEditingTag] = useState<Tag | null>(null);
@@ -112,6 +118,7 @@ export const SettingsPage: React.FC = () => {
   // Need Category Modal State
   const [editingCategory, setEditingCategory] = useState<NeedCategorySetting | null>(null);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [deletingCategory, setDeletingCategory] = useState<NeedCategorySetting | null>(null);
 
   // Recommendation Tuning Local State
   const [recConfig, setRecConfig] = useState(settings?.recommendationSettings);
@@ -203,6 +210,39 @@ export const SettingsPage: React.FC = () => {
       setDeletingTag(null);
     } catch (err: any) {
       toast.error('Xóa thất bại', err?.message || 'Không thể gỡ bỏ thẻ.');
+    }
+  };
+
+  const handleDeleteSourceConfirm = async () => {
+    if (!deletingSource) return;
+    try {
+      await deleteSource.mutateAsync(deletingSource.id);
+      toast.success('Đã xóa nguồn khách', `Nguồn "${deletingSource.name}" đã được gỡ bỏ khỏi hệ thống.`);
+      setDeletingSource(null);
+    } catch (err: any) {
+      toast.error('Xóa thất bại', err?.message || 'Không thể xóa nguồn khách hàng.');
+    }
+  };
+
+  const handleDeleteProductConfirm = async () => {
+    if (!deletingProduct) return;
+    try {
+      await deleteProduct.mutateAsync(deletingProduct.id);
+      toast.success('Đã xóa sản phẩm', `Sản phẩm "${deletingProduct.name}" đã được gỡ bỏ khỏi danh mục.`);
+      setDeletingProduct(null);
+    } catch (err: any) {
+      toast.error('Xóa thất bại', err?.message || 'Không thể xóa sản phẩm.');
+    }
+  };
+
+  const handleDeleteNeedCategoryConfirm = async () => {
+    if (!deletingCategory) return;
+    try {
+      await deleteNeedCategory.mutateAsync(deletingCategory.code);
+      toast.success('Đã xóa nhóm nhu cầu', `Nhóm "${deletingCategory.label}" (${deletingCategory.code}) đã được xóa.`);
+      setDeletingCategory(null);
+    } catch (err: any) {
+      toast.error('Xóa thất bại', err?.message || 'Không thể xóa nhóm nhu cầu.');
     }
   };
 
@@ -465,33 +505,44 @@ export const SettingsPage: React.FC = () => {
                         <DateDisplay date={s.createdAt} />
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={async () => {
-                            try {
-                              await updateSource.mutateAsync({
-                                id: s.id,
-                                data: { active: !s.active },
-                              });
-                              toast.success(
-                                'Cập nhật thành công',
-                                `Nguồn "${s.name}" đã được ${!s.active ? 'kích hoạt' : 'vô hiệu hóa'}.`
-                              );
-                            } catch (err: unknown) {
-                              const message = err instanceof Error ? err.message : 'Không thể thay đổi trạng thái nguồn.';
-                              toast.error('Lỗi cập nhật', message);
-                            }
-                          }}
-                          disabled={updateSource.isPending}
-                          className={`h-6 px-2.5 text-[11px] font-mono ${
-                            s.active
-                              ? 'border-amber-800/80 text-amber-300 hover:bg-amber-950/40'
-                              : 'border-emerald-800/80 text-emerald-300 hover:bg-emerald-950/40'
-                          }`}
-                        >
-                          {s.active ? 'Vô hiệu hóa' : 'Kích hoạt'}
-                        </Button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                await updateSource.mutateAsync({
+                                  id: s.id,
+                                  data: { active: !s.active },
+                                });
+                                toast.success(
+                                  'Cập nhật thành công',
+                                  `Nguồn "${s.name}" đã được ${!s.active ? 'kích hoạt' : 'vô hiệu hóa'}.`
+                                );
+                              } catch (err: unknown) {
+                                const message = err instanceof Error ? err.message : 'Không thể thay đổi trạng thái nguồn.';
+                                toast.error('Lỗi cập nhật', message);
+                              }
+                            }}
+                            disabled={updateSource.isPending}
+                            className={`h-6 px-2.5 text-[11px] font-mono ${
+                              s.active
+                                ? 'border-amber-800/80 text-amber-300 hover:bg-amber-950/40'
+                                : 'border-emerald-800/80 text-emerald-300 hover:bg-emerald-950/40'
+                            }`}
+                          >
+                            {s.active ? 'Vô hiệu hóa' : 'Kích hoạt'}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDeletingSource(s)}
+                            className="h-6 px-2 text-[11px] text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 border border-transparent hover:border-rose-900/50"
+                            title="Xóa nguồn khách hàng"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -596,6 +647,15 @@ export const SettingsPage: React.FC = () => {
                             title="Chỉnh sửa sản phẩm"
                           >
                             <Edit className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDeletingProduct(prod)}
+                            className="h-7 px-2 text-[10px] text-rose-400 hover:text-rose-300 hover:bg-rose-950/40"
+                            title="Xóa sản phẩm"
+                          >
+                            <Trash2 className="w-3 h-3" />
                           </Button>
                         </div>
                       </td>
@@ -774,6 +834,15 @@ export const SettingsPage: React.FC = () => {
                           title="Chỉnh sửa nhóm nhu cầu"
                         >
                           <Edit className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDeletingCategory(cat)}
+                          className="h-7 px-2 text-[10px] text-rose-400 hover:text-rose-300 hover:bg-rose-950/40"
+                          title="Xóa nhóm nhu cầu"
+                        >
+                          <Trash2 className="w-3 h-3" />
                         </Button>
                       </div>
                     </td>
@@ -1564,6 +1633,42 @@ export const SettingsPage: React.FC = () => {
           isDestructive={true}
           onConfirm={handleDeleteTagConfirm}
           onCancel={() => setDeletingTag(null)}
+        />
+      )}
+
+      {deletingSource && (
+        <ConfirmDialog
+          isOpen={Boolean(deletingSource)}
+          title="Xóa nguồn khách hàng"
+          message={`Bạn có chắc chắn muốn xóa nguồn khách hàng "${deletingSource.name}"? Nếu nguồn này đang được khách hàng tham chiếu, hệ thống sẽ từ chối để bảo vệ toàn vẹn dữ liệu.`}
+          confirmLabel="Xóa nguồn"
+          isDestructive={true}
+          onConfirm={handleDeleteSourceConfirm}
+          onCancel={() => setDeletingSource(null)}
+        />
+      )}
+
+      {deletingProduct && (
+        <ConfirmDialog
+          isOpen={Boolean(deletingProduct)}
+          title="Xóa sản phẩm"
+          message={`Bạn có chắc chắn muốn xóa sản phẩm "${deletingProduct.name}" (${deletingProduct.code})? Nếu sản phẩm đang được liên kết với hồ sơ vay hoặc đề xuất, hệ thống sẽ từ chối xóa để bảo vệ dữ liệu.`}
+          confirmLabel="Xóa sản phẩm"
+          isDestructive={true}
+          onConfirm={handleDeleteProductConfirm}
+          onCancel={() => setDeletingProduct(null)}
+        />
+      )}
+
+      {deletingCategory && (
+        <ConfirmDialog
+          isOpen={Boolean(deletingCategory)}
+          title="Xóa nhóm nhu cầu"
+          message={`Bạn có chắc chắn muốn xóa nhóm nhu cầu "${deletingCategory.label}" (${deletingCategory.code})? Nếu nhóm nhu cầu đang được ghi nhận trên hồ sơ khách hàng, hệ thống sẽ từ chối để bảo toàn dữ liệu.`}
+          confirmLabel="Xóa nhóm"
+          isDestructive={true}
+          onConfirm={handleDeleteNeedCategoryConfirm}
+          onCancel={() => setDeletingCategory(null)}
         />
       )}
     </div>

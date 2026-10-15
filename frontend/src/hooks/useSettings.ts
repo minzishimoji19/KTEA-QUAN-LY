@@ -47,6 +47,17 @@ export const useUpdateNeedCategories = () => {
   });
 };
 
+export const useDeleteNeedCategory = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (code: string) => settingsService.deleteNeedCategory(code),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(SETTINGS_QUERY_KEY, updated);
+      queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY });
+    },
+  });
+};
+
 export const useUpdateStatusSettings = () => {
   const queryClient = useQueryClient();
   return useMutation({

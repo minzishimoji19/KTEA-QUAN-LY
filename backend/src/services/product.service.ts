@@ -1,6 +1,7 @@
 import { productRepository } from '../repositories/product.repository.js';
 import { NotFoundError, ConflictError } from '../utils/errors.js';
 import BaseService from './base.service.js';
+import prisma from '../config/database.js';
 
 export class ProductService extends BaseService {
   async getAllProducts(activeOnly = false) {
@@ -45,7 +46,36 @@ export class ProductService extends BaseService {
   }
 
   async deleteProduct(id: string) {
-    await this.getProductById(id);
+    const product = await this.getProductById(id);
+
+    const counts = await prisma.product.findUnique({
+      where: { id },
+      select: {
+        _count: {
+          select: {
+            cases: true,
+            recommendations: true,
+            pushRecords: true,
+          },
+        },
+      },
+    });
+
+    const caseCount = counts?._count.cases ?? 0;
+    const recCount = counts?._count.recommendations ?? 0;
+    const pushCount = counts?._count.pushRecords ?? 0;
+    const totalRefs = caseCount + recCount + pushCount;
+
+    if (totalRefs > 0) {
+      const details: string[] = [];
+      if (caseCount > 0) details.push(`${caseCount} hồ sơ khách hàng`);
+      if (recCount > 0) details.push(`${recCount} đề xuất sản phẩm`);
+      if (pushCount > 0) details.push(`${pushCount} lượt chuyển khách`);
+      throw new ConflictError(
+        `Không thể xóa sản phẩm "${product.name}" do đang được liên kết với ${details.join(', ')}. Vui lòng tắt kích hoạt (Deactivate) sản phẩm thay vì xóa.`
+      );
+    }
+
     return productRepository.delete(id);
   }
 }

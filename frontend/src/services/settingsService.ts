@@ -21,6 +21,10 @@ export const settingsService = {
     return apiClient.patch<AppSettings>('/settings/needs', data);
   },
 
+  deleteNeedCategory: async (code: string): Promise<AppSettings> => {
+    return apiClient.delete<AppSettings>(`/settings/needs/${encodeURIComponent(code)}`);
+  },
+
   updateStatuses: async (data: StatusSetting[]): Promise<AppSettings> => {
     return apiClient.patch<AppSettings>('/settings/statuses', data);
   },

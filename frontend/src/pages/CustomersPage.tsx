@@ -559,18 +559,35 @@ export const CustomersPage: React.FC = () => {
       },
     },
     {
-      key: 'createdAt',
-      header: 'Ngày tạo',
-      sortable: true,
-      width: '115px',
-      render: (row) => <DateDisplay date={row.createdAt} className="text-xs font-mono" />,
+      key: 'careCount',
+      header: 'Số lần chăm sóc',
+      width: '130px',
+      align: 'center',
+      render: (row) => {
+        const count = row.careCount ?? 0;
+        return (
+          <span
+            className={`inline-flex items-center justify-center font-mono text-xs px-2.5 py-0.5 rounded-full border ${
+              count > 0
+                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50 font-semibold'
+                : 'bg-slate-900 text-slate-500 border-slate-800'
+            }`}
+          >
+            {count}
+          </span>
+        );
+      },
     },
     {
-      key: 'updatedAt',
-      header: 'Cập nhật',
-      sortable: true,
-      width: '115px',
-      render: (row) => <DateDisplay date={row.updatedAt} className="text-xs font-mono" />,
+      key: 'lastCareAt',
+      header: 'Lần chăm sóc gần nhất',
+      width: '170px',
+      render: (row) => {
+        if (!row.lastCareAt) {
+          return <span className="text-slate-500 font-sans text-xs">Chưa có lịch sử chăm sóc</span>;
+        }
+        return <DateDisplay date={row.lastCareAt} className="text-xs font-mono" />;
+      },
     },
     {
       key: 'actions',

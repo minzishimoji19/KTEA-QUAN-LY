@@ -56,28 +56,80 @@ export function resolveCustomerStatus(customer: CustomerWithCases): string {
 }
 
 /**
- * Attaches resolved status to customer object consistently for all API responses.
+ * Resolves care statistics for a customer:
+ * - careCount: Total number of completed care tasks (FollowUp with status === COMPLETED).
+ *   Pending, upcoming, and cancelled follow-ups are strictly excluded.
+ * - lastCareAt: Timestamp of the most recent completed care task.
+ *   Does not use customer.updatedAt.
+ *   Returns null if customer has no completed care interactions.
+ */
+export function resolveCustomerCareStats(customer: Record<string, any>): {
+  careCount: number;
+  lastCareAt: string | null;
+} {
+  let careCount = 0;
+  let lastCareAt: string | null = null;
+
+  if (customer._count?.followUps !== undefined) {
+    careCount = Number(customer._count.followUps);
+  }
+
+  if (Array.isArray(customer.followUps) && customer.followUps.length > 0) {
+    const completedFollowUps = customer.followUps
+      .filter((f: any) => f && f.status === 'COMPLETED')
+      .sort((a: any, b: any) => {
+        const timeA = new Date(a.completedAt || a.updatedAt || a.createdAt).getTime();
+        const timeB = new Date(b.completedAt || b.updatedAt || b.createdAt).getTime();
+        if (timeA !== timeB) return timeB - timeA;
+        return String(b.id || '').localeCompare(String(a.id || ''));
+      });
+
+    if (customer._count?.followUps === undefined) {
+      careCount = completedFollowUps.length;
+    }
+
+    if (completedFollowUps.length > 0) {
+      const latest = completedFollowUps[0];
+      const dateVal = latest.completedAt || latest.updatedAt;
+      if (dateVal) {
+        lastCareAt = new Date(dateVal).toISOString();
+      }
+    }
+  }
+
+  return { careCount, lastCareAt };
+}
+
+/**
+ * Attaches resolved status and care statistics to customer object consistently for all API responses.
  */
 export function enrichCustomerWithStatus<T extends CustomerWithCases>(customer: T): T & {
   overallStatus: string;
   currentStatus: string;
   latestCase: any | null;
+  careCount: number;
+  lastCareAt: string | null;
 } {
   const latestCase = getLatestCase(customer.cases);
   const resolvedStatus = latestCase && latestCase.progress ? latestCase.progress : customer.overallStatus;
+  const careStats = resolveCustomerCareStats(customer);
 
   return {
     ...customer,
     overallStatus: resolvedStatus,
     currentStatus: resolvedStatus,
     latestCase: latestCase || null,
+    careCount: careStats.careCount,
+    lastCareAt: careStats.lastCareAt,
   };
 }
 
 export const customerStatusService = {
   getLatestCase,
   resolveCustomerStatus,
+  resolveCustomerCareStats,
   enrichCustomerWithStatus,
 };
 
 export default customerStatusService;
+

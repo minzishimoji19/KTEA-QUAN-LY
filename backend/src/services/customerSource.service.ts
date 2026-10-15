@@ -45,11 +45,11 @@ export class CustomerSourceService extends BaseService {
   }
 
   async deleteSource(id: string) {
-    await this.getSourceById(id);
+    const source = await this.getSourceById(id);
     const inUseCount = await customerSourceRepository.countCustomersUsingSource(id);
     if (inUseCount > 0) {
       throw new ConflictError(
-        `Cannot delete source that is associated with ${inUseCount} customer(s). Please deactivate it instead.`
+        `Không thể xóa nguồn khách hàng "${source.name}" do đang được liên kết với ${inUseCount} khách hàng. Vui lòng vô hiệu hóa nguồn thay vì xóa.`
       );
     }
     return customerSourceRepository.delete(id);

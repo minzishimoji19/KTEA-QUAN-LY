@@ -42,6 +42,20 @@ export const updateNeedCategories = async (
   }
 };
 
+export const deleteNeedCategory = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { code } = req.params;
+    const updated = await settingsService.deleteNeedCategory(code);
+    sendSuccess(res, updated, 'Đã xóa nhóm nhu cầu thành công');
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const updateStatusSettings = async (
   req: Request,
   res: Response,

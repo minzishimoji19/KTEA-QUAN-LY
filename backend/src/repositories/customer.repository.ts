@@ -171,9 +171,14 @@ export class CustomerRepository extends BaseRepository {
             take: 1,
           },
           followUps: {
-            where: { status: 'PENDING' },
-            orderBy: { dueAt: 'asc' },
+            where: { status: 'COMPLETED' },
+            orderBy: [
+              { completedAt: 'desc' },
+              { updatedAt: 'desc' },
+              { id: 'desc' },
+            ],
             take: 1,
+            select: { id: true, completedAt: true, updatedAt: true, assignedTo: true, title: true, status: true },
           },
           recommendations: {
             where: { status: { in: ['NEW', 'ACTIVE', 'REVIEWED'] } },
@@ -188,7 +193,7 @@ export class CustomerRepository extends BaseRepository {
               cases: true,
               needs: true,
               activities: true,
-              followUps: { where: { status: 'PENDING' } },
+              followUps: { where: { status: 'COMPLETED' } },
             },
           },
         },
@@ -212,6 +217,24 @@ export class CustomerRepository extends BaseRepository {
             { createdAt: 'desc' },
             { id: 'desc' },
           ],
+        },
+        followUps: {
+          where: { status: 'COMPLETED' },
+          orderBy: [
+            { completedAt: 'desc' },
+            { updatedAt: 'desc' },
+            { id: 'desc' },
+          ],
+          take: 1,
+          select: { id: true, completedAt: true, updatedAt: true, assignedTo: true, title: true, status: true },
+        },
+        _count: {
+          select: {
+            cases: true,
+            needs: true,
+            activities: true,
+            followUps: { where: { status: 'COMPLETED' } },
+          },
         },
       },
     });

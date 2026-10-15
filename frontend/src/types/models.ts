@@ -274,6 +274,8 @@ export interface CustomerSummary {
   createdAt: string;
   updatedAt: string;
   customerTags: CustomerTag[];
+  careCount?: number;
+  lastCareAt?: string | null;
   cases?: CustomerCase[];
   needs?: CustomerNeed[];
   activities?: CustomerActivity[];
