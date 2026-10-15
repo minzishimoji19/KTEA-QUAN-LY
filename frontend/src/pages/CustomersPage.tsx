@@ -600,7 +600,9 @@ export const CustomersPage: React.FC = () => {
           size="sm"
           onClick={(e) => {
             e.stopPropagation();
-            navigate(`/customers/${row.id}`);
+            navigate(`/customers/${row.id}`, {
+              state: { returnUrl: `/customers?${searchParams.toString()}` },
+            });
           }}
           className="h-6 px-2 text-[11px] gap-1 hover:border-blue-500/60 hover:text-blue-300 font-mono"
         >
@@ -996,7 +998,11 @@ export const CustomersPage: React.FC = () => {
         onEmptyAction={
           activeFilterCount > 0 ? handleResetFilters : () => setIsCreateOpen(true)
         }
-        onRowClick={(row) => navigate(`/customers/${row.id}`)}
+        onRowClick={(row) =>
+          navigate(`/customers/${row.id}`, {
+            state: { returnUrl: `/customers?${searchParams.toString()}` },
+          })
+        }
       />
 
       {/* Pagination Controls */}

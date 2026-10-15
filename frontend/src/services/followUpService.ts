@@ -5,6 +5,13 @@ export interface FollowUpQueryParams {
   filter?: 'today' | 'overdue' | 'upcoming' | 'completed' | 'all';
   status?: FollowUpStatus;
   customerId?: string;
+  assignedTo?: string;
+}
+
+export interface BulkOperationResult {
+  total: number;
+  succeeded: string[];
+  failed: Array<{ id: string; reason: string }>;
 }
 
 export const followUpService = {
@@ -13,6 +20,7 @@ export const followUpService = {
     if (params.filter) query.append('filter', params.filter);
     if (params.status) query.append('status', params.status);
     if (params.customerId) query.append('customerId', params.customerId);
+    if (params.assignedTo) query.append('assignedTo', params.assignedTo);
 
     const queryString = query.toString() ? `?${query.toString()}` : '';
     return apiClient.get<FollowUp[]>(`/follow-ups${queryString}`);
@@ -31,6 +39,14 @@ export const followUpService = {
     assignedTo?: string | null;
   }): Promise<{ count: number; followUps: FollowUp[] }> => {
     return apiClient.post<{ count: number; followUps: FollowUp[] }>('/follow-ups/bulk', data);
+  },
+
+  completeBulkFollowUps: async (ids: string[]): Promise<BulkOperationResult> => {
+    return apiClient.post<BulkOperationResult>('/follow-ups/bulk-complete', { ids });
+  },
+
+  deleteBulkFollowUps: async (ids: string[]): Promise<BulkOperationResult> => {
+    return apiClient.post<BulkOperationResult>('/follow-ups/bulk-delete', { ids });
   },
 
   updateFollowUp: async (id: string, data: Partial<FollowUp>): Promise<FollowUp> => {

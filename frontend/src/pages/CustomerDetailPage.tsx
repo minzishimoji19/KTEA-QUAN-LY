@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft,
   User,
@@ -65,6 +65,8 @@ export const CustomerDetailPage: React.FC = () => {
   const { id, customerId } = useParams<{ id?: string; customerId?: string }>();
   const targetCustomerId = customerId || id;
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnUrl = (location.state as { returnUrl?: string })?.returnUrl || '/customers';
 
   // Queries
   const { data: customer, isLoading, isError, refetch } = useCustomerDetail(targetCustomerId);
@@ -153,11 +155,14 @@ export const CustomerDetailPage: React.FC = () => {
     return (
       <div className="max-w-7xl mx-auto space-y-4">
         <div className="flex items-center gap-2">
-          <Link to="/customers">
-            <Button variant="outline" size="sm" className="gap-1 text-xs">
-              <ArrowLeft className="w-3.5 h-3.5" /> Quay lại danh sách khách hàng
-            </Button>
-          </Link>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate(returnUrl)}
+            className="gap-1 text-xs"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> Quay lại danh sách khách hàng
+          </Button>
         </div>
         <ErrorState
           title="Không tìm thấy khách hàng"
@@ -267,12 +272,15 @@ export const CustomerDetailPage: React.FC = () => {
         {/* Navigation Breadcrumb & Back */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
           <div className="flex items-center gap-2">
-            <Link to="/customers">
-              <Button variant="outline" size="sm" className="h-7 px-2 text-xs gap-1">
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Khách hàng</span>
-              </Button>
-            </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(returnUrl)}
+              className="h-7 px-2 text-xs gap-1"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Khách hàng</span>
+            </Button>
             <span className="text-slate-600 font-mono">/</span>
             <span className="text-xs font-mono text-slate-400 truncate max-w-[200px]">
               {customer.id}
@@ -404,6 +412,14 @@ export const CustomerDetailPage: React.FC = () => {
                     Inactive
                   </span>
                 )}
+              </span>
+
+              {/* Care Count Summary Indicator */}
+              <span className="flex items-center gap-1.5 text-slate-300" title="Số lần chăm sóc thực tế đã ghi nhận">
+                <span className="text-slate-500 font-sans">Chăm sóc:</span>
+                <span className={`font-semibold font-mono ${((customer.careCount ?? 0) > 0) ? 'text-emerald-400' : 'text-slate-400'}`}>
+                  {customer.careCount ?? 0} lần
+                </span>
               </span>
 
               {/* Next Follow-up Display */}
@@ -611,6 +627,28 @@ export const CustomerDetailPage: React.FC = () => {
                     </span>
                   </div>
                 )}
+                <div className="flex justify-between py-1 border-b border-slate-800/60">
+                  <span className="text-slate-400">Số lần chăm sóc</span>
+                  <span
+                    className={`inline-flex items-center justify-center font-mono text-xs px-2 py-0.5 rounded border ${
+                      (customer.careCount ?? 0) > 0
+                        ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50 font-semibold'
+                        : 'bg-slate-900 text-slate-500 border-slate-800'
+                    }`}
+                  >
+                    {customer.careCount ?? 0} lần
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-800/60">
+                  <span className="text-slate-400">Lần chăm sóc gần nhất</span>
+                  <span className="font-mono text-slate-300 text-xs">
+                    {customer.lastCareAt ? (
+                      <DateDisplay date={customer.lastCareAt} showTime />
+                    ) : (
+                      <span className="text-slate-500 font-sans">Chưa có lịch sử chăm sóc</span>
+                    )}
+                  </span>
+                </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/60">
                   <span className="text-slate-400">Ngày tạo hồ sơ</span>
                   <span className="font-mono text-slate-300">
@@ -1277,9 +1315,13 @@ export const CustomerDetailPage: React.FC = () => {
                       <h3 className="text-sm font-semibold text-slate-100 font-sans">
                         {nextPending.title}
                       </h3>
-                      {nextPending.assignedTo && (
+                      {nextPending.assignedTo ? (
                         <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-800/60 font-semibold" title="Người phụ trách chăm sóc">
                           👤 {nextPending.assignedTo}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800" title="Chưa phân công người chăm sóc">
+                          Chưa phân công
                         </span>
                       )}
                     </div>
@@ -1376,9 +1418,13 @@ export const CustomerDetailPage: React.FC = () => {
                               {fu.title}
                             </span>
                             <StatusBadge status={fu.status} />
-                            {fu.assignedTo && (
+                            {fu.assignedTo ? (
                               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-800/60 font-semibold" title="Người phụ trách">
                                 👤 {fu.assignedTo}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800" title="Chưa phân công">
+                                Chưa phân công
                               </span>
                             )}
                             {isOverdue && (
@@ -1467,9 +1513,13 @@ export const CustomerDetailPage: React.FC = () => {
                             {fu.title}
                           </span>
                           <StatusBadge status={fu.status} />
-                          {fu.assignedTo && (
+                          {fu.assignedTo ? (
                             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-800/60 font-semibold" title="Người phụ trách">
                               👤 {fu.assignedTo}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800" title="Chưa phân công">
+                              Chưa phân công
                             </span>
                           )}
                         </div>

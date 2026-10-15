@@ -63,3 +63,25 @@ export const useCreateBulkFollowUp = () => {
     },
   });
 };
+
+export const useBulkCompleteFollowUps = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => followUpService.completeBulkFollowUps(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['follow-ups'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+    },
+  });
+};
+
+export const useBulkDeleteFollowUps = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => followUpService.deleteBulkFollowUps(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['follow-ups'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+    },
+  });
+};

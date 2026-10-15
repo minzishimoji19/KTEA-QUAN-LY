@@ -8,14 +8,19 @@ import prisma from '../config/database.js';
 import { pushNotificationService } from './pushNotification.service.js';
 
 export class FollowUpService extends BaseService {
-  async getFollowUps(filter?: 'today' | 'overdue' | 'upcoming' | 'completed' | 'all', status?: FollowUpStatus, customerId?: string) {
+  async getFollowUps(
+    filter?: 'today' | 'overdue' | 'upcoming' | 'completed' | 'all',
+    status?: FollowUpStatus,
+    customerId?: string,
+    assignedTo?: string
+  ) {
     if (customerId) {
       const customer = await customerRepository.findById(customerId);
       if (!customer) {
         throw new NotFoundError(`Customer with ID '${customerId}' not found`);
       }
     }
-    return followUpRepository.findAll(filter, status, customerId);
+    return followUpRepository.findAll(filter, status, customerId, assignedTo);
   }
 
   async getFollowUpById(id: string) {
@@ -326,8 +331,133 @@ export class FollowUpService extends BaseService {
   }
 
   async deleteFollowUp(id: string) {
-    await this.getFollowUpById(id);
+    const current = await this.getFollowUpById(id);
+    if (current.status === FollowUpStatus.COMPLETED) {
+      throw new BadRequestError('Không thể xóa lịch chăm sóc đã hoàn thành vì đây là lịch sử chăm sóc thực tế của khách hàng.');
+    }
     return followUpRepository.delete(id);
+  }
+
+  /**
+   * Bulk marks follow-ups as completed with deterministic partial success semantics.
+   * Only allows valid PENDING / IN_PROGRESS follow-ups to transition to COMPLETED.
+   * Strictly avoids modifying CustomerCase financial states.
+   */
+  async completeBulkFollowUps(data: { ids: string[] }): Promise<{
+    total: number;
+    succeeded: string[];
+    failed: Array<{ id: string; reason: string }>;
+  }> {
+    const uniqueIds = Array.from(new Set(data.ids.filter((id) => Boolean(id && id.trim()))));
+    const succeeded: string[] = [];
+    const failed: Array<{ id: string; reason: string }> = [];
+
+    for (const id of uniqueIds) {
+      try {
+        const fu = await prisma.followUp.findUnique({
+          where: { id },
+        });
+
+        if (!fu) {
+          failed.push({ id, reason: 'Không tìm thấy lịch chăm sóc' });
+          continue;
+        }
+
+        if (fu.status === FollowUpStatus.CANCELLED) {
+          failed.push({ id, reason: 'Lịch chăm sóc đã bị hủy, không thể đánh dấu hoàn thành' });
+          continue;
+        }
+
+        if (fu.status === FollowUpStatus.COMPLETED) {
+          // Already completed, record as succeeded without duplicate activity
+          succeeded.push(id);
+          continue;
+        }
+
+        // Valid status for completion (PENDING / IN_PROGRESS)
+        await prisma.$transaction(async (tx) => {
+          await tx.followUp.update({
+            where: { id },
+            data: {
+              status: FollowUpStatus.COMPLETED,
+              completedAt: new Date(),
+            },
+          });
+
+          await tx.customerActivity.create({
+            data: {
+              customerId: fu.customerId,
+              type: ActivityType.SYSTEM_EVENT,
+              title: `Follow-up COMPLETED: ${fu.title}`,
+              description: `Lịch chăm sóc được đánh dấu hoàn thành qua thao tác hàng loạt.`,
+            },
+          });
+        });
+
+        succeeded.push(id);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Lỗi khi cập nhật trạng thái lịch chăm sóc';
+        failed.push({ id, reason: msg });
+      }
+    }
+
+    return {
+      total: uniqueIds.length,
+      succeeded,
+      failed,
+    };
+  }
+
+  /**
+   * Bulk deletes follow-ups with safety verification.
+   * Strictly prevents hard deleting COMPLETED follow-ups to preserve actual customer care history.
+   * Protects financial cases, activities, and customer master records from cascade deletions.
+   */
+  async deleteBulkFollowUps(data: { ids: string[] }): Promise<{
+    total: number;
+    succeeded: string[];
+    failed: Array<{ id: string; reason: string }>;
+  }> {
+    const uniqueIds = Array.from(new Set(data.ids.filter((id) => Boolean(id && id.trim()))));
+    const succeeded: string[] = [];
+    const failed: Array<{ id: string; reason: string }> = [];
+
+    for (const id of uniqueIds) {
+      try {
+        const fu = await prisma.followUp.findUnique({
+          where: { id },
+        });
+
+        if (!fu) {
+          failed.push({ id, reason: 'Không tìm thấy lịch chăm sóc' });
+          continue;
+        }
+
+        if (fu.status === FollowUpStatus.COMPLETED) {
+          failed.push({
+            id,
+            reason: 'Không thể xóa lịch đã hoàn thành vì đây là lịch sử chăm sóc thực tế của khách hàng',
+          });
+          continue;
+        }
+
+        // Safe to delete non-completed task (PENDING, IN_PROGRESS, CANCELLED)
+        await prisma.followUp.delete({
+          where: { id },
+        });
+
+        succeeded.push(id);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Lỗi khi xóa lịch chăm sóc';
+        failed.push({ id, reason: msg });
+      }
+    }
+
+    return {
+      total: uniqueIds.length,
+      succeeded,
+      failed,
+    };
   }
 }
 

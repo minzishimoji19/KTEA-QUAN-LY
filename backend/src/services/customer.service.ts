@@ -22,7 +22,7 @@ export class CustomerService extends BaseService {
     }
 
     const { total, customers } = await customerRepository.findMany(filters);
-    const pagination = buildPaginationMeta(total, filters.page, filters.pageSize);
+    const pagination = buildPaginationMeta(total, filters.page || 1, filters.pageSize || 10);
 
     return {
       items: customers.map((c) => enrichCustomerWithStatus(c)),

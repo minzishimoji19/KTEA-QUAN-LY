@@ -3,7 +3,7 @@ import { bulkActionService } from '../services/bulkAction.service.js';
 import { NotFoundError } from '../utils/errors.js';
 import { ActivityType } from '@prisma/client';
 
-let testCustomerIds: string[] = [];
+const testCustomerIds: string[] = [];
 let testTagId: string | null = null;
 let testTag2Id: string | null = null;
 

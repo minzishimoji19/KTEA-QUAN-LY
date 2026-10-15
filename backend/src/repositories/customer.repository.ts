@@ -2,8 +2,8 @@ import { Prisma, CustomerStatus, CaseProgress, Gender, PriorityLevel } from '@pr
 import BaseRepository from './base.repository.js';
 
 export interface CustomerQueryFilters {
-  page: number;
-  pageSize: number;
+  page?: number;
+  pageSize?: number;
   search?: string;
   status?: CustomerStatus | CaseProgress | string;
   priority?: PriorityLevel;
@@ -139,8 +139,12 @@ export class CustomerRepository extends BaseRepository {
       }
     }
 
-    const skip = (page - 1) * pageSize;
-    const take = pageSize;
+    const pageNum = Math.max(1, Number(page) || 1);
+    const pageSizeNum = Math.max(1, Number(pageSize) || 10);
+    const skip = (pageNum - 1) * pageSizeNum;
+    const take = pageSizeNum;
+    const sortField = sortBy || 'createdAt';
+    const sortDirection = sortOrder || 'desc';
 
     const [total, customers] = await Promise.all([
       this.db.customer.count({ where }),
@@ -148,7 +152,7 @@ export class CustomerRepository extends BaseRepository {
         where,
         skip,
         take,
-        orderBy: { [sortBy]: sortOrder },
+        orderBy: { [sortField]: sortDirection },
         include: {
           customerSource: true,
           customerTags: {

@@ -2,7 +2,12 @@ import { Prisma, FollowUpStatus } from '@prisma/client';
 import BaseRepository from './base.repository.js';
 
 export class FollowUpRepository extends BaseRepository {
-  async findAll(filter?: 'today' | 'overdue' | 'upcoming' | 'completed' | 'all', status?: FollowUpStatus, customerId?: string) {
+  async findAll(
+    filter?: 'today' | 'overdue' | 'upcoming' | 'completed' | 'all',
+    status?: FollowUpStatus,
+    customerId?: string,
+    assignedTo?: string
+  ) {
     const where: Prisma.FollowUpWhereInput = {};
 
     if (customerId) {
@@ -11,6 +16,15 @@ export class FollowUpRepository extends BaseRepository {
 
     if (status) {
       where.status = status;
+    }
+
+    if (assignedTo && assignedTo.trim()) {
+      const trimmed = assignedTo.trim();
+      if (trimmed === 'unassigned' || trimmed === 'CHUA_PHAN_CONG') {
+        where.assignedTo = null;
+      } else if (trimmed !== 'all') {
+        where.assignedTo = trimmed;
+      }
     }
 
     const now = new Date();

@@ -7,6 +7,11 @@ export const listFollowUpsQuerySchema = z.object({
   filter: z.enum(['today', 'overdue', 'upcoming', 'completed', 'all']).optional().default('all'),
   status: z.nativeEnum(FollowUpStatus).optional(),
   customerId: z.string().optional(),
+  assignedTo: z.string().optional(),
+});
+
+export const bulkFollowUpIdsSchema = z.object({
+  ids: z.array(z.string().min(1, 'Mã lịch chăm sóc không được để trống')).min(1, 'Phải chọn ít nhất một lịch chăm sóc'),
 });
 
 export const createFollowUpSchema = z.object({

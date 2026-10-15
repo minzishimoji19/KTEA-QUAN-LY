@@ -5,8 +5,8 @@ import { customerService } from '../services/customer.service.js';
 import { VALID_CARETAKERS, createFollowUpSchema, createBulkFollowUpSchema } from '../validations/followUp.validation.js';
 import { CustomerStatus, PriorityLevel, FollowUpStatus } from '@prisma/client';
 
-let testCustomerIds: string[] = [];
-let testSourceIds: string[] = [];
+const testCustomerIds: string[] = [];
+const testSourceIds: string[] = [];
 
 async function setup() {
   console.log('🚀 Setting up test fixtures for Customer Management & Care Scheduling Improvements...');

@@ -292,7 +292,9 @@ async function runCustomerStatusSyncVerification() {
       await prisma.customer.deleteMany({
         where: { phone: { in: [TEST_PHONE_1, TEST_PHONE_2, TEST_PHONE_3] } },
       });
-    } catch (_) {}
+    } catch (_) {
+      // Ignore cleanup errors
+    }
 
     await prisma.$disconnect();
   }

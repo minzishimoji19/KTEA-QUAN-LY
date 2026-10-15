@@ -3,6 +3,8 @@ import {
   getFollowUps,
   createFollowUp,
   createBulkFollowUps,
+  completeBulkFollowUps,
+  deleteBulkFollowUps,
   updateFollowUp,
   deleteFollowUp,
 } from '../controllers/followUp.controller.js';
@@ -11,6 +13,7 @@ import {
   listFollowUpsQuerySchema,
   createFollowUpSchema,
   createBulkFollowUpSchema,
+  bulkFollowUpIdsSchema,
   updateFollowUpSchema,
   followUpIdParamSchema,
 } from '../validations/followUp.validation.js';
@@ -33,6 +36,18 @@ router.post(
   '/bulk',
   validateRequest({ body: createBulkFollowUpSchema }),
   createBulkFollowUps
+);
+
+router.post(
+  '/bulk-complete',
+  validateRequest({ body: bulkFollowUpIdsSchema }),
+  completeBulkFollowUps
+);
+
+router.post(
+  '/bulk-delete',
+  validateRequest({ body: bulkFollowUpIdsSchema }),
+  deleteBulkFollowUps
 );
 
 router.patch(
