@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { noteService } from '../services/note.service.js';
 import { sendSuccess, sendCreated } from '../utils/response.js';
 import { customerAccessService } from '../services/customerAccess.service.js';
+import { ForbiddenError } from '../utils/errors.js';
 
 export const getNotesByCustomer = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -50,6 +51,9 @@ export const updateNote = async (req: Request, res: Response, next: NextFunction
 
 export const deleteNote = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
+    if (req.user?.role === 'PARTNER') {
+      throw new ForbiddenError('Đối tác không được phép xóa ghi chú');
+    }
     if (req.user) {
       await customerAccessService.assertNoteAccess(
         { id: req.user.userId, role: req.user.role },

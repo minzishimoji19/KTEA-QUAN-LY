@@ -19,7 +19,7 @@ export const updateCaseSchema = z.object({
   resultDate: z.string().datetime().optional().nullable().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable()),
   failureReason: z.string().max(1000).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
-});
+}).passthrough();
 
 export const selectProductSchema = z.object({
   productId: z.string().min(1, 'Product ID is required'),

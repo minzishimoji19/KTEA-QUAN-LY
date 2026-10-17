@@ -35,6 +35,18 @@ export const createFollowUp = async (req: Request, res: Response, next: NextFunc
         { id: req.user.userId, role: req.user.role },
         req.body.customerId
       );
+
+      if (req.user.role === Role.PARTNER && req.body.assignedTo) {
+        const partnerCaretaker = await prisma.caretaker.findFirst({
+          where: { userId: req.user.userId },
+        });
+        if (
+          !partnerCaretaker ||
+          partnerCaretaker.name.trim().toLowerCase() !== req.body.assignedTo.trim().toLowerCase()
+        ) {
+          throw new ForbiddenError('Đối tác không có quyền phân công lịch chăm sóc cho nhân viên khác');
+        }
+      }
     }
     const followUp = await followUpService.createFollowUp(req.body);
     sendCreated(res, followUp, 'Follow-up task scheduled');
@@ -100,6 +112,10 @@ export const deleteBulkFollowUps = async (req: Request, res: Response, next: Nex
 export const updateFollowUp = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (req.user) {
+      if (req.user.role === Role.PARTNER && req.body.assignedTo !== undefined) {
+        throw new ForbiddenError('Đối tác không có quyền thay đổi người chăm sóc');
+      }
+
       await customerAccessService.assertFollowUpAccess(
         { id: req.user.userId, role: req.user.role },
         req.params.id
@@ -115,6 +131,10 @@ export const updateFollowUp = async (req: Request, res: Response, next: NextFunc
 export const deleteFollowUp = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (req.user) {
+      if (req.user.role === Role.PARTNER) {
+        throw new ForbiddenError('Đối tác không có quyền xóa lịch chăm sóc');
+      }
+
       await customerAccessService.assertFollowUpAccess(
         { id: req.user.userId, role: req.user.role },
         req.params.id
