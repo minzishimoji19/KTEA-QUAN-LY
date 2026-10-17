@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { AuthUser, UserRole } from '../types/auth';
 import { authService } from '../services/authService';
-import { setAuthErrorHandler } from '../services/apiClient';
+import { setAuthErrorHandler, ApiClientError } from '../services/apiClient';
 
 export interface AuthContextType {
   user: AuthUser | null;
@@ -54,9 +54,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [refreshUser]);
 
   const login = async (email: string, password: string): Promise<AuthUser> => {
-    const authUser = await authService.login({ email, password });
-    setUser(authUser);
-    return authUser;
+    await authService.login({ email, password });
+    // Verify session via /api/auth/me to confirm active session before state commit
+    const verifiedUser = await authService.getMe();
+    if (!verifiedUser) {
+      setUser(null);
+      throw new ApiClientError(401, 'SESSION_INVALID', 'Không thể xác thực phiên làm việc sau khi đăng nhập.');
+    }
+    setUser(verifiedUser);
+    return verifiedUser;
   };
 
   const logout = async (): Promise<void> => {

@@ -82,8 +82,12 @@ export const getSession = async (req: Request, res: Response): Promise<void> => 
 
 export const logout = async (req: Request, res: Response): Promise<void> => {
   const cookieToken = req.cookies?.[SESSION_COOKIE_NAME];
-  if (cookieToken) {
-    const session = verifySessionToken(cookieToken);
+  const authHeader = req.headers.authorization;
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+  const token = cookieToken || bearerToken;
+
+  if (token) {
+    const session = verifySessionToken(token);
     if (session) {
       await auditLogService.log({
         actorId: session.userId,

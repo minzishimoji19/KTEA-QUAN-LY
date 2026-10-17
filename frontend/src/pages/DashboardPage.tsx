@@ -35,13 +35,18 @@ import { DashboardFollowUp } from '../types/dashboard';
 import { CreateCustomerModal } from '../features/customers/CreateCustomerModal';
 import { QuickFollowUpModal } from '../features/dashboard/QuickFollowUpModal';
 import { ImportDataModal } from '../features/dashboard/ImportDataModal';
+import { useAuth } from '../context/AuthContext';
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { isAuthenticated, role } = useAuth();
+  const isDashboardAllowed = isAuthenticated && role === 'ADMIN';
 
-  // Primary aggregated query
-  const { data, isLoading, isError, refetch, isRefetching } = useDashboard();
+  // Primary aggregated query (strictly guard against unauthenticated or unauthorized execution)
+  const { data, isLoading, isError, refetch, isRefetching } = useDashboard({
+    enabled: isDashboardAllowed,
+  });
   const updateFollowUp = useUpdateFollowUp();
 
   // Quick Action Modal states

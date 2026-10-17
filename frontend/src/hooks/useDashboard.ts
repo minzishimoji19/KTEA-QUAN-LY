@@ -4,11 +4,13 @@ import { DashboardData } from '../types/dashboard';
 
 export const DASHBOARD_QUERY_KEY = ['dashboard'] as const;
 
-export const useDashboard = () => {
+export const useDashboard = (options?: { enabled?: boolean }) => {
+  const isEnabled = options?.enabled ?? true;
   return useQuery<DashboardData>({
     queryKey: DASHBOARD_QUERY_KEY,
     queryFn: () => dashboardService.getDashboardData(),
-    refetchInterval: 60000,
+    enabled: isEnabled,
+    refetchInterval: isEnabled ? 60000 : false,
     staleTime: 15000,
   });
 };

@@ -29,9 +29,18 @@ export function getApiBaseUrl(): string {
 
 export type AuthErrorHandler = (status: number) => void;
 let onAuthError: AuthErrorHandler | null = null;
+let inMemoryToken: string | null = null;
 
 export function setAuthErrorHandler(handler: AuthErrorHandler | null): void {
   onAuthError = handler;
+}
+
+export function setAuthToken(token: string | null): void {
+  inMemoryToken = token;
+}
+
+export function getAuthToken(): string | null {
+  return inMemoryToken;
 }
 
 class ApiClient {
@@ -51,6 +60,10 @@ class ApiClient {
       ...((options.headers as Record<string, string>) || {}),
     };
 
+    if (inMemoryToken && !headers.Authorization) {
+      headers.Authorization = `Bearer ${inMemoryToken}`;
+    }
+
     try {
       const response = await fetch(url, {
         credentials: 'include',
@@ -63,13 +76,21 @@ class ApiClient {
       const data = isJson ? await response.json() : await response.text();
 
       if (!response.ok) {
-        if (
-          response.status === 401 &&
-          onAuthError &&
-          typeof window !== 'undefined' &&
-          !window.location.pathname.startsWith('/login')
-        ) {
-          onAuthError(401);
+        if (response.status === 401) {
+          // If 401 is received, clear in-memory token
+          inMemoryToken = null;
+
+          // Notify auth handler for operational endpoints (exclude passive auth checks)
+          if (
+            onAuthError &&
+            typeof window !== 'undefined' &&
+            !window.location.pathname.startsWith('/login') &&
+            !endpoint.includes('/auth/me') &&
+            !endpoint.includes('/auth/login') &&
+            !endpoint.includes('/auth/session')
+          ) {
+            onAuthError(401);
+          }
         }
 
         const errorData = data as ApiErrorResponse;

@@ -1,4 +1,4 @@
-import apiClient from './apiClient';
+import apiClient, { setAuthToken } from './apiClient';
 import {
   AuthUser,
   LoginResponse,
@@ -12,6 +12,9 @@ import {
 export const authService = {
   login: async (credentials: { email: string; password: string }): Promise<AuthUser> => {
     const res = await apiClient.post<LoginResponse>('/auth/login', credentials);
+    if (res.token) {
+      setAuthToken(res.token);
+    }
     return res.user;
   },
 
@@ -29,7 +32,11 @@ export const authService = {
   },
 
   logout: async (): Promise<void> => {
-    await apiClient.post('/auth/logout');
+    try {
+      await apiClient.post('/auth/logout');
+    } finally {
+      setAuthToken(null);
+    }
   },
 
   getUsers: async (): Promise<AuthUser[]> => {
