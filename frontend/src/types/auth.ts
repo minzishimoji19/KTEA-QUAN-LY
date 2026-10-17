@@ -9,6 +9,11 @@ export interface AuthUser {
   status?: UserStatus;
   phone?: string | null;
   assignedCustomersCount?: number;
+  caretaker?: {
+    id: string;
+    name: string;
+    active: boolean;
+  } | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -34,6 +39,19 @@ export interface CustomerAssignmentItem {
     fullName: string;
     phone: string;
     overallStatus: string;
+  };
+  sources?: {
+    hasDirect: boolean;
+    hasCareSchedule: boolean;
+    isLegacyDirect?: boolean;
+    careSchedulesCount: number;
+    careSchedules?: Array<{
+      id: string;
+      title: string;
+      dueAt: string;
+      status: string;
+    }>;
+    grantCount: number;
   };
 }
 

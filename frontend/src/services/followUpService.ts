@@ -6,6 +6,7 @@ export interface FollowUpQueryParams {
   status?: FollowUpStatus;
   customerId?: string;
   assignedTo?: string;
+  assignedToUserId?: string;
 }
 
 export interface BulkOperationResult {
@@ -21,6 +22,7 @@ export const followUpService = {
     if (params.status) query.append('status', params.status);
     if (params.customerId) query.append('customerId', params.customerId);
     if (params.assignedTo) query.append('assignedTo', params.assignedTo);
+    if (params.assignedToUserId) query.append('assignedToUserId', params.assignedToUserId);
 
     const queryString = query.toString() ? `?${query.toString()}` : '';
     return apiClient.get<FollowUp[]>(`/follow-ups${queryString}`);
@@ -37,6 +39,7 @@ export const followUpService = {
     dueAt: string;
     status?: FollowUpStatus;
     assignedTo?: string | null;
+    assignedToUserId?: string | null;
   }): Promise<{ count: number; followUps: FollowUp[] }> => {
     return apiClient.post<{ count: number; followUps: FollowUp[] }>('/follow-ups/bulk', data);
   },

@@ -77,8 +77,27 @@ export const authService = {
   unassignCustomer: async (data: {
     partnerUserId: string;
     customerId: string;
-  }): Promise<{ unassigned: boolean }> => {
-    return apiClient.post<{ unassigned: boolean }>('/users/unassign', data);
+    sourceType?: 'DIRECT' | 'CARE_SCHEDULE' | 'ALL';
+    sourceId?: string;
+  }): Promise<{ success: boolean; completelyRevoked: boolean; remainingSourcesCount: number; revokedSource?: string; message: string }> => {
+    return apiClient.post<{ success: boolean; completelyRevoked: boolean; remainingSourcesCount: number; revokedSource?: string; message: string }>('/users/unassign', data);
+  },
+
+  bulkUnassignCustomers: async (data: {
+    partnerUserId: string;
+    customerIds: string[];
+    sourceType?: 'DIRECT' | 'CARE_SCHEDULE' | 'ALL';
+  }): Promise<{ total: number; succeeded: string[]; failed: Array<{ id: string; reason: string }>; message: string }> => {
+    return apiClient.post<{ total: number; succeeded: string[]; failed: Array<{ id: string; reason: string }>; message: string }>('/users/bulk-unassign', data);
+  },
+
+  bulkReassignCustomers: async (data: {
+    fromUserId?: string;
+    toUserId: string;
+    customerIds: string[];
+    notes?: string;
+  }): Promise<{ total: number; succeeded: string[]; failed: Array<{ id: string; reason: string }>; message: string }> => {
+    return apiClient.post<{ total: number; succeeded: string[]; failed: Array<{ id: string; reason: string }>; message: string }>('/users/bulk-reassign', data);
   },
 
   getUserAssignments: async (partnerUserId: string): Promise<CustomerAssignmentItem[]> => {
@@ -96,6 +115,17 @@ export const authService = {
     if (filters?.entityType) params.set('entityType', filters.entityType);
     const queryString = params.toString() ? `?${params.toString()}` : '';
     return apiClient.get<AuditLogItem[]>(`/users/audit-logs${queryString}`);
+  },
+
+  linkCaretaker: async (
+    userId: string,
+    caretakerId: string | null
+  ): Promise<any> => {
+    return apiClient.post(`/users/${userId}/link-caretaker`, { caretakerId });
+  },
+
+  getEligibleCaregivers: async (): Promise<AuthUser[]> => {
+    return apiClient.get<AuthUser[]>('/users/caregivers');
   },
 };
 

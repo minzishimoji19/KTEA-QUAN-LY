@@ -37,9 +37,25 @@ export function setAuthErrorHandler(handler: AuthErrorHandler | null): void {
 
 export function setAuthToken(token: string | null): void {
   inMemoryToken = token;
+  if (typeof window !== 'undefined') {
+    if (token) {
+      try {
+        localStorage.setItem('ktea_auth_token', token);
+      } catch (_) {}
+    } else {
+      try {
+        localStorage.removeItem('ktea_auth_token');
+      } catch (_) {}
+    }
+  }
 }
 
 export function getAuthToken(): string | null {
+  if (!inMemoryToken && typeof window !== 'undefined') {
+    try {
+      inMemoryToken = localStorage.getItem('ktea_auth_token');
+    } catch (_) {}
+  }
   return inMemoryToken;
 }
 
@@ -60,8 +76,9 @@ class ApiClient {
       ...((options.headers as Record<string, string>) || {}),
     };
 
-    if (inMemoryToken && !headers.Authorization) {
-      headers.Authorization = `Bearer ${inMemoryToken}`;
+    const authToken = getAuthToken();
+    if (authToken && !headers.Authorization) {
+      headers.Authorization = `Bearer ${authToken}`;
     }
 
     try {

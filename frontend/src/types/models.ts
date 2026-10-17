@@ -236,6 +236,13 @@ export interface FollowUp {
   status: FollowUpStatus;
   completedAt?: string | null;
   assignedTo?: string | null;
+  assignedToUserId?: string | null;
+  assignedToUser?: {
+    id: string;
+    fullName: string;
+    email: string;
+    role: string;
+  } | null;
   createdAt: string;
   updatedAt: string;
   customer?: {
@@ -314,6 +321,18 @@ export interface CustomerSummary {
   customerTags: CustomerTag[];
   careCount?: number;
   lastCareAt?: string | null;
+  latestCareStatus?: 'COMPLETED' | 'PENDING' | 'OVERDUE' | 'IN_PROGRESS' | 'CANCELLED' | 'NONE';
+  completedCareCount?: number;
+  pendingCareCount?: number;
+  careFollowUps?: Array<{
+    id: string;
+    title: string;
+    status: string;
+    effectiveStatus: 'COMPLETED' | 'PENDING' | 'OVERDUE' | 'IN_PROGRESS' | 'CANCELLED';
+    dueAt: string;
+    completedAt: string | null;
+    assignedTo: string | null;
+  }>;
   cases?: CustomerCase[];
   needs?: CustomerNeed[];
   activities?: CustomerActivity[];

@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { Role } from '@prisma/client';
 import { userService } from '../services/user.service.js';
 import { caretakerService } from '../services/caretaker.service.js';
 import { caretakerRepository } from '../repositories/caretaker.repository.js';
@@ -90,6 +91,44 @@ export const unassignCustomer = async (req: Request, res: Response, next: NextFu
       partnerUserId,
       customerId,
       { sourceType, sourceId }
+    );
+
+    sendSuccess(res, result, result.message);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const bulkUnassignCustomers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { partnerUserId, customerIds, sourceType } = req.body;
+
+    if (!partnerUserId || !customerIds) {
+      throw new BadRequestError('Vui lòng cung cấp partnerUserId và customerIds');
+    }
+
+    const result = await userService.bulkUnassignCustomers(
+      { id: req.user!.userId, email: req.user!.email, role: req.user!.role as Role },
+      { partnerUserId, customerIds, sourceType }
+    );
+
+    sendSuccess(res, result, result.message);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const bulkReassignCustomers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { fromUserId, toUserId, customerIds, notes } = req.body;
+
+    if (!toUserId || !customerIds) {
+      throw new BadRequestError('Vui lòng cung cấp toUserId và customerIds');
+    }
+
+    const result = await userService.bulkReassignCustomers(
+      { id: req.user!.userId, email: req.user!.email, role: req.user!.role as Role },
+      { fromUserId, toUserId, customerIds, notes }
     );
 
     sendSuccess(res, result, result.message);

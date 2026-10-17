@@ -3,7 +3,8 @@ import { X, CalendarCheck, AlertCircle, Search, Users, User, Check, Loader2 } fr
 import { Button } from '../../components/ui/Button';
 import { useCreateFollowUp, useCreateBulkFollowUp } from '../../hooks/useFollowUps';
 import { customerService } from '../../services/customerService';
-import { useCaretakers } from '../../hooks/useCaretakers';
+import { useEligibleCaregivers } from '../../hooks/useCaretakers';
+import { AuthUser } from '../../types/auth';
 
 export interface SelectedCustomerItem {
   id: string;
@@ -28,7 +29,7 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
 }) => {
   const createFollowUp = useCreateFollowUp();
   const createBulkFollowUp = useCreateBulkFollowUp();
-  const { data: caretakers, isLoading: isCaretakersLoading } = useCaretakers({ activeOnly: true, forScheduling: true });
+  const { data: caregivers, isLoading: isCaregiversLoading } = useEligibleCaregivers();
 
   // Tomorrow by default
   const tomorrow = new Date();
@@ -43,6 +44,7 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
 
   const [title, setTitle] = useState('');
   const [dueAt, setDueAt] = useState(tomorrow.toISOString().slice(0, 16));
+  const [assignedToUserId, setAssignedToUserId] = useState<string>('');
   const [assignedTo, setAssignedTo] = useState<string>('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState('');
@@ -66,6 +68,7 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
           : 'Lịch chăm sóc khách hàng định kỳ'
       );
       setDueAt(tomorrow.toISOString().slice(0, 16));
+      setAssignedToUserId('');
       setAssignedTo('');
       setDescription('');
       setError('');
@@ -152,6 +155,7 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
     try {
       const dueIso = new Date(dueAt).toISOString();
       const caretakerVal = assignedTo || null;
+      const caretakerUserIdVal = assignedToUserId || null;
       const descVal = description.trim() || null;
 
       if (selectedCustomers.length === 1) {
@@ -161,6 +165,7 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
           description: descVal,
           dueAt: dueIso,
           assignedTo: caretakerVal,
+          assignedToUserId: caretakerUserIdVal,
           status: 'PENDING',
         });
       } else {
@@ -170,6 +175,7 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
           description: descVal,
           dueAt: dueIso,
           assignedTo: caretakerVal,
+          assignedToUserId: caretakerUserIdVal,
           status: 'PENDING',
         });
       }
@@ -353,22 +359,27 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
                 />
               </div>
 
-              {/* Requirement 2 & 4.5: Người chăm sóc */}
+              {/* Người chăm sóc */}
               <div>
                 <label className="block text-[11px] font-medium text-slate-300 mb-1">
                   Người chăm sóc
                 </label>
                 <select
-                  value={assignedTo}
-                  onChange={(e) => setAssignedTo(e.target.value)}
-                  disabled={isCaretakersLoading}
+                  value={assignedToUserId}
+                  onChange={(e) => {
+                    const uId = e.target.value;
+                    setAssignedToUserId(uId);
+                    const found = caregivers?.find((u: AuthUser) => u.id === uId);
+                    setAssignedTo(found ? found.fullName : '');
+                  }}
+                  disabled={isCaregiversLoading}
                   className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-medium focus:outline-none focus:border-blue-500"
                 >
                   <option value="">-- Chưa phân công --</option>
-                  {caretakers &&
-                    caretakers.map((c) => (
-                      <option key={c.id} value={c.name}>
-                        {c.name} {c.user ? `(Đối tác: ${c.user.fullName})` : ''}
+                  {caregivers &&
+                    caregivers.map((u: AuthUser) => (
+                      <option key={u.id} value={u.id}>
+                        {u.fullName} ({u.role === 'ADMIN' ? 'Quản trị viên' : 'Nhân viên'})
                       </option>
                     ))}
                 </select>

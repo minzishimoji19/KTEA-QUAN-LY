@@ -5,6 +5,8 @@ import {
   updateUser,
   assignCustomers,
   unassignCustomer,
+  bulkUnassignCustomers,
+  bulkReassignCustomers,
   getUserAssignments,
   getAuditLogs,
   linkUserCaretaker,
@@ -31,6 +33,8 @@ router.patch('/:id', updateUser);
 router.post('/:id/link-caretaker', linkUserCaretaker);
 router.post('/assignments', assignCustomers);
 router.post('/unassign', unassignCustomer);
+router.post('/bulk-unassign', bulkUnassignCustomers);
+router.post('/bulk-reassign', bulkReassignCustomers);
 router.get('/audit-logs', getAuditLogs);
 
 export default router;

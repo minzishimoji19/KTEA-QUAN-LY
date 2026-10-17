@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import prisma from '../config/database.js';
-import { Role, UserStatus } from '@prisma/client';
+import { Role, UserStatus, FollowUpStatus } from '@prisma/client';
 import {
   UnauthorizedError,
   BadRequestError,
@@ -462,6 +462,205 @@ export class UserService {
       completelyRevoked: result.completelyRevoked,
       remainingSourcesCount: result.remainingSourcesCount,
       revokedSource: targetSourceType,
+      message,
+    };
+  }
+
+  /**
+   * Bulk unassign customers from a partner (ADMIN only).
+   */
+  async bulkUnassignCustomers(
+    actor: { id: string; email: string; role: Role },
+    data: {
+      partnerUserId: string;
+      customerIds: string[];
+      sourceType?: 'DIRECT' | 'CARE_SCHEDULE' | 'ALL';
+    }
+  ) {
+    if (actor.role !== Role.ADMIN) {
+      throw new ForbiddenError('Chỉ Quản trị viên (ADMIN) mới có quyền hủy phân công hàng loạt.');
+    }
+
+    const { partnerUserId, customerIds, sourceType = 'ALL' } = data;
+    if (!partnerUserId) {
+      throw new BadRequestError('partnerUserId là bắt buộc.');
+    }
+    if (!Array.isArray(customerIds) || customerIds.length === 0) {
+      throw new BadRequestError('Danh sách khách hàng customerIds không được để trống.');
+    }
+
+    const uniqueIds = Array.from(new Set(customerIds.filter(Boolean)));
+    const succeeded: string[] = [];
+    const failed: Array<{ id: string; reason: string }> = [];
+
+    for (const customerId of uniqueIds) {
+      try {
+        await this.unassignCustomer(
+          actor,
+          partnerUserId,
+          customerId,
+          { sourceType }
+        );
+        succeeded.push(customerId);
+      } catch (err: any) {
+        failed.push({
+          id: customerId,
+          reason: err.message || 'Lỗi khi hủy phân công',
+        });
+      }
+    }
+
+    const message =
+      failed.length === 0
+        ? `Đã hủy phân công thành công ${succeeded.length} khách hàng.`
+        : succeeded.length > 0
+        ? `Đã hủy phân công ${succeeded.length}/${uniqueIds.length} khách hàng. (${failed.length} thất bại)`
+        : `Không thể hủy phân công các khách hàng đã chọn.`;
+
+    return {
+      success: succeeded.length > 0,
+      total: uniqueIds.length,
+      succeeded,
+      failed,
+      message,
+    };
+  }
+
+  /**
+   * Bulk reassign customers to a new caregiver/partner (ADMIN only).
+   */
+  async bulkReassignCustomers(
+    actor: { id: string; email: string; role: Role },
+    data: {
+      fromUserId?: string;
+      toUserId: string;
+      customerIds: string[];
+      notes?: string;
+    }
+  ) {
+    if (actor.role !== Role.ADMIN) {
+      throw new ForbiddenError('Chỉ Quản trị viên (ADMIN) mới có quyền đổi người chăm sóc hàng loạt.');
+    }
+
+    const { fromUserId, toUserId, customerIds, notes } = data;
+    if (!toUserId) {
+      throw new BadRequestError('toUserId (người nhận phân công) là bắt buộc.');
+    }
+    if (!Array.isArray(customerIds) || customerIds.length === 0) {
+      throw new BadRequestError('Danh sách khách hàng customerIds không được để trống.');
+    }
+
+    // Target user must be an active User
+    const targetUser = await prisma.user.findUnique({
+      where: { id: toUserId },
+    });
+    if (!targetUser) {
+      throw new NotFoundError('Tài khoản người nhận phân công không tồn tại.');
+    }
+    if (targetUser.status !== UserStatus.ACTIVE) {
+      throw new BadRequestError(`Tài khoản "${targetUser.fullName}" đang ở trạng thái ${targetUser.status}, không thể nhận phân công.`);
+    }
+
+    const uniqueIds = Array.from(new Set(customerIds.filter(Boolean)));
+    const succeeded: string[] = [];
+    const failed: Array<{ id: string; reason: string }> = [];
+
+    const existingCustomers = await prisma.customer.findMany({
+      where: { id: { in: uniqueIds } },
+      select: { id: true, fullName: true },
+    });
+    const foundIds = new Set(existingCustomers.map((c) => c.id));
+
+    for (const customerId of uniqueIds) {
+      if (!foundIds.has(customerId)) {
+        failed.push({ id: customerId, reason: 'Khách hàng không tồn tại trong hệ thống.' });
+        continue;
+      }
+
+      try {
+        await prisma.$transaction(
+          async (tx) => {
+            // 1. Reassign any pending/in-progress care tasks for this customer to toUserId first
+            const followUpsToTransfer = await tx.followUp.findMany({
+              where: {
+                customerId,
+                status: { in: [FollowUpStatus.PENDING, FollowUpStatus.IN_PROGRESS] },
+                ...(fromUserId ? { assignedToUserId: fromUserId } : {}),
+              },
+            });
+
+            for (const fu of followUpsToTransfer) {
+              await tx.followUp.update({
+                where: { id: fu.id },
+                data: {
+                  assignedToUserId: toUserId,
+                  assignedTo: targetUser.fullName,
+                },
+              });
+
+              await assignmentSyncService.syncFollowUpAssignment(tx, {
+                followUpId: fu.id,
+                customerId,
+                caregiverUserId: toUserId,
+                assignedById: actor.id,
+              });
+            }
+
+            // 2. If fromUserId provided, unassign customer and any lingering grants from fromUserId
+            if (fromUserId && fromUserId !== toUserId) {
+              await assignmentSyncService.revokeAllAssignments(tx, {
+                customerId,
+                userId: fromUserId,
+              });
+            }
+
+            // 3. Assign to target user directly
+            await assignmentSyncService.recordDirectAssignment(tx, {
+              customerId,
+              userId: toUserId,
+              assignedById: actor.id,
+              notes: notes || (fromUserId ? 'Chuyển giao hàng loạt từ quản trị viên' : 'Phân công hàng loạt từ quản trị viên'),
+            });
+          },
+          { maxWait: 5000, timeout: 15000 }
+        );
+
+        succeeded.push(customerId);
+      } catch (err: any) {
+        failed.push({
+          id: customerId,
+          reason: err.message || 'Lỗi khi chuyển giao khách hàng',
+        });
+      }
+    }
+
+    await auditLogService.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'BULK_REASSIGN_CUSTOMERS',
+      entityType: 'CustomerAssignment',
+      entityId: toUserId,
+      details: {
+        fromUserId: fromUserId || null,
+        toUserId,
+        totalRequested: uniqueIds.length,
+        succeededCount: succeeded.length,
+        failedCount: failed.length,
+      },
+    });
+
+    const message =
+      failed.length === 0
+        ? `Đã chuyển đổi người chăm sóc cho ${succeeded.length} khách hàng sang "${targetUser.fullName}".`
+        : succeeded.length > 0
+        ? `Đã chuyển đổi ${succeeded.length}/${uniqueIds.length} khách hàng sang "${targetUser.fullName}". (${failed.length} thất bại)`
+        : `Không thể chuyển đổi người chăm sóc cho các khách hàng đã chọn.`;
+
+    return {
+      success: succeeded.length > 0,
+      total: uniqueIds.length,
+      succeeded,
+      failed,
       message,
     };
   }

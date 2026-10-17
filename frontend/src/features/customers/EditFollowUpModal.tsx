@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { X, CalendarCheck, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useUpdateFollowUp } from '../../hooks/useFollowUps';
-import { useCaretakers } from '../../hooks/useCaretakers';
+import { useEligibleCaregivers } from '../../hooks/useCaretakers';
 import { FollowUp, FollowUpStatus } from '../../types/models';
+import { AuthUser } from '../../types/auth';
 
 export interface EditFollowUpModalProps {
   isOpen: boolean;
@@ -17,12 +18,13 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
   followUp,
 }) => {
   const updateFollowUp = useUpdateFollowUp();
-  const { data: caretakers, isLoading: isCaretakersLoading } = useCaretakers({ forScheduling: true });
+  const { data: caregivers, isLoading: isCaregiversLoading } = useEligibleCaregivers();
 
   const [title, setTitle] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<FollowUpStatus>('PENDING');
+  const [assignedToUserId, setAssignedToUserId] = useState<string>('');
   const [assignedTo, setAssignedTo] = useState<string>('');
   const [error, setError] = useState('');
 
@@ -40,7 +42,8 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
       }
       setDescription(followUp.description || '');
       setStatus(followUp.status);
-      setAssignedTo(followUp.assignedTo || '');
+      setAssignedToUserId(followUp.assignedToUserId || '');
+      setAssignedTo(followUp.assignedToUser?.fullName || followUp.assignedTo || '');
       setError('');
     }
   }, [followUp, isOpen]);
@@ -67,6 +70,7 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
           dueAt: new Date(dueAt).toISOString(),
           status,
           assignedTo: assignedTo || null,
+          assignedToUserId: assignedToUserId || null,
           completedAt:
             status === 'COMPLETED'
               ? followUp.completedAt || new Date().toISOString()
@@ -144,23 +148,26 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
                   Người chăm sóc
                 </label>
                 <select
-                  value={assignedTo}
-                  onChange={(e) => setAssignedTo(e.target.value)}
-                  disabled={isCaretakersLoading}
+                  value={assignedToUserId}
+                  onChange={(e) => {
+                    const uId = e.target.value;
+                    setAssignedToUserId(uId);
+                    const found = caregivers?.find((u: AuthUser) => u.id === uId);
+                    setAssignedTo(found ? found.fullName : '');
+                  }}
+                  disabled={isCaregiversLoading}
                   className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-medium focus:outline-none focus:border-blue-500"
                 >
                   <option value="">-- Chưa phân công --</option>
-                  {assignedTo && caretakers && !caretakers.some((c) => c.name.toLowerCase() === assignedTo.toLowerCase()) && (
-                    <option value={assignedTo}>{assignedTo} (Lịch sử)</option>
+                  {!assignedToUserId && assignedTo && (
+                    <option value="">{assignedTo} (Lịch sử)</option>
                   )}
-                  {caretakers &&
-                    caretakers
-                      .filter((c) => c.active || (assignedTo && c.name.toLowerCase() === assignedTo.toLowerCase()))
-                      .map((c) => (
-                        <option key={c.id} value={c.name}>
-                          {c.name} {!c.active ? '(Đã ngừng hoạt động)' : c.user ? `(Đối tác: ${c.user.fullName})` : ''}
-                        </option>
-                      ))}
+                  {caregivers &&
+                    caregivers.map((u: AuthUser) => (
+                      <option key={u.id} value={u.id}>
+                        {u.fullName} ({u.role === 'ADMIN' ? 'Quản trị viên' : 'Nhân viên'})
+                      </option>
+                    ))}
                 </select>
               </div>
             </div>

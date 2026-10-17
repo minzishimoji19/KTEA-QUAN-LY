@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import caretakerService from '../services/caretakerService';
+import authService from '../services/authService';
+import { AuthUser } from '../types/auth';
 
 export const useCaretakers = (options?: boolean | { activeOnly?: boolean; forScheduling?: boolean }) => {
   const activeOnly = typeof options === 'boolean' ? options : options?.activeOnly;
@@ -82,4 +84,14 @@ export const useDeleteCaretaker = () => {
     },
   });
 };
+
+export const useEligibleCaregivers = () => {
+  return useQuery<AuthUser[]>({
+    queryKey: ['eligibleCaregivers'],
+    queryFn: async () => {
+      return authService.getEligibleCaregivers();
+    },
+  });
+};
+
 

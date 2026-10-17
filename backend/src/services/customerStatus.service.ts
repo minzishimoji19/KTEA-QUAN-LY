@@ -55,49 +55,122 @@ export function resolveCustomerStatus(customer: CustomerWithCases): string {
   return customer.overallStatus;
 }
 
-/**
- * Resolves care statistics for a customer:
- * - careCount: Total number of completed care tasks (FollowUp with status === COMPLETED).
- *   Pending, upcoming, and cancelled follow-ups are strictly excluded.
- * - lastCareAt: Timestamp of the most recent completed care task.
- *   Does not use customer.updatedAt.
- *   Returns null if customer has no completed care interactions.
- */
-export function resolveCustomerCareStats(customer: Record<string, any>): {
+export interface CustomerCareStats {
   careCount: number;
   lastCareAt: string | null;
-} {
-  let careCount = 0;
-  let lastCareAt: string | null = null;
+  latestCareStatus: 'COMPLETED' | 'PENDING' | 'OVERDUE' | 'IN_PROGRESS' | 'CANCELLED' | 'NONE';
+  completedCareCount: number;
+  pendingCareCount: number;
+  careFollowUps: Array<{
+    id: string;
+    title: string;
+    status: string;
+    effectiveStatus: 'COMPLETED' | 'PENDING' | 'OVERDUE' | 'IN_PROGRESS' | 'CANCELLED';
+    dueAt: string;
+    completedAt: string | null;
+    assignedTo: string | null;
+  }>;
+}
 
-  if (customer._count?.followUps !== undefined) {
+/**
+ * Resolves care statistics for a customer:
+ * - careCount: Total actual care tasks (non-cancelled FollowUps).
+ *   Does not artificially jump from 0 to 1 only upon completion;
+ *   preserves the exact count so updating status does NOT change the count.
+ * - latestCareStatus: 'COMPLETED' (green), 'PENDING' (red), 'OVERDUE' (red), 'IN_PROGRESS' (blue), 'CANCELLED' (slate), 'NONE'
+ * - lastCareAt: Timestamp of the most recent completed care task (or latest care activity)
+ * - careFollowUps: Breakdown of individual care tasks with effective status
+ */
+export function resolveCustomerCareStats(customer: Record<string, any>): CustomerCareStats {
+  const followUps: any[] = Array.isArray(customer.followUps) ? customer.followUps : [];
+  const now = Date.now();
+
+  const enrichedFollowUps = followUps.map((f: any) => {
+    let effectiveStatus: 'COMPLETED' | 'PENDING' | 'OVERDUE' | 'IN_PROGRESS' | 'CANCELLED' = 'PENDING';
+    if (f.status === 'COMPLETED') {
+      effectiveStatus = 'COMPLETED';
+    } else if (f.status === 'CANCELLED') {
+      effectiveStatus = 'CANCELLED';
+    } else {
+      const dueTime = new Date(f.dueAt).getTime();
+      if (!isNaN(dueTime) && dueTime < now) {
+        effectiveStatus = 'OVERDUE';
+      } else if (f.status === 'IN_PROGRESS') {
+        effectiveStatus = 'IN_PROGRESS';
+      } else {
+        effectiveStatus = 'PENDING';
+      }
+    }
+
+    return {
+      id: String(f.id || ''),
+      title: String(f.title || ''),
+      status: String(f.status || 'PENDING'),
+      effectiveStatus,
+      dueAt: f.dueAt ? new Date(f.dueAt).toISOString() : '',
+      completedAt: f.completedAt ? new Date(f.completedAt).toISOString() : null,
+      assignedTo: f.assignedTo || null,
+    };
+  });
+
+  const activeFollowUps = enrichedFollowUps.filter((f) => f.status !== 'CANCELLED');
+  const completedFollowUps = enrichedFollowUps.filter((f) => f.status === 'COMPLETED');
+  const pendingFollowUps = enrichedFollowUps.filter((f) => f.status === 'PENDING' || f.status === 'IN_PROGRESS' || f.effectiveStatus === 'OVERDUE');
+
+  // Care count:
+  // If followUps are loaded, count non-cancelled care interactions.
+  // Otherwise, fallback to _count.followUps if available.
+  let careCount = 0;
+  if (followUps.length > 0) {
+    careCount = activeFollowUps.length;
+  } else if (customer._count?.followUps !== undefined) {
     careCount = Number(customer._count.followUps);
   }
 
-  if (Array.isArray(customer.followUps) && customer.followUps.length > 0) {
-    const completedFollowUps = customer.followUps
-      .filter((f: any) => f && f.status === 'COMPLETED')
-      .sort((a: any, b: any) => {
-        const timeA = new Date(a.completedAt || a.updatedAt || a.createdAt).getTime();
-        const timeB = new Date(b.completedAt || b.updatedAt || b.createdAt).getTime();
-        if (timeA !== timeB) return timeB - timeA;
-        return String(b.id || '').localeCompare(String(a.id || ''));
-      });
+  const completedCareCount = completedFollowUps.length;
+  const pendingCareCount = pendingFollowUps.length;
 
-    if (customer._count?.followUps === undefined) {
-      careCount = completedFollowUps.length;
-    }
-
-    if (completedFollowUps.length > 0) {
-      const latest = completedFollowUps[0];
-      const dateVal = latest.completedAt || latest.updatedAt;
-      if (dateVal) {
-        lastCareAt = new Date(dateVal).toISOString();
-      }
+  // Determine overall / latest care status
+  let latestCareStatus: 'COMPLETED' | 'PENDING' | 'OVERDUE' | 'IN_PROGRESS' | 'CANCELLED' | 'NONE' = 'NONE';
+  if (careCount === 0) {
+    latestCareStatus = followUps.length > 0 ? 'CANCELLED' : 'NONE';
+  } else {
+    // If any pending follow-up is overdue -> OVERDUE (highest priority warning)
+    const hasOverdue = pendingFollowUps.some((f) => f.effectiveStatus === 'OVERDUE');
+    if (hasOverdue) {
+      latestCareStatus = 'OVERDUE';
+    } else if (pendingFollowUps.some((f) => f.status === 'IN_PROGRESS')) {
+      latestCareStatus = 'IN_PROGRESS';
+    } else if (pendingFollowUps.length > 0) {
+      latestCareStatus = 'PENDING';
+    } else if (completedFollowUps.length > 0) {
+      latestCareStatus = 'COMPLETED';
     }
   }
 
-  return { careCount, lastCareAt };
+  // Determine last care timestamp: most recent completedAt, or fallback to most recent updatedAt/dueAt of completed
+  let lastCareAt: string | null = null;
+  if (completedFollowUps.length > 0) {
+    const sortedCompleted = [...completedFollowUps].sort((a, b) => {
+      const timeA = new Date(a.completedAt || a.dueAt).getTime();
+      const timeB = new Date(b.completedAt || b.dueAt).getTime();
+      return timeB - timeA;
+    });
+    const latest = sortedCompleted[0];
+    const dateVal = latest.completedAt || latest.dueAt;
+    if (dateVal) {
+      lastCareAt = new Date(dateVal).toISOString();
+    }
+  }
+
+  return {
+    careCount,
+    lastCareAt,
+    latestCareStatus,
+    completedCareCount,
+    pendingCareCount,
+    careFollowUps: enrichedFollowUps,
+  };
 }
 
 /**
@@ -109,6 +182,18 @@ export function enrichCustomerWithStatus<T extends CustomerWithCases>(customer: 
   latestCase: any | null;
   careCount: number;
   lastCareAt: string | null;
+  latestCareStatus: 'COMPLETED' | 'PENDING' | 'OVERDUE' | 'IN_PROGRESS' | 'CANCELLED' | 'NONE';
+  completedCareCount: number;
+  pendingCareCount: number;
+  careFollowUps: Array<{
+    id: string;
+    title: string;
+    status: string;
+    effectiveStatus: 'COMPLETED' | 'PENDING' | 'OVERDUE' | 'IN_PROGRESS' | 'CANCELLED';
+    dueAt: string;
+    completedAt: string | null;
+    assignedTo: string | null;
+  }>;
 } {
   const latestCase = getLatestCase(customer.cases);
   const resolvedStatus = latestCase && latestCase.progress ? latestCase.progress : customer.overallStatus;
@@ -121,6 +206,10 @@ export function enrichCustomerWithStatus<T extends CustomerWithCases>(customer: 
     latestCase: latestCase || null,
     careCount: careStats.careCount,
     lastCareAt: careStats.lastCareAt,
+    latestCareStatus: careStats.latestCareStatus,
+    completedCareCount: careStats.completedCareCount,
+    pendingCareCount: careStats.pendingCareCount,
+    careFollowUps: careStats.careFollowUps,
   };
 }
 

@@ -17,6 +17,8 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import { authService } from '../services/authService';
 import { customerService } from '../services/customerService';
@@ -35,6 +37,8 @@ export const UsersManagementPage: React.FC = () => {
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [userSearchTerm, setUserSearchTerm] = useState('');
+
+
 
   // Create User Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -62,6 +66,17 @@ export const UsersManagementPage: React.FC = () => {
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
   const [assignmentNotes, setAssignmentNotes] = useState('');
   const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
+  const [unassigningAssignment, setUnassigningAssignment] = useState<CustomerAssignmentItem | null>(null);
+  const [isSubmittingUnassign, setIsSubmittingUnassign] = useState(false);
+
+  // Batch Assignment State
+  const [selectedAssignedIds, setSelectedAssignedIds] = useState<string[]>([]);
+  const [isBulkUnassignConfirmOpen, setIsBulkUnassignConfirmOpen] = useState(false);
+  const [bulkUnassignSourceType, setBulkUnassignSourceType] = useState<'ALL' | 'DIRECT' | 'CARE_SCHEDULE'>('ALL');
+  const [isBulkReassignModalOpen, setIsBulkReassignModalOpen] = useState(false);
+  const [targetReassignUserId, setTargetReassignUserId] = useState('');
+  const [bulkReassignNotes, setBulkReassignNotes] = useState('');
+  const [isSubmittingBulkAction, setIsSubmittingBulkAction] = useState(false);
 
   // Audit Log State
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
@@ -272,23 +287,130 @@ export const UsersManagementPage: React.FC = () => {
     }
   };
 
-  // Unassign Customer Handler
-  const handleUnassign = async (customerId: string, customerName?: string) => {
+  // Unassign Customer Handlers
+  const executeUnassign = async (
+    customerId: string,
+    sourceType?: 'DIRECT' | 'CARE_SCHEDULE' | 'ALL'
+  ) => {
     if (!selectedPartnerId) return;
-    if (!window.confirm(`Hủy phân công khách hàng "${customerName || customerId}" khỏi nhân viên này?`)) {
-      return;
-    }
-
+    setIsSubmittingUnassign(true);
     try {
-      await authService.unassignCustomer({
+      const res = await authService.unassignCustomer({
         partnerUserId: selectedPartnerId,
         customerId,
+        sourceType,
       });
-      toast.success('Đã hủy phân công khách hàng');
+
+      if (res.completelyRevoked) {
+        toast.success(res.message || 'Đã hủy phân công khách hàng.');
+      } else {
+        toast.info(res.message || 'Đã cập nhật nguồn phân công.');
+      }
+
+      setUnassigningAssignment(null);
       await loadPartnerAssignments(selectedPartnerId);
       await loadUsers();
     } catch (err: unknown) {
       toast.error('Không thể hủy phân công', err instanceof Error ? err.message : 'Lỗi máy chủ');
+    } finally {
+      setIsSubmittingUnassign(false);
+    }
+  };
+
+  const handleUnassignClick = (a: CustomerAssignmentItem) => {
+    const hasDirect = a.sources?.hasDirect ?? true;
+    const hasCare = a.sources?.hasCareSchedule ?? false;
+
+    if (hasDirect && hasCare) {
+      // Both sources exist: open options modal
+      setUnassigningAssignment(a);
+    } else if (hasCare && !hasDirect) {
+      // Only care schedule
+      if (window.confirm(`Khách hàng "${a.customer?.fullName || a.customerId}" đang được phụ trách qua lịch chăm sóc. Bạn có chắc chắn muốn gỡ lịch chăm sóc và hủy phân công khỏi nhân viên này?`)) {
+        executeUnassign(a.customerId, 'CARE_SCHEDULE');
+      }
+    } else {
+      // Direct only (or legacy)
+      if (window.confirm(`Hủy phân công trực tiếp khách hàng "${a.customer?.fullName || a.customerId}" khỏi nhân viên này?`)) {
+        executeUnassign(a.customerId, 'DIRECT');
+      }
+    }
+  };
+
+
+
+  const handleToggleSelectAllAssigned = () => {
+    if (selectedAssignedIds.length === partnerAssignments.length) {
+      setSelectedAssignedIds([]);
+    } else {
+      setSelectedAssignedIds(partnerAssignments.map((a) => a.customerId));
+    }
+  };
+
+  const handleToggleSelectAssignedItem = (customerId: string) => {
+    setSelectedAssignedIds((prev) =>
+      prev.includes(customerId) ? prev.filter((id) => id !== customerId) : [...prev, customerId]
+    );
+  };
+
+  const handleExecuteBulkUnassign = async () => {
+    if (selectedAssignedIds.length === 0 || !selectedPartnerId) return;
+    setIsSubmittingBulkAction(true);
+    try {
+      const res = await authService.bulkUnassignCustomers({
+        partnerUserId: selectedPartnerId,
+        customerIds: selectedAssignedIds,
+        sourceType: bulkUnassignSourceType,
+      });
+
+      if (res.failed.length === 0) {
+        toast.success(res.message);
+      } else if (res.succeeded.length > 0) {
+        toast.warning(res.message);
+      } else {
+        toast.error('Lỗi khi hủy phân công', res.message);
+      }
+
+      setSelectedAssignedIds([]);
+      setIsBulkUnassignConfirmOpen(false);
+      await loadPartnerAssignments(selectedPartnerId);
+      await loadUsers();
+    } catch (err: unknown) {
+      toast.error('Lỗi hủy phân công hàng loạt', err instanceof Error ? err.message : 'Lỗi không xác định');
+    } finally {
+      setIsSubmittingBulkAction(false);
+    }
+  };
+
+  const handleExecuteBulkReassign = async () => {
+    if (selectedAssignedIds.length === 0 || !targetReassignUserId) return;
+    setIsSubmittingBulkAction(true);
+    try {
+      const res = await authService.bulkReassignCustomers({
+        fromUserId: selectedPartnerId,
+        toUserId: targetReassignUserId,
+        customerIds: selectedAssignedIds,
+        notes: bulkReassignNotes || undefined,
+      });
+
+      if (res.failed.length === 0) {
+        toast.success(res.message);
+      } else if (res.succeeded.length > 0) {
+        toast.warning(res.message);
+      } else {
+        toast.error('Lỗi khi chuyển giao khách hàng', res.message);
+      }
+
+      setSelectedAssignedIds([]);
+      setIsBulkReassignModalOpen(false);
+      setTargetReassignUserId('');
+      setBulkReassignNotes('');
+      await loadPartnerAssignments(selectedPartnerId);
+      await loadUsers();
+    } catch (err: unknown) {
+      toast.error('Lỗi chuyển giao hàng loạt', err instanceof Error ? err.message : 'Lỗi không xác định');
+    } finally {
+      setIsSubmittingBulkAction(false);
     }
   };
 
@@ -402,6 +524,7 @@ export const UsersManagementPage: React.FC = () => {
                     <th className="px-4 py-3">Họ và tên / Email</th>
                     <th className="px-4 py-3">Vai trò</th>
                     <th className="px-4 py-3">Trạng thái</th>
+                    <th className="px-4 py-3">Vai trò chăm sóc</th>
                     <th className="px-4 py-3">Khách được giao</th>
                     <th className="px-4 py-3">Ngày tạo</th>
                     <th className="px-4 py-3 text-right">Thao tác</th>
@@ -410,14 +533,14 @@ export const UsersManagementPage: React.FC = () => {
                 <tbody className="divide-y divide-slate-800/60 font-sans">
                   {isLoadingUsers ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-8 text-slate-500">
+                      <td colSpan={7} className="text-center py-8 text-slate-500">
                         <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-blue-500" />
                         Đang tải danh sách người dùng...
                       </td>
                     </tr>
                   ) : filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-8 text-slate-500">
+                      <td colSpan={7} className="text-center py-8 text-slate-500">
                         Không tìm thấy người dùng nào phù hợp
                       </td>
                     </tr>
@@ -457,6 +580,23 @@ export const UsersManagementPage: React.FC = () => {
                         </td>
                         <td className="px-4 py-3">
                           {u.role === 'PARTNER' ? (
+                            u.status === 'ACTIVE' ? (
+                              <span className="font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40 text-[11px] inline-flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                Nhân viên chăm sóc
+                              </span>
+                            ) : (
+                              <span className="font-mono text-rose-400 bg-rose-950/60 px-2 py-0.5 rounded border border-rose-800/40 text-[11px] inline-flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                                Tạm dừng nhận lịch
+                              </span>
+                            )
+                          ) : (
+                            <span className="text-slate-500 font-mono text-[11px]">Quản trị viên</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {u.role === 'PARTNER' ? (
                             <span className="font-mono text-slate-200">
                               {u.assignedCustomersCount ?? 0} khách
                             </span>
@@ -469,6 +609,8 @@ export const UsersManagementPage: React.FC = () => {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
+
+
                             {/* Reset Password Button */}
                             <button
                               onClick={() => setResetUser(u)}
@@ -484,8 +626,8 @@ export const UsersManagementPage: React.FC = () => {
                               title={u.status === 'ACTIVE' ? 'Khóa tài khoản' : 'Mở khóa tài khoản'}
                               className={`p-1.5 rounded-lg transition-colors ${
                                 u.status === 'ACTIVE'
-                                  ? 'text-slate-400 hover:text-rose-400 hover:bg-rose-950/30'
-                                  : 'text-slate-400 hover:text-emerald-400 hover:bg-emerald-950/30'
+                                    ? 'text-slate-400 hover:text-rose-400 hover:bg-rose-950/30'
+                                    : 'text-slate-400 hover:text-emerald-400 hover:bg-emerald-950/30'
                               }`}
                             >
                               {u.status === 'ACTIVE' ? (
@@ -548,19 +690,38 @@ export const UsersManagementPage: React.FC = () => {
               {/* Left Column: Assigned Customers */}
               <div className="space-y-3 bg-slate-900 border border-slate-800 rounded-xl p-4">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-100 font-mono uppercase tracking-wider flex items-center gap-1.5">
-                      <UserCheck className="w-4 h-4 text-emerald-400" />
-                      Khách hàng đã phân công ({partnerAssignments.length})
-                    </h3>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Đang được giao cho {selectedPartner.fullName}
-                    </p>
+                  <div className="flex items-center gap-2">
+                    {partnerAssignments.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleToggleSelectAllAssigned}
+                        title={selectedAssignedIds.length === partnerAssignments.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                        className="text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+                      >
+                        {selectedAssignedIds.length === partnerAssignments.length && partnerAssignments.length > 0 ? (
+                          <CheckSquare className="w-4 h-4 text-blue-400" />
+                        ) : (
+                          <Square className="w-4 h-4 text-slate-500" />
+                        )}
+                      </button>
+                    )}
+                    <div>
+                      <h3 className="text-xs font-bold text-slate-100 font-mono uppercase tracking-wider flex items-center gap-1.5">
+                        <UserCheck className="w-4 h-4 text-emerald-400" />
+                        Khách hàng đã phân công ({partnerAssignments.length})
+                      </h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Đang được giao cho {selectedPartner.fullName}
+                      </p>
+                    </div>
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => loadPartnerAssignments(selectedPartnerId)}
+                    onClick={() => {
+                      setSelectedAssignedIds([]);
+                      loadPartnerAssignments(selectedPartnerId);
+                    }}
                     disabled={isLoadingAssignments}
                     className="text-xs h-7 gap-1"
                   >
@@ -568,6 +729,52 @@ export const UsersManagementPage: React.FC = () => {
                     <span>Tải lại</span>
                   </Button>
                 </div>
+
+                {/* Bulk Actions Toolbar for Assigned Customers */}
+                {selectedAssignedIds.length > 0 && (
+                  <div className="p-2.5 rounded-lg bg-blue-950/40 border border-blue-500/40 flex flex-wrap items-center justify-between gap-2 animate-fade-in">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-full bg-blue-600 text-white">
+                        {selectedAssignedIds.length}
+                      </span>
+                      <span className="text-xs font-semibold text-slate-200">khách hàng được chọn</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedAssignedIds([])}
+                        className="text-[11px] text-slate-400 hover:text-slate-200 underline ml-1 cursor-pointer"
+                      >
+                        Bỏ chọn tất cả
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setTargetReassignUserId('');
+                          setBulkReassignNotes('');
+                          setIsBulkReassignModalOpen(true);
+                        }}
+                        className="h-7 text-xs px-2.5 gap-1.5 border-blue-700/80 text-blue-300 hover:bg-blue-900/40 font-medium"
+                      >
+                        <UserCheck className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Đổi người chăm sóc</span>
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => {
+                          setBulkUnassignSourceType('ALL');
+                          setIsBulkUnassignConfirmOpen(true);
+                        }}
+                        className="h-7 text-xs px-2.5 gap-1.5 bg-rose-600 hover:bg-rose-500 text-white font-medium"
+                      >
+                        <UserMinus className="w-3.5 h-3.5" />
+                        <span>Hủy phân công đã chọn</span>
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="max-h-[500px] overflow-y-auto space-y-2 pr-1">
                   {isLoadingAssignments ? (
@@ -580,40 +787,79 @@ export const UsersManagementPage: React.FC = () => {
                       Chưa có khách hàng nào được phân công cho nhân viên này.
                     </div>
                   ) : (
-                    partnerAssignments.map((a) => (
-                      <div
-                        key={a.id}
-                        className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 flex items-center justify-between gap-3 hover:border-slate-700 transition-colors"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-xs text-slate-200">
-                              {a.customer?.fullName || 'Khách hàng'}
-                            </span>
-                            {a.customer?.phone && (
-                              <span className="text-[10px] text-slate-400 font-mono">
-                                {a.customer.phone}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-500">
-                            <span>Phân công: <DateDisplay date={a.assignedAt} /></span>
-                            {a.notes && (
-                              <span className="italic text-slate-400 max-w-[150px] truncate">
-                                "{a.notes}"
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleUnassign(a.customerId, a.customer?.fullName)}
-                          title="Hủy phân công khách hàng này"
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 transition-colors flex-shrink-0"
+                    partnerAssignments.map((a) => {
+                      const isSelected = selectedAssignedIds.includes(a.customerId);
+                      return (
+                        <div
+                          key={a.id}
+                          onClick={() => handleToggleSelectAssignedItem(a.customerId)}
+                          className={`p-3 rounded-lg border flex items-center justify-between gap-3 transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-blue-950/30 border-blue-500/60'
+                              : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                          }`}
                         >
-                          <UserMinus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))
+                          <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {}} // handled by parent onClick
+                              onClick={(e) => e.stopPropagation()}
+                              className="rounded border-slate-700 bg-slate-900 text-blue-500 focus:ring-0 cursor-pointer w-3.5 h-3.5 mt-0.5"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-xs text-slate-200">
+                                  {a.customer?.fullName || 'Khách hàng'}
+                                </span>
+                                {a.customer?.phone && (
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    {a.customer.phone}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                {a.sources?.hasDirect && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-blue-950/80 text-blue-300 border border-blue-800/50">
+                                    Trực tiếp
+                                  </span>
+                                )}
+                                {a.sources?.hasCareSchedule && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-emerald-950/80 text-emerald-300 border border-emerald-800/50">
+                                    Lịch chăm sóc ({a.sources.careSchedulesCount})
+                                  </span>
+                                )}
+                                {!a.sources?.hasDirect && !a.sources?.hasCareSchedule && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-slate-800 text-slate-300">
+                                    Trực tiếp (Lịch sử)
+                                  </span>
+                                )}
+                                <span className="text-[10px] text-slate-500 font-mono ml-1">
+                                  <DateDisplay date={a.assignedAt} />
+                                </span>
+                              </div>
+                              {a.notes && (
+                                <div className="mt-1 text-[10px] text-slate-400 italic truncate max-w-[280px]">
+                                  "{a.notes}"
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleUnassignClick(a);
+                            }}
+                            disabled={isSubmittingUnassign}
+                            title="Hủy phân công khách hàng này"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 transition-colors flex-shrink-0 disabled:opacity-50"
+                          >
+                            <UserMinus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -1057,6 +1303,280 @@ export const UsersManagementPage: React.FC = () => {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Multi-Source Unassign Options Modal */}
+      {unassigningAssignment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-rose-400">
+                <UserMinus className="w-5 h-5" />
+                <h3 className="font-bold text-sm text-slate-100">
+                  Tùy chọn hủy phân công khách hàng
+                </h3>
+              </div>
+              <button
+                onClick={() => setUnassigningAssignment(null)}
+                className="text-slate-400 hover:text-slate-200 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs text-slate-300">
+              <p>
+                Khách hàng <strong className="text-slate-100">{unassigningAssignment.customer?.fullName}</strong> đang được phân công cho nhân viên này qua nhiều nguồn:
+              </p>
+              <div className="flex gap-2 pt-0.5">
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-blue-950 text-blue-300 border border-blue-800">
+                  Phân công trực tiếp
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-300 border border-emerald-800">
+                  Lịch chăm sóc ({unassigningAssignment.sources?.careSchedulesCount || 0})
+                </span>
+              </div>
+              <p className="text-slate-400 text-[11px] pt-1">
+                Vui lòng chọn nguồn phân công bạn muốn hủy:
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={() => executeUnassign(unassigningAssignment.customerId, 'DIRECT')}
+                disabled={isSubmittingUnassign}
+                className="w-full text-left p-3 rounded-xl border border-slate-800 bg-slate-950/60 hover:border-blue-500/50 hover:bg-blue-950/20 transition-colors group disabled:opacity-50"
+              >
+                <div className="font-medium text-xs text-blue-300 flex items-center justify-between">
+                  <span>1. Chỉ hủy phân công trực tiếp</span>
+                  <span className="text-[10px] font-mono text-slate-500 group-hover:text-blue-400">DIRECT</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Gỡ quyền gán trực tiếp bởi Admin. Nhân viên vẫn được xem khách hàng qua các lịch chăm sóc hiện có.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => executeUnassign(unassigningAssignment.customerId, 'CARE_SCHEDULE')}
+                disabled={isSubmittingUnassign}
+                className="w-full text-left p-3 rounded-xl border border-slate-800 bg-slate-950/60 hover:border-emerald-500/50 hover:bg-emerald-950/20 transition-colors group disabled:opacity-50"
+              >
+                <div className="font-medium text-xs text-emerald-300 flex items-center justify-between">
+                  <span>2. Chỉ gỡ khỏi lịch chăm sóc</span>
+                  <span className="text-[10px] font-mono text-slate-500 group-hover:text-emerald-400">CARE_SCHEDULE</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Gỡ nhân viên khỏi lịch chăm sóc (không xóa lịch). Nhân viên vẫn giữ quyền do còn phân công trực tiếp.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => executeUnassign(unassigningAssignment.customerId, 'ALL')}
+                disabled={isSubmittingUnassign}
+                className="w-full text-left p-3 rounded-xl border border-rose-900/60 bg-rose-950/20 hover:border-rose-600 hover:bg-rose-950/40 transition-colors group disabled:opacity-50"
+              >
+                <div className="font-medium text-xs text-rose-300 flex items-center justify-between">
+                  <span>3. Hủy toàn bộ phân công</span>
+                  <span className="text-[10px] font-mono text-rose-400 font-bold">ALL</span>
+                </div>
+                <p className="text-[11px] text-rose-300/80 mt-0.5">
+                  Thu hồi hoàn toàn quyền trực tiếp và gỡ lịch chăm sóc. Khách hàng sẽ bị gỡ hoàn toàn khỏi nhân viên này.
+                </p>
+              </button>
+            </div>
+
+            <div className="pt-2 flex justify-end border-t border-slate-800">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setUnassigningAssignment(null)}
+                disabled={isSubmittingUnassign}
+                className="text-xs"
+              >
+                Đóng
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* MODAL: BULK UNASSIGN CONFIRMATION */}
+      {isBulkUnassignConfirmOpen && selectedPartner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-md p-6 rounded-2xl bg-slate-900 border border-rose-900/60 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-rose-400 font-mono font-bold text-sm">
+                <UserMinus className="w-4 h-4" />
+                <span>Xác nhận Hủy phân công hàng loạt</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBulkUnassignConfirmOpen(false)}
+                className="text-slate-400 hover:text-slate-200 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs text-slate-300">
+              <p>
+                Bạn đang chuẩn bị hủy phân công{' '}
+                <strong className="text-rose-400 font-mono font-bold">{selectedAssignedIds.length}</strong> khách hàng
+                khỏi nhân viên <strong className="text-slate-100">{selectedPartner.fullName}</strong>.
+              </p>
+              <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                <p className="font-semibold text-slate-300">🛡️ Bảo toàn dữ liệu:</p>
+                <p>• Không xóa thông tin khách hàng hay hồ sơ vay.</p>
+                <p>• Không xóa lịch sử chăm sóc và nội dung ghi chú.</p>
+                <p>• Chỉ thu hồi quyền phân công thuộc phạm vi đã chọn.</p>
+              </div>
+
+              <div className="space-y-1.5 pt-2">
+                <label className="text-[11px] font-semibold text-slate-300 font-mono">
+                  Phạm vi nguồn phân công cần hủy:
+                </label>
+                <select
+                  value={bulkUnassignSourceType}
+                  onChange={(e) => setBulkUnassignSourceType(e.target.value as any)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-rose-500 font-sans"
+                >
+                  <option value="ALL">Hủy toàn bộ phân công (Trực tiếp & Lịch chăm sóc)</option>
+                  <option value="DIRECT">Chỉ hủy nguồn phân công trực tiếp (Giữ lại lịch chăm sóc)</option>
+                  <option value="CARE_SCHEDULE">Chỉ gỡ khỏi lịch chăm sóc (Giữ lại phân công trực tiếp)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsBulkUnassignConfirmOpen(false)}
+                disabled={isSubmittingBulkAction}
+                className="text-xs"
+              >
+                Hủy bỏ
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleExecuteBulkUnassign}
+                disabled={isSubmittingBulkAction}
+                className="text-xs gap-1.5 bg-rose-600 hover:bg-rose-500 font-medium"
+              >
+                {isSubmittingBulkAction ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Đang xử lý...</span>
+                  </>
+                ) : (
+                  <>
+                    <UserMinus className="w-3.5 h-3.5" />
+                    <span>Xác nhận hủy ({selectedAssignedIds.length})</span>
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: BULK REASSIGN (ĐỔI NGƯỜI CHĂM SÓC HÀNG LOẠT) */}
+      {isBulkReassignModalOpen && selectedPartner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-md p-6 rounded-2xl bg-slate-900 border border-blue-900/60 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-blue-400 font-mono font-bold text-sm">
+                <UserCheck className="w-4 h-4" />
+                <span>Đổi người chăm sóc hàng loạt</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBulkReassignModalOpen(false)}
+                className="text-slate-400 hover:text-slate-200 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-300">
+              <p>
+                Chuyển giao <strong className="text-blue-400 font-mono font-bold">{selectedAssignedIds.length}</strong> khách hàng
+                từ nhân viên <strong className="text-slate-100">{selectedPartner.fullName}</strong> sang nhân viên mới:
+              </p>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-slate-300 font-mono">
+                  Chọn nhân viên chăm sóc mới: *
+                </label>
+                <select
+                  value={targetReassignUserId}
+                  onChange={(e) => setTargetReassignUserId(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-sans"
+                >
+                  <option value="">-- Chọn nhân viên mới --</option>
+                  {users
+                    .filter((u) => u.status === 'ACTIVE' && u.id !== selectedPartnerId)
+                    .map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.fullName} ({u.role === 'ADMIN' ? 'Quản trị viên' : 'Nhân viên'}) - {u.assignedCustomersCount ?? 0} khách
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-slate-300 font-mono">
+                  Ghi chú bàn giao (tùy chọn):
+                </label>
+                <textarea
+                  value={bulkReassignNotes}
+                  onChange={(e) => setBulkReassignNotes(e.target.value)}
+                  placeholder="VD: Điều phối lại khu vực chăm sóc khách hàng đợt 2"
+                  rows={2}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-sans resize-none"
+                />
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-blue-950/30 border border-blue-800/40 text-[11px] text-blue-300">
+                💡 Hệ thống sẽ tự động chuyển phân công trực tiếp và đồng bộ các lịch chăm sóc đang mở cho người mới.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsBulkReassignModalOpen(false)}
+                disabled={isSubmittingBulkAction}
+                className="text-xs"
+              >
+                Hủy bỏ
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleExecuteBulkReassign}
+                disabled={!targetReassignUserId || isSubmittingBulkAction}
+                className="text-xs gap-1.5 bg-blue-600 hover:bg-blue-500 font-medium text-white"
+              >
+                {isSubmittingBulkAction ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Đang chuyển giao...</span>
+                  </>
+                ) : (
+                  <>
+                    <UserCheck className="w-3.5 h-3.5" />
+                    <span>Chuyển giao ({selectedAssignedIds.length})</span>
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       )}

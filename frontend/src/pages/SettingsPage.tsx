@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Settings,
   Package,
@@ -22,7 +23,7 @@ import {
   Globe,
   BellRing,
   UserCheck,
-  Link2,
+  Users,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -44,16 +45,15 @@ import {
 import { useProducts, useUpdateProduct, useDeleteProduct } from '../hooks/useProducts';
 import { useTags, useDeleteTag } from '../hooks/useTags';
 import { useCustomerSources, useUpdateCustomerSource, useDeleteCustomerSource } from '../hooks/useCustomerSources';
-import { useCaretakers, useUpdateCaretaker, useDeleteCaretaker } from '../hooks/useCaretakers';
-import { Product, Tag, CustomerSource, Caretaker } from '../types/models';
+import { useEligibleCaregivers } from '../hooks/useCaretakers';
+import { Product, Tag, CustomerSource } from '../types/models';
+import { AuthUser } from '../types/auth';
 import { NeedCategorySetting } from '../types/settings';
 import settingsService from '../services/settingsService';
 import { ProductModal } from '../features/settings/ProductModal';
 import { TagModal } from '../features/settings/TagModal';
 import { NeedCategoryModal } from '../features/settings/NeedCategoryModal';
 import { CustomerSourceModal } from '../features/settings/CustomerSourceModal';
-import { CaretakerModal } from '../features/settings/CaretakerModal';
-import { LinkCaretakerModal } from '../features/settings/LinkCaretakerModal';
 import { NotificationSettings } from '../features/settings/NotificationSettings';
 
 type SettingsTab =
@@ -70,11 +70,12 @@ type SettingsTab =
 
 export const SettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  const navigate = useNavigate();
   const { toast } = useToast();
 
   // Queries
   const { data: settings, isLoading: isSettingsLoading, isError: isSettingsError, refetch: refetchSettings } = useSettings();
-  const { data: caretakers, isLoading: isCaretakersLoading } = useCaretakers();
+  const { data: eligibleCaregivers, isLoading: isEligibleCaregiversLoading } = useEligibleCaregivers();
   const { data: sources, isLoading: isSourcesLoading } = useCustomerSources();
   const { data: products, isLoading: isProductsLoading } = useProducts(false);
   const { data: tags, isLoading: isTagsLoading } = useTags();
@@ -82,8 +83,6 @@ export const SettingsPage: React.FC = () => {
 
   // Mutations
   const updateGeneral = useUpdateGeneralSettings();
-  const updateCaretaker = useUpdateCaretaker();
-  const deleteCaretaker = useDeleteCaretaker();
   const updateSource = useUpdateCustomerSource();
   const deleteSource = useDeleteCustomerSource();
   const updateNeedCategories = useUpdateNeedCategories();
@@ -92,12 +91,6 @@ export const SettingsPage: React.FC = () => {
   const updateProduct = useUpdateProduct();
   const deleteProduct = useDeleteProduct();
   const deleteTag = useDeleteTag();
-
-  // Caretaker Modal State
-  const [isCaretakerModalOpen, setIsCaretakerModalOpen] = useState(false);
-  const [editingCaretaker, setEditingCaretaker] = useState<Caretaker | null>(null);
-  const [deletingCaretaker, setDeletingCaretaker] = useState<Caretaker | null>(null);
-  const [linkingCaretaker, setLinkingCaretaker] = useState<Caretaker | null>(null);
 
   // Customer Source Modal State
   const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
@@ -228,16 +221,6 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleDeleteCaretakerConfirm = async () => {
-    if (!deletingCaretaker) return;
-    try {
-      await deleteCaretaker.mutateAsync(deletingCaretaker.id);
-      toast.success('Đã xóa người chăm sóc', `Người chăm sóc "${deletingCaretaker.name}" đã được gỡ bỏ khỏi hệ thống.`);
-      setDeletingCaretaker(null);
-    } catch (err: any) {
-      toast.error('Xóa thất bại', err?.message || 'Không thể xóa người chăm sóc.');
-    }
-  };
 
   const handleDeleteSourceConfirm = async () => {
     if (!deletingSource) return;
@@ -335,7 +318,7 @@ export const SettingsPage: React.FC = () => {
       <div className="flex items-center gap-1.5 border-b border-slate-800 pb-2 overflow-x-auto text-xs font-mono">
         {[
           { key: 'general', label: 'Cài đặt chung', icon: <Settings className="w-3.5 h-3.5" /> },
-          { key: 'caregivers', label: `Người chăm sóc (${caretakers?.length || 0})`, icon: <UserCheck className="w-3.5 h-3.5 text-emerald-400" /> },
+          { key: 'caregivers', label: `Nhân viên chăm sóc (${eligibleCaregivers?.length || 0})`, icon: <UserCheck className="w-3.5 h-3.5 text-emerald-400" /> },
           { key: 'sources', label: `Nguồn khách (${sources?.length || 0})`, icon: <Globe className="w-3.5 h-3.5" /> },
           { key: 'products', label: `Sản phẩm (${products?.length || 0})`, icon: <Package className="w-3.5 h-3.5" /> },
           { key: 'tags', label: `Thẻ khách hàng (${tags?.length || 0})`, icon: <TagIcon className="w-3.5 h-3.5" /> },
@@ -469,177 +452,96 @@ export const SettingsPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-semibold text-slate-100 font-mono">
-                Người chăm sóc (Caregivers / Caretakers)
+                Nhân viên chăm sóc (Caregivers)
               </h3>
               <p className="text-xs text-slate-400">
-                Quản lý danh sách nhân sự phụ trách chăm sóc khách hàng và lịch nhắc hẹn. Người ngừng hoạt động sẽ không hiển thị khi phân công lịch mới nhưng lịch sử chăm sóc cũ vẫn được bảo toàn.
+                Toàn bộ nhân viên chăm sóc được liên kết và quản lý trực tiếp từ danh sách Tài khoản người dùng (Users). Mỗi tài khoản PARTNER / ADMIN đang hoạt động tự động là nhân viên chăm sóc hợp lệ.
               </p>
             </div>
             <Button
               variant="primary"
               size="sm"
-              onClick={() => {
-                setEditingCaretaker(null);
-                setIsCaretakerModalOpen(true);
-              }}
+              onClick={() => navigate('/users')}
               className="bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5 text-xs h-8 font-medium"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ Thêm người chăm sóc</span>
+              <Users className="w-3.5 h-3.5" />
+              <span>Quản lý tài khoản nhân viên</span>
             </Button>
+          </div>
+
+          <div className="rounded-xl border border-blue-500/20 bg-blue-950/20 p-3.5 text-xs text-blue-200/90 flex items-start gap-3">
+            <Shield className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <span className="font-semibold text-blue-300">Kiến trúc đồng bộ mới:</span>
+              <p className="text-[11px] leading-relaxed text-blue-200/80">
+                Không còn tạo người chăm sóc độc lập. Để thêm nhân viên mới hoặc chỉnh sửa thông tin/trạng thái hoạt động, vui lòng thao tác tại trang <strong className="text-blue-100">Quản lý người dùng</strong>. Các lịch chăm sóc và phân công khách hàng đều tự động đồng bộ theo tài khoản.
+              </p>
+            </div>
           </div>
 
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-950/80 text-slate-400 font-mono text-[10px] border-b border-slate-800">
                 <tr>
-                  <th className="py-2.5 px-4">Tên người chăm sóc</th>
-                  <th className="py-2.5 px-4">Tài khoản liên kết</th>
-                  <th className="py-2.5 px-4">Lịch liên kết</th>
+                  <th className="py-2.5 px-4">Nhân viên chăm sóc</th>
+                  <th className="py-2.5 px-4">Email</th>
+                  <th className="py-2.5 px-4">Vai trò (Role)</th>
                   <th className="py-2.5 px-4">Trạng thái</th>
-                  <th className="py-2.5 px-4">Ngày tạo</th>
                   <th className="py-2.5 px-4 text-right">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-sans">
-                {isCaretakersLoading ? (
+                {isEligibleCaregiversLoading ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-500 text-xs">
-                      Đang tải danh sách người chăm sóc...
+                    <td colSpan={5} className="py-8 text-center text-slate-500 text-xs">
+                      Đang tải danh sách nhân viên chăm sóc...
                     </td>
                   </tr>
-                ) : !caretakers || caretakers.length === 0 ? (
+                ) : !eligibleCaregivers || eligibleCaregivers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-500 text-xs">
-                      Chưa có người chăm sóc nào. Hãy nhấn "+ Thêm người chăm sóc" để tạo mới.
+                    <td colSpan={5} className="py-8 text-center text-slate-500 text-xs">
+                      Chưa có tài khoản nhân viên chăm sóc nào đủ điều kiện.
                     </td>
                   </tr>
                 ) : (
-                  caretakers.map((c) => (
-                    <tr key={c.id} className="hover:bg-slate-800/30 transition-colors">
+                  eligibleCaregivers.map((u: AuthUser) => (
+                    <tr key={u.id} className="hover:bg-slate-800/30 transition-colors">
                       <td className="py-3 px-4 font-semibold text-slate-100 flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 text-xs">
-                          <UserCheck className="w-3.5 h-3.5" />
+                        <div className="w-6 h-6 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 text-xs font-mono">
+                          {u.fullName?.charAt(0)?.toUpperCase() || 'U'}
                         </div>
-                        <span>{c.name}</span>
-                      </td>
-                      <td className="py-3 px-4">
-                        {c.userId && c.user ? (
-                          <div className="flex items-center gap-2">
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-medium text-slate-100 text-[11px]">{c.user.fullName}</span>
-                                <span
-                                  className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${
-                                    c.user.status === 'ACTIVE'
-                                      ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/50'
-                                      : 'bg-rose-950/80 text-rose-400 border border-rose-800/50'
-                                  }`}
-                                >
-                                  {c.user.status}
-                                </span>
-                              </div>
-                              <span className="text-[10px] text-slate-400 font-mono block">{c.user.email}</span>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setLinkingCaretaker(c)}
-                              className="h-6 px-1.5 text-[10px] text-blue-400 hover:text-blue-300 hover:bg-blue-950/40"
-                              title="Đổi hoặc gỡ liên kết tài khoản"
-                            >
-                              <Link2 className="w-3 h-3 mr-0.5" />
-                              Đổi
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-amber-400/80 italic">Chưa liên kết</span>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setLinkingCaretaker(c)}
-                              className="h-6 px-2 text-[10px] text-blue-400 border-blue-900/60 hover:bg-blue-950/40"
-                            >
-                              <Link2 className="w-3 h-3 mr-1" />
-                              Liên kết
-                            </Button>
-                          </div>
-                        )}
+                        <span>{u.fullName}</span>
                       </td>
                       <td className="py-3 px-4 text-slate-300 font-mono text-[11px]">
-                        <span className="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 text-slate-300">
-                          {c._count?.followUps ?? 0} lịch
+                        {u.email}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-[11px]">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                            u.role === 'ADMIN'
+                              ? 'bg-purple-950/80 text-purple-400 border border-purple-800/50'
+                              : 'bg-blue-950/80 text-blue-400 border border-blue-800/50'
+                          }`}
+                        >
+                          {u.role}
                         </span>
                       </td>
                       <td className="py-3 px-4">
-                        {c.active ? (
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono bg-emerald-950/60 text-emerald-400 border border-emerald-800/50">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                            Đang hoạt động (Active)
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono bg-slate-900 text-slate-400 border border-slate-800">
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-                            Ngừng hoạt động (Inactive)
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-slate-400 font-mono text-[11px]">
-                        <DateDisplay date={c.createdAt} />
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono bg-emerald-950/60 text-emerald-400 border border-emerald-800/50">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          Đang hoạt động (Active)
+                        </span>
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setEditingCaretaker(c);
-                              setIsCaretakerModalOpen(true);
-                            }}
-                            className="h-6 px-2 text-[11px] text-blue-400 hover:text-blue-300 hover:bg-blue-950/40 border border-transparent hover:border-blue-900/50"
-                            title="Sửa thông tin người chăm sóc"
-                          >
-                            <Edit className="w-3 h-3" />
-                            <span className="ml-1">Sửa</span>
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={async () => {
-                              try {
-                                await updateCaretaker.mutateAsync({
-                                  id: c.id,
-                                  data: { active: !c.active },
-                                });
-                                toast.success(
-                                  'Cập nhật thành công',
-                                  `Người chăm sóc "${c.name}" đã được ${!c.active ? 'kích hoạt' : 'vô hiệu hóa'}.`
-                                );
-                              } catch (err: unknown) {
-                                const message = err instanceof Error ? err.message : 'Không thể thay đổi trạng thái người chăm sóc.';
-                                toast.error('Lỗi cập nhật', message);
-                              }
-                            }}
-                            disabled={updateCaretaker.isPending}
-                            className={`h-6 px-2.5 text-[11px] font-mono ${
-                              c.active
-                                ? 'border-amber-800/80 text-amber-300 hover:bg-amber-950/40'
-                                : 'border-emerald-800/80 text-emerald-300 hover:bg-emerald-950/40'
-                            }`}
-                          >
-                            {c.active ? 'Vô hiệu hóa' : 'Kích hoạt'}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setDeletingCaretaker(c)}
-                            className="h-6 px-2 text-[11px] text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 border border-transparent hover:border-rose-900/50"
-                            title="Xóa người chăm sóc"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate('/users')}
+                          className="h-6 px-2 text-[11px] text-blue-400 hover:text-blue-300 hover:bg-blue-950/40 border border-transparent hover:border-blue-900/50"
+                          title="Đi tới quản lý người dùng"
+                        >
+                          <span>Quản lý</span>
+                        </Button>
                       </td>
                     </tr>
                   ))
@@ -1837,41 +1739,6 @@ export const SettingsPage: React.FC = () => {
         <CustomerSourceModal
           isOpen={isSourceModalOpen}
           onClose={() => setIsSourceModalOpen(false)}
-        />
-      )}
-
-      {isCaretakerModalOpen && (
-        <CaretakerModal
-          isOpen={isCaretakerModalOpen}
-          onClose={() => {
-            setIsCaretakerModalOpen(false);
-            setEditingCaretaker(null);
-          }}
-          caretaker={editingCaretaker}
-        />
-      )}
-
-      {linkingCaretaker && (
-        <LinkCaretakerModal
-          isOpen={Boolean(linkingCaretaker)}
-          onClose={() => setLinkingCaretaker(null)}
-          caretaker={linkingCaretaker}
-        />
-      )}
-
-      {deletingCaretaker && (
-        <ConfirmDialog
-          isOpen={Boolean(deletingCaretaker)}
-          title="Xóa người chăm sóc"
-          message={
-            (deletingCaretaker._count?.followUps || 0) > 0
-              ? `Người chăm sóc "${deletingCaretaker.name}" đang có ${deletingCaretaker._count?.followUps} lịch chăm sóc liên kết. Không thể xóa để bảo toàn lịch sử. Bạn có thể chọn "Vô hiệu hóa" để không cho phép phân công mới.`
-              : `Bạn có chắc chắn muốn xóa người chăm sóc "${deletingCaretaker.name}" khỏi hệ thống?`
-          }
-          confirmLabel="Xóa người chăm sóc"
-          isDestructive={true}
-          onConfirm={handleDeleteCaretakerConfirm}
-          onCancel={() => setDeletingCaretaker(null)}
         />
       )}
 

@@ -35,8 +35,9 @@ import {
   useBulkCompleteFollowUps,
   useBulkDeleteFollowUps,
 } from '../hooks/useFollowUps';
-import { useCaretakers } from '../hooks/useCaretakers';
+import { useEligibleCaregivers } from '../hooks/useCaretakers';
 import { FollowUp } from '../types/models';
+import { AuthUser } from '../types/auth';
 import { categorizeFollowUps } from '../utils/followUpUtils';
 import { EditFollowUpModal } from '../features/customers/EditFollowUpModal';
 import { ScheduleFollowUpModal } from '../features/customers/ScheduleFollowUpModal';
@@ -46,7 +47,7 @@ export const FollowUpsPage: React.FC = () => {
   const { role } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { data: caretakers, isLoading: isCaretakersLoading } = useCaretakers();
+  const { data: caregivers, isLoading: isCaregiversLoading } = useEligibleCaregivers();
   const { toast } = useToast();
 
   const { data: followUps, isLoading, isError, refetch } = useFollowUps({ filter: 'all' });
@@ -106,13 +107,17 @@ export const FollowUpsPage: React.FC = () => {
     setSelectedTaskIds([]); // Reset selection when filtering changes
   };
 
-  // Filter tasks by caretaker first
+  // Filter tasks by caregiver
   const filteredTasks = useMemo(() => {
     const rawList = followUps || [];
     return rawList.filter((task) => {
       if (caretakerFilter === 'all') return true;
-      if (caretakerFilter === 'unassigned') return !task.assignedTo;
-      return task.assignedTo?.toLowerCase() === caretakerFilter.toLowerCase();
+      if (caretakerFilter === 'unassigned') return !task.assignedTo && !task.assignedToUserId;
+      return (
+        task.assignedToUserId === caretakerFilter ||
+        task.assignedTo?.toLowerCase() === caretakerFilter.toLowerCase() ||
+        task.assignedToUser?.fullName?.toLowerCase() === caretakerFilter.toLowerCase()
+      );
     });
   }, [followUps, caretakerFilter]);
 
@@ -261,14 +266,14 @@ export const FollowUpsPage: React.FC = () => {
               )}
               <StatusBadge status={task.status} />
 
-              {/* Caretaker Indicator: 👤 Name or Chưa phân công */}
-              {task.assignedTo ? (
+              {/* Caregiver Indicator: 👤 Name or Chưa phân công */}
+              {(task.assignedToUser?.fullName || task.assignedTo) ? (
                 <span
                   className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-800/60 font-semibold flex items-center gap-1"
-                  title={`Người chăm sóc: ${task.assignedTo}`}
+                  title={`Người chăm sóc: ${task.assignedToUser?.fullName || task.assignedTo}`}
                 >
                   <User className="w-2.5 h-2.5 text-blue-400" />
-                  <span>{task.assignedTo}</span>
+                  <span>{task.assignedToUser?.fullName || task.assignedTo}</span>
                 </span>
               ) : (
                 <span
@@ -499,15 +504,15 @@ export const FollowUpsPage: React.FC = () => {
           <select
             value={caretakerFilter}
             onChange={(e) => handleSelectCaretaker(e.target.value)}
-            disabled={isCaretakersLoading}
+            disabled={isCaregiversLoading}
             className="h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono text-xs focus:outline-none focus:border-blue-500"
           >
             <option value="all">Tất cả người chăm sóc</option>
             <option value="unassigned">Chưa phân công</option>
-            {caretakers &&
-              caretakers.map((c) => (
-                <option key={c.id} value={c.name}>
-                  {c.name} {!c.active ? '(Đã ngừng)' : ''}
+            {caregivers &&
+              caregivers.map((u: AuthUser) => (
+                <option key={u.id} value={u.id}>
+                  {u.fullName} ({u.role === 'ADMIN' ? 'Quản trị viên' : 'Nhân viên'})
                 </option>
               ))}
           </select>

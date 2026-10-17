@@ -56,6 +56,7 @@ export const useCreateBulkFollowUp = () => {
       dueAt: string;
       status?: import('../types/models').FollowUpStatus;
       assignedTo?: string | null;
+      assignedToUserId?: string | null;
     }) => followUpService.createBulkFollowUps(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['follow-ups'] });

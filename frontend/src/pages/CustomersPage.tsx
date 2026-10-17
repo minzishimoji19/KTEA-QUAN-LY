@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Copy,
   Check,
+  UserCheck,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useToast } from '../context/ToastContext';
@@ -33,6 +34,8 @@ import { useCustomers, useBulkAction } from '../hooks/useCustomers';
 import { useProducts } from '../hooks/useProducts';
 import { useTags } from '../hooks/useTags';
 import { useCustomerSources } from '../hooks/useCustomerSources';
+import { useEligibleCaregivers } from '../hooks/useCaretakers';
+import { authService } from '../services/authService';
 import { CustomerSummary, CustomerStatus, PriorityLevel, BulkActionResult } from '../types/models';
 import { CreateCustomerModal } from '../features/customers/CreateCustomerModal';
 import { ScheduleFollowUpModal } from '../features/customers/ScheduleFollowUpModal';
@@ -159,6 +162,12 @@ export const CustomersPage: React.FC = () => {
   const [isAssignSourceModalOpen, setIsAssignSourceModalOpen] = useState(false);
   const [selectedBulkSourceId, setSelectedBulkSourceId] = useState('');
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+
+  // Bulk Reassign Caregiver Modal State
+  const [isBulkCaregiverModalOpen, setIsBulkCaregiverModalOpen] = useState(false);
+  const [selectedCaregiverId, setSelectedCaregiverId] = useState('');
+  const [isSubmittingCaregiver, setIsSubmittingCaregiver] = useState(false);
+  const { data: eligibleCaregivers } = useEligibleCaregivers();
 
   const bulkAction = useBulkAction();
 
@@ -355,6 +364,43 @@ export const CustomersPage: React.FC = () => {
         message: err.message || 'Đã xảy ra lỗi khi thực hiện xóa hàng loạt.',
       });
       setIsDeleteModalOpen(false);
+    }
+  };
+
+  // Requirement 2: Chuyển giao / đổi người chăm sóc hàng loạt
+  const handleConfirmBulkReassignCaregiver = async () => {
+    if (!selectedCaregiverId || selectedCustomerIds.length === 0) return;
+    setIsSubmittingCaregiver(true);
+    try {
+      const res = await authService.bulkReassignCustomers({
+        toUserId: selectedCaregiverId,
+        customerIds: selectedCustomerIds,
+      });
+
+      if (res.failed.length === 0) {
+        setBulkNotification({
+          type: 'success',
+          message: res.message,
+        });
+      } else {
+        setBulkNotification({
+          type: res.succeeded.length > 0 ? 'warning' : 'error',
+          message: res.message,
+          details: res.failed.map((f) => ({ id: f.id, reason: f.reason })),
+        });
+      }
+
+      setSelectedCustomerIds([]);
+      setIsBulkCaregiverModalOpen(false);
+      setSelectedCaregiverId('');
+      refetch();
+    } catch (err: any) {
+      setBulkNotification({
+        type: 'error',
+        message: err.message || 'Không thể đổi người chăm sóc hàng loạt.',
+      });
+    } finally {
+      setIsSubmittingCaregiver(false);
     }
   };
 
@@ -567,20 +613,101 @@ export const CustomersPage: React.FC = () => {
     {
       key: 'careCount',
       header: 'Số lần chăm sóc',
-      width: '130px',
+      width: '185px',
       align: 'center',
       render: (row) => {
         const count = row.careCount ?? 0;
+        const status = row.latestCareStatus || (count === 0 ? 'NONE' : 'PENDING');
+        const careFollowUps = row.careFollowUps || [];
+
+        if (count === 0 && careFollowUps.length === 0) {
+          return (
+            <span
+              className="inline-flex items-center justify-center font-mono text-[11px] px-2.5 py-0.5 rounded-full border bg-slate-900 text-slate-500 border-slate-800"
+              title="Chưa có lịch chăm sóc nào"
+            >
+              0 lần
+            </span>
+          );
+        }
+
+        // Color coding rules:
+        // - Hoàn thành: Màu xanh lá (bg-emerald-950/70 text-emerald-300 border-emerald-700/60)
+        // - Chưa hoàn thành: Màu đỏ (bg-rose-950/70 text-rose-300 border-rose-700/60)
+        // - Quá hạn: Màu đỏ đậm cảnh báo (bg-red-950/80 text-red-300 border-red-600/70)
+        // - Đang xử lý: Màu xanh dương (bg-blue-950/70 text-blue-300 border-blue-700/60)
+        // - Đã hủy: Màu xám (bg-slate-900 text-slate-400 border-slate-800)
+        let badgeStyles = 'bg-slate-900 text-slate-400 border-slate-800';
+        let statusLabel = 'Chưa chăm sóc';
+        let dotColor = 'bg-slate-500';
+
+        if (status === 'COMPLETED') {
+          badgeStyles = 'bg-emerald-950/70 text-emerald-300 border-emerald-700/60';
+          statusLabel = 'Hoàn thành';
+          dotColor = 'bg-emerald-400';
+        } else if (status === 'OVERDUE') {
+          badgeStyles = 'bg-red-950/80 text-red-300 border-red-600/70';
+          statusLabel = 'Quá hạn';
+          dotColor = 'bg-red-400';
+        } else if (status === 'PENDING') {
+          badgeStyles = 'bg-rose-950/70 text-rose-300 border-rose-700/60';
+          statusLabel = 'Chưa hoàn thành';
+          dotColor = 'bg-rose-400';
+        } else if (status === 'IN_PROGRESS') {
+          badgeStyles = 'bg-blue-950/70 text-blue-300 border-blue-700/60';
+          statusLabel = 'Đang xử lý';
+          dotColor = 'bg-blue-400';
+        } else if (status === 'CANCELLED') {
+          badgeStyles = 'bg-slate-900 text-slate-400 border-slate-800';
+          statusLabel = 'Đã hủy';
+          dotColor = 'bg-slate-500';
+        }
+
+        const tooltipLines = careFollowUps.length > 0
+          ? careFollowUps.map(
+              (cf, idx) =>
+                `Lần ${idx + 1}: ${cf.title || 'Lịch chăm sóc'} [${
+                  cf.effectiveStatus === 'COMPLETED'
+                    ? 'Đã hoàn thành'
+                    : cf.effectiveStatus === 'OVERDUE'
+                    ? 'Quá hạn'
+                    : cf.effectiveStatus === 'IN_PROGRESS'
+                    ? 'Đang xử lý'
+                    : cf.effectiveStatus === 'CANCELLED'
+                    ? 'Đã hủy'
+                    : 'Chưa hoàn thành'
+                }] - Hạn: ${cf.dueAt ? cf.dueAt.slice(0, 10) : '—'}`
+            ).join('\n')
+          : undefined;
+
         return (
-          <span
-            className={`inline-flex items-center justify-center font-mono text-xs px-2.5 py-0.5 rounded-full border ${
-              count > 0
-                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50 font-semibold'
-                : 'bg-slate-900 text-slate-500 border-slate-800'
-            }`}
-          >
-            {count}
-          </span>
+          <div className="flex flex-col items-center gap-1 py-0.5 select-none" title={tooltipLines}>
+            <span
+              className={`inline-flex items-center gap-1.5 font-mono text-[11px] px-2.5 py-0.5 rounded-full border transition-all ${badgeStyles}`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+              <span className="font-bold">{count} lần</span>
+              <span className="opacity-40">·</span>
+              <span className="font-sans font-medium text-[10px]">{statusLabel}</span>
+            </span>
+
+            {careFollowUps.length > 1 && (
+              <div className="flex items-center gap-1" title="Chi tiết từng lần chăm sóc">
+                {careFollowUps.map((cf) => (
+                  <span
+                    key={cf.id}
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      cf.effectiveStatus === 'COMPLETED'
+                        ? 'bg-emerald-400'
+                        : cf.effectiveStatus === 'CANCELLED'
+                        ? 'bg-slate-600'
+                        : 'bg-rose-500'
+                    }`}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         );
       },
     },
@@ -885,6 +1012,21 @@ export const CustomersPage: React.FC = () => {
             >
               <CalendarCheck className="w-3.5 h-3.5 text-amber-400" />
               <span>Lên lịch chăm sóc</span>
+            </Button>
+
+            {/* 1b. Đổi người chăm sóc hàng loạt */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSelectedCaregiverId('');
+                setIsBulkCaregiverModalOpen(true);
+              }}
+              className="h-7 text-xs px-2.5 gap-1.5 border-emerald-800/80 text-emerald-300 hover:bg-emerald-950/40 font-medium"
+              title="Phân công hoặc đổi người chăm sóc cho các khách hàng đã chọn"
+            >
+              <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Đổi người chăm sóc</span>
             </Button>
 
             {/* 2. Gán nguồn khách hàng (Req 1.3) */}
@@ -1221,6 +1363,87 @@ export const CustomersPage: React.FC = () => {
         onClose={() => setIsScheduleModalOpen(false)}
         initialSelectedCustomers={selectedCustomerObjects}
       />
+
+      {/* Requirement 2: Modal Đổi Người Chăm Sóc Hàng Loạt */}
+      {isBulkCaregiverModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-md p-6 rounded-2xl bg-slate-900 border border-emerald-900/60 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-emerald-400 font-mono font-bold text-sm">
+                <UserCheck className="w-4 h-4" />
+                <span>Đổi người chăm sóc hàng loạt</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBulkCaregiverModalOpen(false)}
+                className="text-slate-400 hover:text-slate-200 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-300">
+              <p>
+                Phân công / chuyển giao <strong className="text-emerald-400 font-mono font-bold">{selectedCustomerIds.length}</strong> khách hàng đã chọn sang nhân viên chăm sóc mới:
+              </p>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-slate-300 font-mono">
+                  Chọn nhân viên chăm sóc: *
+                </label>
+                <select
+                  value={selectedCaregiverId}
+                  onChange={(e) => setSelectedCaregiverId(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-sans"
+                >
+                  <option value="">-- Chọn nhân viên chăm sóc --</option>
+                  {(eligibleCaregivers || [])
+                    .filter((u) => u.status === 'ACTIVE')
+                    .map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.fullName} ({u.role === 'ADMIN' ? 'Quản trị viên' : 'Nhân viên'})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                <p className="font-semibold text-slate-300">🛡️ Lưu ý an toàn:</p>
+                <p>• Bảo lưu toàn bộ thông tin khách hàng, hồ sơ vay và lịch sử chăm sóc.</p>
+                <p>• Tự động cập nhật phân công và chuyển tiếp các lịch chăm sóc đang mở.</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsBulkCaregiverModalOpen(false)}
+                disabled={isSubmittingCaregiver}
+                className="text-xs"
+              >
+                Hủy bỏ
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleConfirmBulkReassignCaregiver}
+                disabled={!selectedCaregiverId || isSubmittingCaregiver}
+                className="text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-500 font-medium text-white"
+              >
+                {isSubmittingCaregiver ? (
+                  <span>Đang cập nhật...</span>
+                ) : (
+                  <>
+                    <UserCheck className="w-3.5 h-3.5" />
+                    <span>Xác nhận phân công ({selectedCustomerIds.length})</span>
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

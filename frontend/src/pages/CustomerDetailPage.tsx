@@ -425,12 +425,39 @@ export const CustomerDetailPage: React.FC = () => {
               </span>
 
               {/* Care Count Summary Indicator */}
-              <span className="flex items-center gap-1.5 text-slate-300" title="Số lần chăm sóc thực tế đã ghi nhận">
-                <span className="text-slate-500 font-sans">Chăm sóc:</span>
-                <span className={`font-semibold font-mono ${((customer.careCount ?? 0) > 0) ? 'text-emerald-400' : 'text-slate-400'}`}>
-                  {customer.careCount ?? 0} lần
-                </span>
-              </span>
+              {(() => {
+                const count = customer.careCount ?? 0;
+                const status = customer.latestCareStatus || (count === 0 ? 'NONE' : 'PENDING');
+                const isDone = status === 'COMPLETED';
+                const isOverdue = status === 'OVERDUE';
+                const isPending = status === 'PENDING';
+                const isProgress = status === 'IN_PROGRESS';
+
+                let colorClasses = 'text-slate-400';
+                let label = '';
+                if (isDone) {
+                  colorClasses = 'text-emerald-400 font-bold';
+                  label = 'Hoàn thành';
+                } else if (isOverdue) {
+                  colorClasses = 'text-red-400 font-bold';
+                  label = 'Quá hạn';
+                } else if (isPending) {
+                  colorClasses = 'text-rose-400 font-bold';
+                  label = 'Chưa hoàn thành';
+                } else if (isProgress) {
+                  colorClasses = 'text-blue-400 font-bold';
+                  label = 'Đang xử lý';
+                }
+
+                return (
+                  <span className="flex items-center gap-1.5 text-slate-300" title="Số lần chăm sóc và trạng thái hiện tại">
+                    <span className="text-slate-500 font-sans">Chăm sóc:</span>
+                    <span className={`font-mono ${colorClasses}`}>
+                      {count} lần {label ? `(${label})` : ''}
+                    </span>
+                  </span>
+                );
+              })()}
 
               {/* Next Follow-up Display */}
               {(() => {
@@ -639,17 +666,43 @@ export const CustomerDetailPage: React.FC = () => {
                     </span>
                   </div>
                 )}
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
+                <div className="flex justify-between py-1 border-b border-slate-800/60 items-center">
                   <span className="text-slate-400">Số lần chăm sóc</span>
-                  <span
-                    className={`inline-flex items-center justify-center font-mono text-xs px-2 py-0.5 rounded border ${
-                      (customer.careCount ?? 0) > 0
-                        ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50 font-semibold'
-                        : 'bg-slate-900 text-slate-500 border-slate-800'
-                    }`}
-                  >
-                    {customer.careCount ?? 0} lần
-                  </span>
+                  {(() => {
+                    const count = customer.careCount ?? 0;
+                    const status = customer.latestCareStatus || (count === 0 ? 'NONE' : 'PENDING');
+                    let badgeStyles = 'bg-slate-900 text-slate-500 border-slate-800';
+                    let label = 'Chưa chăm sóc';
+
+                    if (status === 'COMPLETED') {
+                      badgeStyles = 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50 font-semibold';
+                      label = 'Hoàn thành';
+                    } else if (status === 'OVERDUE') {
+                      badgeStyles = 'bg-red-950/70 text-red-300 border-red-700/60 font-semibold';
+                      label = 'Quá hạn';
+                    } else if (status === 'PENDING') {
+                      badgeStyles = 'bg-rose-950/70 text-rose-300 border-rose-700/60 font-semibold';
+                      label = 'Chưa hoàn thành';
+                    } else if (status === 'IN_PROGRESS') {
+                      badgeStyles = 'bg-blue-950/70 text-blue-300 border-blue-700/60 font-semibold';
+                      label = 'Đang xử lý';
+                    } else if (status === 'CANCELLED') {
+                      badgeStyles = 'bg-slate-900 text-slate-400 border-slate-800';
+                      label = 'Đã hủy';
+                    }
+
+                    return (
+                      <span className={`inline-flex items-center gap-1.5 font-mono text-xs px-2.5 py-0.5 rounded-full border ${badgeStyles}`}>
+                        <span>{count} lần</span>
+                        {count > 0 && (
+                          <>
+                            <span className="opacity-40">·</span>
+                            <span className="font-sans font-medium text-[11px]">{label}</span>
+                          </>
+                        )}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/60">
                   <span className="text-slate-400">Lần chăm sóc gần nhất</span>
