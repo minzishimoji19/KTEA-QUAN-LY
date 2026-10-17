@@ -32,9 +32,15 @@ export class FollowUpRepository extends BaseRepository {
     if (assignedTo && assignedTo.trim()) {
       const trimmed = assignedTo.trim();
       if (trimmed === 'unassigned' || trimmed === 'CHUA_PHAN_CONG') {
-        where.assignedTo = null;
+        where.AND = [
+          { assignedTo: null },
+          { assignedToUserId: null },
+        ];
       } else if (trimmed !== 'all') {
-        where.assignedTo = trimmed;
+        where.OR = [
+          { assignedTo: trimmed },
+          { assignedToUserId: trimmed },
+        ];
       }
     }
 
@@ -80,6 +86,14 @@ export class FollowUpRepository extends BaseRepository {
             priority: true,
           },
         },
+        assignedToUser: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            role: true,
+          },
+        },
       },
       orderBy: { dueAt: 'asc' },
     });
@@ -88,7 +102,17 @@ export class FollowUpRepository extends BaseRepository {
   async findById(id: string) {
     return this.db.followUp.findUnique({
       where: { id },
-      include: { customer: true },
+      include: {
+        customer: true,
+        assignedToUser: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
     });
   }
 
@@ -99,12 +123,21 @@ export class FollowUpRepository extends BaseRepository {
     dueAt: Date;
     status?: FollowUpStatus;
     assignedTo?: string | null;
+    assignedToUserId?: string | null;
   }) {
     return this.db.followUp.create({
       data,
       include: {
         customer: {
           select: { id: true, fullName: true, phone: true },
+        },
+        assignedToUser: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            role: true,
+          },
         },
       },
     });
@@ -117,6 +150,14 @@ export class FollowUpRepository extends BaseRepository {
       include: {
         customer: {
           select: { id: true, fullName: true, phone: true },
+        },
+        assignedToUser: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            role: true,
+          },
         },
       },
     });

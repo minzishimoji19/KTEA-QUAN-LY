@@ -297,14 +297,17 @@ model FollowUp {
   status          FollowUpStatus    @default(PENDING) @map("status")
   completedAt     DateTime?         @map("completed_at")
   assignedTo      String?           @map("assigned_to")
+  assignedToUserId String?          @map("assigned_to_user_id")
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
   customer        Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assignedToUser  User?             @relation("UserAssignedFollowUps", fields: [assignedToUserId], references: [id], onDelete: SetNull)
 
   @@index([customerId])
   @@index([dueAt])
   @@index([status])
+  @@index([assignedToUserId])
   @@map("follow_ups")
 }
 
@@ -430,6 +433,7 @@ model User {
   createdGrants      CustomerAssignmentGrant[] @relation("AdminAssignmentGrants")
   auditLogs          AuditLog[]
   caretaker          Caretaker?
+  assignedFollowUps  FollowUp[] @relation("UserAssignedFollowUps")
 
   @@map("users")
 }

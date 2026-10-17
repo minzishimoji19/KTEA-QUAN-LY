@@ -21,24 +21,49 @@ export class AssignmentSyncService {
     params: {
       followUpId: string;
       customerId: string;
+      caregiverUserId?: string | null;
       caregiverName?: string | null;
       assignedById?: string | null;
       previousCaregiverName?: string | null;
     }
   ): Promise<SyncFollowUpResult> {
-    const { followUpId, customerId, caregiverName, assignedById, previousCaregiverName } = params;
+    const { followUpId, customerId, caregiverUserId, caregiverName, assignedById, previousCaregiverName } = params;
 
     // 1. Resolve new caregiver and linked partner user
     let newPartnerUserId: string | null = null;
     let newPartnerName: string | null = null;
     let newPartnerEmail: string | null = null;
 
-    if (caregiverName && caregiverName.trim()) {
+    if (caregiverUserId && caregiverUserId.trim()) {
+      const user = await tx.user.findUnique({
+        where: { id: caregiverUserId.trim() },
+      });
+      if (user && user.status === 'ACTIVE') {
+        if (user.role === 'PARTNER') {
+          newPartnerUserId = user.id;
+          newPartnerName = user.fullName;
+          newPartnerEmail = user.email;
+        } else {
+          // ADMIN user: has global access, doesn't need partner grant
+          newPartnerUserId = null;
+          newPartnerName = user.fullName;
+          newPartnerEmail = user.email;
+        }
+      }
+    }
+
+    if (!newPartnerUserId && !newPartnerName && caregiverName && caregiverName.trim()) {
       const trimmedCaregiver = caregiverName.trim();
-      const caretaker = await tx.caretaker.findFirst({
-        where: { name: trimmedCaregiver },
+      let caretaker = await tx.caretaker.findUnique({
+        where: { id: trimmedCaregiver },
         include: { user: true },
       });
+      if (!caretaker) {
+        caretaker = await tx.caretaker.findFirst({
+          where: { name: trimmedCaregiver },
+          include: { user: true },
+        });
+      }
 
       if (caretaker?.userId && caretaker.user && caretaker.user.status === 'ACTIVE') {
         newPartnerUserId = caretaker.userId;

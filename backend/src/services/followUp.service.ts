@@ -11,61 +11,86 @@ import { assignmentSyncService } from './assignmentSync.service.js';
 
 export class FollowUpService extends BaseService {
   /**
-   * Validates assignedTo name against caretakers catalog.
-   * If allowInactiveIfCurrentSame is provided and matches the caretaker, allows keeping inactive caretaker on existing records.
+   * Validates assigned caregiver against active Users first, with fallback to legacy Caretakers catalog.
+   * Returns { userId, name } where userId is non-null for system users, and null for legacy unmapped caretakers.
    */
-  async validateAssignedTo(name?: string | null, allowInactiveIfCurrentSame?: string | null): Promise<string | null> {
-    if (!name || typeof name !== 'string') {
+  async validateAssignedTo(
+    identifier?: string | null,
+    allowInactiveIfCurrentSame?: string | null
+  ): Promise<{ userId: string | null; name: string } | null> {
+    if (!identifier || typeof identifier !== 'string') {
       return null;
     }
-    const trimmed = name.trim();
+    const trimmed = identifier.trim();
     if (!trimmed) {
       return null;
     }
 
-    let caretaker = await caretakerRepository.findByName(trimmed);
-    if (!caretaker) {
-      // Check if this is an active PARTNER user not yet registered in caretakers
-      const partnerUser = await prisma.user.findFirst({
-        where: {
-          fullName: trimmed,
-          role: 'PARTNER',
-          status: 'ACTIVE',
-        },
-      });
-
-      if (partnerUser) {
-        try {
-          caretaker = await caretakerRepository.create({
-            name: trimmed,
-            active: true,
-            userId: partnerUser.id,
-          });
-        } catch (_) {
-          caretaker = await caretakerRepository.findByName(trimmed);
+    // 1. Check direct User by ID (UUID)
+    const userById = await prisma.user.findUnique({
+      where: { id: trimmed },
+    });
+    if (userById) {
+      if (userById.status !== 'ACTIVE') {
+        const isSame =
+          allowInactiveIfCurrentSame &&
+          (allowInactiveIfCurrentSame === userById.fullName || allowInactiveIfCurrentSame === userById.id);
+        if (!isSame) {
+          throw new BadRequestError(
+            `Tài khoản nhân viên '${userById.fullName}' đang bị tạm khóa hoặc ngừng hoạt động và không thể nhận lịch chăm sóc mới.`
+          );
         }
       }
+      return { userId: userById.id, name: userById.fullName };
     }
 
+    // 2. Check direct User by full name
+    const userByName = await prisma.user.findFirst({
+      where: { fullName: trimmed },
+    });
+    if (userByName) {
+      if (userByName.status !== 'ACTIVE') {
+        const isSame =
+          allowInactiveIfCurrentSame &&
+          (allowInactiveIfCurrentSame === userByName.fullName || allowInactiveIfCurrentSame === userByName.id);
+        if (!isSame) {
+          throw new BadRequestError(
+            `Tài khoản nhân viên '${userByName.fullName}' đang bị tạm khóa hoặc ngừng hoạt động và không thể nhận lịch chăm sóc mới.`
+          );
+        }
+      }
+      return { userId: userByName.id, name: userByName.fullName };
+    }
+
+    // 3. Fallback to legacy caretaker table (for historical unmapped records like 'mfast')
+    let caretaker = await caretakerRepository.findById(trimmed);
     if (!caretaker) {
-      throw new BadRequestError(`Người chăm sóc '${trimmed}' không tồn tại trong hệ thống. Vui lòng thêm người chăm sóc trước.`);
+      caretaker = await caretakerRepository.findByName(trimmed);
+    }
+    if (!caretaker) {
+      caretaker = await caretakerRepository.findByUserId(trimmed);
     }
 
-    if (!caretaker.active) {
-      const isSameAsCurrent = allowInactiveIfCurrentSame && allowInactiveIfCurrentSame.toLowerCase() === caretaker.name.toLowerCase();
-      if (!isSameAsCurrent) {
-        throw new BadRequestError(`Người chăm sóc '${caretaker.name}' đã ngừng hoạt động và không thể phân công mới.`);
+    if (caretaker) {
+      if (caretaker.userId && caretaker.user) {
+        if (caretaker.user.status !== 'ACTIVE') {
+          throw new BadRequestError(`Tài khoản nhân viên '${caretaker.user.fullName}' đang bị tạm khóa hoặc ngừng hoạt động.`);
+        }
+        return { userId: caretaker.userId, name: caretaker.user.fullName };
       }
-    }
-
-    // Verify linked user status: disabled/suspended accounts cannot be assigned new schedules
-    if (caretaker.userId && caretaker.user) {
-      if (caretaker.user.status !== 'ACTIVE') {
-        throw new BadRequestError(`Tài khoản đối tác '${caretaker.user.fullName}' đang bị tạm khóa hoặc ngừng hoạt động và không thể nhận lịch chăm sóc mới.`);
+      if (!caretaker.active) {
+        const isSame =
+          allowInactiveIfCurrentSame &&
+          (allowInactiveIfCurrentSame.toLowerCase() === caretaker.name.toLowerCase() ||
+            allowInactiveIfCurrentSame === caretaker.id);
+        if (!isSame) {
+          throw new BadRequestError(`Người chăm sóc '${caretaker.name}' đã ngừng hoạt động và không thể phân công mới.`);
+        }
       }
+      return { userId: null, name: caretaker.name };
     }
 
-    return caretaker.name;
+    throw new BadRequestError(`Nhân viên chăm sóc '${trimmed}' không tồn tại trong hệ thống.`);
   }
 
   async getFollowUps(
@@ -113,6 +138,7 @@ export class FollowUpService extends BaseService {
     dueAt: string | Date;
     status?: FollowUpStatus;
     assignedTo?: string | null;
+    assignedToUserId?: string | null;
   }) {
     const customer = await customerRepository.findById(data.customerId);
     if (!customer) {
@@ -125,7 +151,9 @@ export class FollowUpService extends BaseService {
     }
 
     const followUpStatus = data.status || FollowUpStatus.PENDING;
-    const caretaker = await this.validateAssignedTo(data.assignedTo);
+    const resolvedCaregiver = await this.validateAssignedTo(data.assignedToUserId || data.assignedTo);
+    const caretaker = resolvedCaregiver?.name || null;
+    const assignedUserId = resolvedCaregiver?.userId || null;
     const desc = data.description !== undefined ? data.description : null;
     const dueDateStr = dueDate.toISOString().split('T')[0];
 
@@ -139,10 +167,14 @@ export class FollowUpService extends BaseService {
             dueAt: dueDate,
             status: followUpStatus,
             assignedTo: caretaker,
+            assignedToUserId: assignedUserId,
           },
           include: {
             customer: {
               select: { id: true, fullName: true, phone: true },
+            },
+            assignedToUser: {
+              select: { id: true, fullName: true, email: true, role: true },
             },
           },
         });
@@ -159,10 +191,14 @@ export class FollowUpService extends BaseService {
             dueAt: dueDate,
             status: followUpStatus,
             assignedTo: caretaker,
+            assignedToUserId: assignedUserId,
           },
           include: {
             customer: {
               select: { id: true, fullName: true, phone: true },
+            },
+            assignedToUser: {
+              select: { id: true, fullName: true, email: true, role: true },
             },
           },
         });
@@ -171,6 +207,7 @@ export class FollowUpService extends BaseService {
         const syncResult = await assignmentSyncService.syncFollowUpAssignment(tx, {
           followUpId: created.id,
           customerId: data.customerId,
+          caregiverUserId: assignedUserId,
           caregiverName: caretaker,
           assignedById: (data as any).assignedById || null,
         });
@@ -207,8 +244,9 @@ export class FollowUpService extends BaseService {
     dueAt: string | Date;
     status?: FollowUpStatus;
     assignedTo?: string | null;
+    assignedToUserId?: string | null;
   }) {
-    const { customerIds, title, description, dueAt, status, assignedTo } = data;
+    const { customerIds, title, description, dueAt, status, assignedTo, assignedToUserId } = data;
     if (!customerIds || !Array.isArray(customerIds) || customerIds.length === 0) {
       throw new BadRequestError('Phải chọn ít nhất một khách hàng');
     }
@@ -237,7 +275,9 @@ export class FollowUpService extends BaseService {
     }
 
     const followUpStatus = status || FollowUpStatus.PENDING;
-    const caretaker = await this.validateAssignedTo(assignedTo);
+    const resolvedCaregiver = await this.validateAssignedTo(assignedToUserId || assignedTo);
+    const caretaker = resolvedCaregiver?.name || null;
+    const assignedUserId = resolvedCaregiver?.userId || null;
     const desc = description !== undefined ? description : null;
     const dueDateStr = dueDate.toISOString().split('T')[0];
     const BATCH_SIZE = 250;
@@ -257,10 +297,14 @@ export class FollowUpService extends BaseService {
             dueAt: dueDate,
             status: followUpStatus,
             assignedTo: caretaker,
+            assignedToUserId: assignedUserId,
           },
           include: {
             customer: {
               select: { id: true, fullName: true, phone: true },
+            },
+            assignedToUser: {
+              select: { id: true, fullName: true, email: true, role: true },
             },
           },
         });
@@ -276,6 +320,7 @@ export class FollowUpService extends BaseService {
           dueAt: dueDate,
           status: followUpStatus,
           assignedTo: caretaker,
+          assignedToUserId: assignedUserId,
         }));
 
         const activityRecords = customersToCreate.map((customer) => ({
@@ -299,6 +344,7 @@ export class FollowUpService extends BaseService {
           await assignmentSyncService.syncFollowUpAssignment(tx, {
             followUpId: record.id,
             customerId: record.customerId,
+            caregiverUserId: assignedUserId,
             caregiverName: caretaker,
             assignedById: (data as any).assignedById || null,
           });
@@ -360,6 +406,7 @@ export class FollowUpService extends BaseService {
     dueAt?: string | Date;
     status?: FollowUpStatus;
     assignedTo?: string | null;
+    assignedToUserId?: string | null;
     completedAt?: string | Date | null;
   }) {
     const current = await this.getFollowUpById(id);
@@ -376,8 +423,9 @@ export class FollowUpService extends BaseService {
       completionDate = null;
     }
 
-    const validatedCaretaker = data.assignedTo !== undefined
-      ? await this.validateAssignedTo(data.assignedTo, current.assignedTo)
+    const hasCaregiverChange = data.assignedTo !== undefined || data.assignedToUserId !== undefined;
+    const validatedCaregiver = hasCaregiverChange
+      ? await this.validateAssignedTo(data.assignedToUserId !== undefined ? data.assignedToUserId : data.assignedTo, current.assignedTo)
       : undefined;
 
     return prisma.$transaction(async (tx) => {
@@ -388,12 +436,16 @@ export class FollowUpService extends BaseService {
           description: data.description,
           dueAt: dueDate,
           status: data.status,
-          assignedTo: validatedCaretaker,
+          assignedTo: hasCaregiverChange ? (validatedCaregiver ? validatedCaregiver.name : null) : undefined,
+          assignedToUserId: hasCaregiverChange ? (validatedCaregiver ? validatedCaregiver.userId : null) : undefined,
           completedAt: completionDate,
         },
         include: {
           customer: {
             select: { id: true, fullName: true, phone: true },
+          },
+          assignedToUser: {
+            select: { id: true, fullName: true, email: true, role: true },
           },
         },
       });
@@ -412,15 +464,16 @@ export class FollowUpService extends BaseService {
           syncNotice = ' Nhân viên vẫn giữ quyền phụ trách khách hàng do còn nguồn phân công hợp lệ khác.';
         }
       } else if (
-        validatedCaretaker !== undefined &&
-        (validatedCaretaker !== current.assignedTo ||
+        hasCaregiverChange &&
+        ((validatedCaregiver?.name || null) !== current.assignedTo ||
           (current.status === FollowUpStatus.CANCELLED && Boolean(data.status)))
       ) {
         // Đổi caregiver hoặc kích hoạt lại từ CANCELLED
         const syncResult = await assignmentSyncService.syncFollowUpAssignment(tx, {
           followUpId: id,
           customerId: current.customerId,
-          caregiverName: validatedCaretaker,
+          caregiverUserId: validatedCaregiver?.userId || null,
+          caregiverName: validatedCaregiver?.name || null,
           previousCaregiverName: current.assignedTo,
           assignedById: (data as any).assignedById || null,
         });
@@ -442,7 +495,7 @@ export class FollowUpService extends BaseService {
             customerId: current.customerId,
             type: ActivityType.SYSTEM_EVENT,
             title: `Đổi người chăm sóc: ${current.title}`,
-            description: `Người chăm sóc đổi từ "${current.assignedTo || 'Chưa phân công'}" sang "${validatedCaretaker || 'Chưa phân công'}".${syncNotice}`,
+            description: `Người chăm sóc đổi từ "${current.assignedTo || 'Chưa phân công'}" sang "${validatedCaregiver?.name || 'Chưa phân công'}".${syncNotice}`,
           },
         });
       }

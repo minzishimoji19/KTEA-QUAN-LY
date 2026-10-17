@@ -32,6 +32,7 @@
     "test:phase4": "tsx src/tests/verify-phase4-rbac-enforcement.ts",
     "test:phase5": "tsx src/tests/phase5-e2e-acceptance.ts",
     "test:reconciliation": "tsx src/tests/phase5-data-reconciliation.ts",
+    "test:unification": "tsx src/tests/verify-user-caregiver-unification.ts",
     "bootstrap:admin": "tsx src/scripts/bootstrapAdmin.ts",
     "test": "tsx src/tests/verify-backend-rbac-full.ts"
   },

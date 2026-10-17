@@ -8,6 +8,7 @@ export const listFollowUpsQuerySchema = z.object({
   status: z.nativeEnum(FollowUpStatus).optional(),
   customerId: z.string().optional(),
   assignedTo: z.string().optional(),
+  assignedToUserId: z.string().optional(),
 });
 
 export const bulkFollowUpIdsSchema = z.object({
@@ -21,6 +22,7 @@ export const createFollowUpSchema = z.object({
   dueAt: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)),
   status: z.nativeEnum(FollowUpStatus).optional().default(FollowUpStatus.PENDING),
   assignedTo: z.string().trim().max(100).optional().nullable().transform((val) => (val === '' ? null : val)),
+  assignedToUserId: z.string().trim().max(100).optional().nullable().transform((val) => (val === '' ? null : val)),
 });
 
 export const createBulkFollowUpSchema = z.object({
@@ -30,6 +32,7 @@ export const createBulkFollowUpSchema = z.object({
   dueAt: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)),
   status: z.nativeEnum(FollowUpStatus).optional().default(FollowUpStatus.PENDING),
   assignedTo: z.string().trim().max(100).optional().nullable().transform((val) => (val === '' ? null : val)),
+  assignedToUserId: z.string().trim().max(100).optional().nullable().transform((val) => (val === '' ? null : val)),
 });
 
 export const updateFollowUpSchema = z.object({
@@ -38,6 +41,7 @@ export const updateFollowUpSchema = z.object({
   dueAt: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}/)).optional(),
   status: z.nativeEnum(FollowUpStatus).optional(),
   assignedTo: z.string().trim().max(100).optional().nullable().transform((val) => (val === '' ? null : val)),
+  assignedToUserId: z.string().trim().max(100).optional().nullable().transform((val) => (val === '' ? null : val)),
   completedAt: z.string().datetime().optional().nullable().or(z.string().regex(/^\d{4}-\d{2}-\d{2}/).optional().nullable()),
 });
 

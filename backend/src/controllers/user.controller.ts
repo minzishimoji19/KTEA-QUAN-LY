@@ -1,8 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { userService } from '../services/user.service.js';
+import { caretakerService } from '../services/caretaker.service.js';
+import { caretakerRepository } from '../repositories/caretaker.repository.js';
 import { auditLogService } from '../services/auditLog.service.js';
 import { sendSuccess, sendCreated } from '../utils/response.js';
-import { BadRequestError } from '../utils/errors.js';
+import { BadRequestError, NotFoundError } from '../utils/errors.js';
 
 export const listUsers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -125,3 +127,43 @@ export const getUserAssignments = async (req: Request, res: Response, next: Next
     next(error);
   }
 };
+
+export const linkUserCaretaker = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { id: userId } = req.params;
+    const { caretakerId } = req.body;
+
+    if (!caretakerId) {
+      // Unlink case: find caretaker currently linked to this user
+      const existing = await caretakerRepository.findByUserId(userId);
+      if (!existing) {
+        throw new NotFoundError('Tài khoản này chưa liên kết với người chăm sóc nào');
+      }
+      const unlinked = await caretakerService.unlinkCaretakerFromUser(
+        { id: req.user!.userId, email: req.user!.email },
+        existing.id
+      );
+      sendSuccess(res, unlinked, 'Đã gỡ liên kết người chăm sóc khỏi tài khoản');
+      return;
+    }
+
+    const updated = await caretakerService.linkCaretakerToUser(
+      { id: req.user!.userId, email: req.user!.email },
+      caretakerId,
+      userId
+    );
+    sendSuccess(res, updated, 'Liên kết tài khoản với người chăm sóc thành công');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getCaregivers = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const caregivers = await userService.getEligibleCaregivers();
+    sendSuccess(res, caregivers, 'Danh sách nhân viên chăm sóc đủ điều kiện');
+  } catch (error) {
+    next(error);
+  }
+};
+

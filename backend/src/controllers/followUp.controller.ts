@@ -11,7 +11,7 @@ export const getFollowUps = async (req: Request, res: Response, next: NextFuncti
     const filter = req.query.filter as 'today' | 'overdue' | 'upcoming' | 'completed' | 'all' | undefined;
     const status = req.query.status as FollowUpStatus | undefined;
     const customerId = req.query.customerId as string | undefined;
-    const assignedTo = req.query.assignedTo as string | undefined;
+    const assignedTo = (req.query.assignedToUserId || req.query.assignedTo) as string | undefined;
 
     let scopedCustomerIds: string[] | undefined;
     if (req.user && req.user.role === Role.PARTNER) {
@@ -36,15 +36,17 @@ export const createFollowUp = async (req: Request, res: Response, next: NextFunc
         req.body.customerId
       );
 
-      if (req.user.role === Role.PARTNER && req.body.assignedTo) {
-        const partnerCaretaker = await prisma.caretaker.findFirst({
-          where: { userId: req.user.userId },
-        });
-        if (
-          !partnerCaretaker ||
-          partnerCaretaker.name.trim().toLowerCase() !== req.body.assignedTo.trim().toLowerCase()
-        ) {
+      if (req.user.role === Role.PARTNER) {
+        const targetUserId = req.body.assignedToUserId;
+        if (targetUserId && targetUserId !== req.user.userId) {
           throw new ForbiddenError('Đối tác không có quyền phân công lịch chăm sóc cho nhân viên khác');
+        }
+        if (req.body.assignedTo) {
+          const targetName = req.body.assignedTo.trim().toLowerCase();
+          const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+          if (user && user.fullName.trim().toLowerCase() !== targetName) {
+            throw new ForbiddenError('Đối tác không có quyền phân công lịch chăm sóc cho nhân viên khác');
+          }
         }
       }
     }
@@ -112,7 +114,7 @@ export const deleteBulkFollowUps = async (req: Request, res: Response, next: Nex
 export const updateFollowUp = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (req.user) {
-      if (req.user.role === Role.PARTNER && req.body.assignedTo !== undefined) {
+      if (req.user.role === Role.PARTNER && (req.body.assignedTo !== undefined || req.body.assignedToUserId !== undefined)) {
         throw new ForbiddenError('Đối tác không có quyền thay đổi người chăm sóc');
       }
 

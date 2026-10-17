@@ -101,8 +101,11 @@ export class UserService {
   /**
    * ADMIN only: List all accounts with assignment counts.
    */
+  /**
+   * ADMIN only: List all accounts with assignment counts and linked caregiver details.
+   */
   async listUsers() {
-    return prisma.user.findMany({
+    const users = await prisma.user.findMany({
       select: {
         id: true,
         email: true,
@@ -112,6 +115,13 @@ export class UserService {
         phone: true,
         createdAt: true,
         updatedAt: true,
+        caretaker: {
+          select: {
+            id: true,
+            name: true,
+            active: true,
+          },
+        },
         _count: {
           select: {
             assignedCustomers: true,
@@ -120,6 +130,11 @@ export class UserService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    return users.map((u) => ({
+      ...u,
+      assignedCustomersCount: u._count?.assignedCustomers ?? 0,
+    }));
   }
 
   /**
@@ -423,6 +438,30 @@ export class UserService {
     });
 
     return assignments;
+  }
+
+  /**
+   * Retrieves active users eligible to be assigned as caregivers.
+   * Every active user (PARTNER and ADMIN) is directly eligible as caregiver.
+   */
+  async getEligibleCaregivers() {
+    return prisma.user.findMany({
+      where: {
+        status: UserStatus.ACTIVE,
+      },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        role: true,
+        status: true,
+        phone: true,
+      },
+      orderBy: [
+        { role: 'asc' },
+        { fullName: 'asc' },
+      ],
+    });
   }
 }
 
