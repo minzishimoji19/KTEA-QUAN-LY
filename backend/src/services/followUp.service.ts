@@ -7,6 +7,7 @@ import { NotFoundError, BadRequestError } from '../utils/errors.js';
 import BaseService from './base.service.js';
 import prisma from '../config/database.js';
 import { pushNotificationService } from './pushNotification.service.js';
+import { assignmentSyncService } from './assignmentSync.service.js';
 
 export class FollowUpService extends BaseService {
   /**
@@ -166,16 +167,24 @@ export class FollowUpService extends BaseService {
           },
         });
 
+        // Synchronize customer assignment grant if caregiver is linked to an active partner
+        const syncResult = await assignmentSyncService.syncFollowUpAssignment(tx, {
+          followUpId: created.id,
+          customerId: data.customerId,
+          caregiverName: caretaker,
+          assignedById: (data as any).assignedById || null,
+        });
+
         await tx.customerActivity.create({
           data: {
             customerId: data.customerId,
             type: ActivityType.SYSTEM_EVENT,
             title: `Follow-up Scheduled: ${data.title}`,
-            description: `Due date set for ${dueDateStr}${caretaker ? ` | Người chăm sóc: ${caretaker}` : ''}.`,
+            description: `Due date set for ${dueDateStr}${caretaker ? ` | Người chăm sóc: ${caretaker}` : ''}. ${syncResult.notice}`,
           },
         });
 
-        return created;
+        return Object.assign(created, { syncResult });
       },
       {
         maxWait: 5000,
@@ -285,6 +294,16 @@ export class FollowUpService extends BaseService {
           });
         }
 
+        // Synchronize assignment grants for each created follow-up record sequentially
+        for (const record of followUpRecords) {
+          await assignmentSyncService.syncFollowUpAssignment(tx, {
+            followUpId: record.id,
+            customerId: record.customerId,
+            caregiverName: caretaker,
+            assignedById: (data as any).assignedById || null,
+          });
+        }
+
         // Batch insert customer activities
         for (let i = 0; i < activityRecords.length; i += BATCH_SIZE) {
           const batch = activityRecords.slice(i, i + BATCH_SIZE);
@@ -379,18 +398,60 @@ export class FollowUpService extends BaseService {
         },
       });
 
+      // Synchronize assignment grants based on caregiver change or cancellation
+      let syncNotice = '';
+      if (data.status === FollowUpStatus.CANCELLED) {
+        // Lịch bị hủy -> thu hồi nguồn grant của lịch này (không làm mất quyền nếu còn nguồn khác)
+        const revokeRes = await assignmentSyncService.revokeFollowUpAssignment(tx, {
+          followUpId: id,
+          customerId: current.customerId,
+        });
+        if (revokeRes.revokedUserIds.length > 0) {
+          syncNotice = ' Đã thu hồi quyền phụ trách khách hàng do lịch chăm sóc bị hủy.';
+        } else if (revokeRes.retainedUserIds.length > 0) {
+          syncNotice = ' Nhân viên vẫn giữ quyền phụ trách khách hàng do còn nguồn phân công hợp lệ khác.';
+        }
+      } else if (
+        validatedCaretaker !== undefined &&
+        (validatedCaretaker !== current.assignedTo ||
+          (current.status === FollowUpStatus.CANCELLED && Boolean(data.status)))
+      ) {
+        // Đổi caregiver hoặc kích hoạt lại từ CANCELLED
+        const syncResult = await assignmentSyncService.syncFollowUpAssignment(tx, {
+          followUpId: id,
+          customerId: current.customerId,
+          caregiverName: validatedCaretaker,
+          previousCaregiverName: current.assignedTo,
+          assignedById: (data as any).assignedById || null,
+        });
+        syncNotice = ` ${syncResult.notice}`;
+      }
+
       if (data.status && data.status !== current.status) {
         await tx.customerActivity.create({
           data: {
             customerId: current.customerId,
             type: ActivityType.SYSTEM_EVENT,
             title: `Follow-up ${data.status}: ${current.title}`,
-            description: `Status changed from ${current.status} to ${data.status}.`,
+            description: `Status changed from ${current.status} to ${data.status}.${syncNotice}`,
+          },
+        });
+      } else if (syncNotice) {
+        await tx.customerActivity.create({
+          data: {
+            customerId: current.customerId,
+            type: ActivityType.SYSTEM_EVENT,
+            title: `Đổi người chăm sóc: ${current.title}`,
+            description: `Người chăm sóc đổi từ "${current.assignedTo || 'Chưa phân công'}" sang "${validatedCaretaker || 'Chưa phân công'}".${syncNotice}`,
           },
         });
       }
 
       return updated;
+    },
+    {
+      maxWait: 5000,
+      timeout: 15000,
     });
   }
 
@@ -399,7 +460,22 @@ export class FollowUpService extends BaseService {
     if (current.status === FollowUpStatus.COMPLETED) {
       throw new BadRequestError('Không thể xóa lịch chăm sóc đã hoàn thành vì đây là lịch sử chăm sóc thực tế của khách hàng.');
     }
-    return followUpRepository.delete(id);
+
+    return prisma.$transaction(async (tx) => {
+      // Safely revoke any assignment grants before hard-deleting the record
+      await assignmentSyncService.revokeFollowUpAssignment(tx, {
+        followUpId: id,
+        customerId: current.customerId,
+      });
+
+      return tx.followUp.delete({
+        where: { id },
+      });
+    },
+    {
+      maxWait: 5000,
+      timeout: 15000,
+    });
   }
 
   /**

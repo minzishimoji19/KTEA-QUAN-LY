@@ -9,6 +9,7 @@ import {
   ForbiddenError,
 } from '../utils/errors.js';
 import { auditLogService } from './auditLog.service.js';
+import { assignmentSyncService } from './assignmentSync.service.js';
 
 export class UserService {
   /**
@@ -285,30 +286,21 @@ export class UserService {
       throw new NotFoundError('Một số khách hàng trong danh sách không tồn tại');
     }
 
-    // Upsert assignments
-    await prisma.$transaction(
-      uniqueCustomerIds.map((customerId) =>
-        prisma.customerAssignment.upsert({
-          where: {
-            customerId_userId: {
-              customerId,
-              userId: partnerUserId,
-            },
-          },
-          create: {
-            customerId,
-            userId: partnerUserId,
-            assignedById: actor.id,
-            notes: notes || null,
-          },
-          update: {
-            assignedById: actor.id,
-            notes: notes || undefined,
-            assignedAt: new Date(),
-          },
-        })
-      )
-    );
+    // Upsert assignments and record DIRECT grants sequentially to prevent driver contention
+    await prisma.$transaction(async (tx) => {
+      for (const customerId of uniqueCustomerIds) {
+        await assignmentSyncService.recordDirectAssignment(tx, {
+          customerId,
+          userId: partnerUserId,
+          assignedById: actor.id,
+          notes,
+        });
+      }
+    },
+    {
+      maxWait: 5000,
+      timeout: 15000,
+    });
 
     await auditLogService.log({
       actorId: actor.id,
@@ -321,6 +313,7 @@ export class UserService {
         partnerName: partner.fullName,
         customerCount: uniqueCustomerIds.length,
         customerIds: uniqueCustomerIds,
+        source: 'DIRECT',
       },
     });
 
@@ -336,14 +329,15 @@ export class UserService {
   }
 
   /**
-   * ADMIN only: Remove customer assignment from a partner.
+   * ADMIN only: Remove direct customer assignment from a partner.
+   * If the partner still has other valid sources (e.g. active care schedules), access is preserved.
    */
   async unassignCustomer(
     actor: { id: string; email: string },
     partnerUserId: string,
     customerId: string
   ) {
-    const assignment = await prisma.customerAssignment.findUnique({
+    const existingAssignment = await prisma.customerAssignment.findUnique({
       where: {
         customerId_userId: {
           customerId,
@@ -352,17 +346,19 @@ export class UserService {
       },
     });
 
-    if (!assignment) {
+    if (!existingAssignment) {
       throw new NotFoundError('Khách hàng này chưa được phân công cho nhân viên');
     }
 
-    await prisma.customerAssignment.delete({
-      where: {
-        customerId_userId: {
-          customerId,
-          userId: partnerUserId,
-        },
-      },
+    const result = await prisma.$transaction(async (tx) => {
+      return assignmentSyncService.revokeDirectAssignment(tx, {
+        customerId,
+        userId: partnerUserId,
+      });
+    },
+    {
+      maxWait: 5000,
+      timeout: 15000,
     });
 
     await auditLogService.log({
@@ -371,10 +367,22 @@ export class UserService {
       action: 'UNASSIGN_CUSTOMER',
       entityType: 'CustomerAssignment',
       entityId: partnerUserId,
-      details: { customerId, partnerId: partnerUserId },
+      details: {
+        customerId,
+        partnerId: partnerUserId,
+        completelyRevoked: result.completelyRevoked,
+        remainingSourcesCount: result.remainingSourcesCount,
+      },
     });
 
-    return { success: true };
+    return {
+      success: true,
+      completelyRevoked: result.completelyRevoked,
+      remainingSourcesCount: result.remainingSourcesCount,
+      message: result.completelyRevoked
+        ? 'Đã thu hồi quyền phụ trách khách hàng.'
+        : `Đã thu hồi nguồn phân công trực tiếp. Nhân viên vẫn giữ quyền phụ trách khách hàng này do còn ${result.remainingSourcesCount} lịch chăm sóc hợp lệ.`,
+    };
   }
 
   /**

@@ -27,6 +27,7 @@
     "test:care-followups": "tsx src/tests/verify-care-followups-and-navigation.ts",
     "test:rbac": "tsx src/tests/verify-backend-rbac.ts",
     "test:rbac-full": "tsx src/tests/verify-backend-rbac-full.ts",
+    "test:phase3": "tsx src/tests/verify-care-schedule-assignment-sync.ts",
     "bootstrap:admin": "tsx src/scripts/bootstrapAdmin.ts",
     "test": "tsx src/tests/verify-backend-rbac-full.ts"
   },

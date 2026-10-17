@@ -146,6 +146,7 @@ model Customer {
   recommendations Recommendation[]
   pushRecords     PushRecord[]
   assignments     CustomerAssignment[]
+  assignmentGrants CustomerAssignmentGrant[]
 
   @@index([phone])
   @@index([sourceId])
@@ -425,6 +426,8 @@ model User {
 
   assignedCustomers  CustomerAssignment[] @relation("AssignedPartner")
   createdAssignments CustomerAssignment[] @relation("AssignedByAdmin")
+  receivedGrants     CustomerAssignmentGrant[] @relation("PartnerAssignmentGrants")
+  createdGrants      CustomerAssignmentGrant[] @relation("AdminAssignmentGrants")
   auditLogs          AuditLog[]
   caretaker          Caretaker?
 
@@ -447,6 +450,35 @@ model CustomerAssignment {
   @@index([userId])
   @@index([customerId])
   @@map("customer_assignments")
+}
+
+enum AssignmentSourceType {
+  DIRECT
+  CARE_SCHEDULE
+}
+
+model CustomerAssignmentGrant {
+  id           String               @id @default(uuid())
+  customerId   String               @map("customer_id")
+  userId       String               @map("user_id")
+  sourceType   AssignmentSourceType @map("source_type")
+  sourceId     String               @default("DIRECT") @map("source_id")
+  active       Boolean              @default(true) @map("active")
+  assignedById String?              @map("assigned_by_id")
+  notes        String?              @map("notes") @db.Text
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  user       User     @relation("PartnerAssignmentGrants", fields: [userId], references: [id], onDelete: Cascade)
+  assignedBy User?    @relation("AdminAssignmentGrants", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@unique([customerId, userId, sourceType, sourceId], name: "customer_user_source_unique")
+  @@index([userId])
+  @@index([customerId])
+  @@index([sourceId])
+  @@index([active])
+  @@map("customer_assignment_grants")
 }
 
 model AuditLog {
