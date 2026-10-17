@@ -350,7 +350,11 @@ export class UserService {
   async unassignCustomer(
     actor: { id: string; email: string },
     partnerUserId: string,
-    customerId: string
+    customerId: string,
+    options?: {
+      sourceType?: 'DIRECT' | 'CARE_SCHEDULE' | 'ALL';
+      sourceId?: string;
+    }
   ) {
     const existingAssignment = await prisma.customerAssignment.findUnique({
       where: {
@@ -361,20 +365,82 @@ export class UserService {
       },
     });
 
-    if (!existingAssignment) {
-      throw new NotFoundError('Khách hàng này chưa được phân công cho nhân viên');
+    const existingGrants = await prisma.customerAssignmentGrant.findMany({
+      where: {
+        customerId,
+        userId: partnerUserId,
+        active: true,
+      },
+    });
+
+    // Idempotent: if neither assignment nor grants exist, request is already satisfied
+    if (!existingAssignment && existingGrants.length === 0) {
+      return {
+        success: true,
+        completelyRevoked: true,
+        remainingSourcesCount: 0,
+        message: 'Khách hàng này hiện không còn phân công cho nhân viên.',
+      };
+    }
+
+    const hasDirectGrant = existingGrants.some((g) => g.sourceType === 'DIRECT');
+    const hasCareScheduleGrant = existingGrants.some((g) => g.sourceType === 'CARE_SCHEDULE');
+
+    // Determine target source:
+    // If not explicitly provided, smart-detect:
+    // - If partner only has CARE_SCHEDULE (e.g. from follow-up/backfill), revoke CARE_SCHEDULE!
+    // - If partner has DIRECT (or both), revoke DIRECT (preserving care schedule unless ALL requested)
+    let targetSourceType = options?.sourceType;
+    if (!targetSourceType) {
+      if (!hasDirectGrant && hasCareScheduleGrant) {
+        targetSourceType = 'CARE_SCHEDULE';
+      } else {
+        targetSourceType = 'DIRECT';
+      }
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      return assignmentSyncService.revokeDirectAssignment(tx, {
-        customerId,
-        userId: partnerUserId,
-      });
+      if (targetSourceType === 'ALL') {
+        return assignmentSyncService.revokeAllAssignments(tx, {
+          customerId,
+          userId: partnerUserId,
+        });
+      } else if (targetSourceType === 'CARE_SCHEDULE') {
+        return assignmentSyncService.revokeCareScheduleAssignment(tx, {
+          customerId,
+          userId: partnerUserId,
+          followUpId: options?.sourceId,
+        });
+      } else {
+        // DIRECT (or legacy assignment with no grants)
+        const res = await assignmentSyncService.revokeDirectAssignment(tx, {
+          customerId,
+          userId: partnerUserId,
+        });
+
+        // If legacy assignment had no grants at all, revokeDirectAssignment deletes assignment if count === 0
+        if (!hasDirectGrant && !hasCareScheduleGrant) {
+          await tx.customerAssignment.deleteMany({
+            where: { customerId, userId: partnerUserId },
+          });
+          return { completelyRevoked: true, remainingSourcesCount: 0 };
+        }
+        return res;
+      }
     },
     {
       maxWait: 5000,
       timeout: 15000,
     });
+
+    let message: string;
+    if (result.completelyRevoked) {
+      message = 'Đã thu hồi toàn bộ quyền phụ trách khách hàng.';
+    } else if (targetSourceType === 'DIRECT') {
+      message = `Đã thu hồi nguồn phân công trực tiếp. Nhân viên vẫn giữ quyền phụ trách do còn ${result.remainingSourcesCount} lịch chăm sóc hợp lệ.`;
+    } else {
+      message = `Đã gỡ quyền phụ trách từ lịch chăm sóc. Nhân viên vẫn giữ quyền phụ trách do còn phân công trực tiếp.`;
+    }
 
     await auditLogService.log({
       actorId: actor.id,
@@ -385,6 +451,7 @@ export class UserService {
       details: {
         customerId,
         partnerId: partnerUserId,
+        sourceType: targetSourceType,
         completelyRevoked: result.completelyRevoked,
         remainingSourcesCount: result.remainingSourcesCount,
       },
@@ -394,9 +461,8 @@ export class UserService {
       success: true,
       completelyRevoked: result.completelyRevoked,
       remainingSourcesCount: result.remainingSourcesCount,
-      message: result.completelyRevoked
-        ? 'Đã thu hồi quyền phụ trách khách hàng.'
-        : `Đã thu hồi nguồn phân công trực tiếp. Nhân viên vẫn giữ quyền phụ trách khách hàng này do còn ${result.remainingSourcesCount} lịch chăm sóc hợp lệ.`,
+      revokedSource: targetSourceType,
+      message,
     };
   }
 
@@ -404,6 +470,7 @@ export class UserService {
    * Retrieves assignments for a specific user.
    * ADMIN can view assignments for any user.
    * PARTNER can only view their own assignments.
+   * Enriches each assignment with detailed source breakdown (DIRECT, CARE_SCHEDULE).
    */
   async getUserAssignments(
     actor: { id: string; role: Role },
@@ -437,7 +504,59 @@ export class UserService {
       orderBy: { assignedAt: 'desc' },
     });
 
-    return assignments;
+    const customerIds = assignments.map((a) => a.customerId);
+
+    // Fetch active grants for this user
+    const grants = await prisma.customerAssignmentGrant.findMany({
+      where: {
+        userId: targetUserId,
+        active: true,
+      },
+      select: {
+        id: true,
+        customerId: true,
+        sourceType: true,
+        sourceId: true,
+        createdAt: true,
+      },
+    });
+
+    // Fetch active follow-ups for this user across these customers
+    const followUps = await prisma.followUp.findMany({
+      where: {
+        customerId: { in: customerIds },
+        assignedToUserId: targetUserId,
+        status: { not: 'CANCELLED' },
+      },
+      select: {
+        id: true,
+        customerId: true,
+        title: true,
+        dueAt: true,
+        status: true,
+      },
+      orderBy: { dueAt: 'asc' },
+    });
+
+    return assignments.map((a) => {
+      const userGrants = grants.filter((g) => g.customerId === a.customerId);
+      const userFollowUps = followUps.filter((f) => f.customerId === a.customerId);
+      const hasDirect = userGrants.some((g) => g.sourceType === 'DIRECT');
+      const hasCareSchedule = userGrants.some((g) => g.sourceType === 'CARE_SCHEDULE') || userFollowUps.length > 0;
+      const isLegacyDirect = userGrants.length === 0;
+
+      return {
+        ...a,
+        sources: {
+          hasDirect: hasDirect || isLegacyDirect,
+          hasCareSchedule,
+          isLegacyDirect,
+          careSchedulesCount: userFollowUps.length,
+          careSchedules: userFollowUps,
+          grantCount: userGrants.length,
+        },
+      };
+    });
   }
 
   /**

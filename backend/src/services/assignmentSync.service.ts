@@ -337,6 +337,134 @@ export class AssignmentSyncService {
   }
 
   /**
+   * Revokes care schedule assignment grant(s) for a partner and customer.
+   * Safely unassigns the follow-up task(s) without deleting the schedule history or record.
+   * If partner still has other valid sources (e.g. direct assignment), customer_assignments is retained.
+   */
+  async revokeCareScheduleAssignment(
+    tx: Prisma.TransactionClient,
+    params: {
+      customerId: string;
+      userId: string;
+      followUpId?: string;
+    }
+  ): Promise<{ completelyRevoked: boolean; remainingSourcesCount: number }> {
+    const { customerId, userId, followUpId } = params;
+
+    // 1. Fetch user to match by either user.id or user.fullName
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { fullName: true },
+    });
+
+    // 2. Unassign matching follow-ups without deleting the record
+    const whereConditions: Prisma.FollowUpWhereInput[] = [
+      { assignedToUserId: userId },
+    ];
+    if (user?.fullName) {
+      whereConditions.push({ assignedTo: user.fullName });
+    }
+
+    await tx.followUp.updateMany({
+      where: {
+        customerId,
+        ...(followUpId ? { id: followUpId } : {}),
+        OR: whereConditions,
+      },
+      data: {
+        assignedToUserId: null,
+        assignedTo: null,
+      },
+    });
+
+    // 3. Delete the CARE_SCHEDULE grant(s)
+    await tx.customerAssignmentGrant.deleteMany({
+      where: {
+        customerId,
+        userId,
+        sourceType: AssignmentSourceType.CARE_SCHEDULE,
+        ...(followUpId ? { sourceId: followUpId } : {}),
+      },
+    });
+
+    // 4. Count remaining active grants
+    const remainingSourcesCount = await tx.customerAssignmentGrant.count({
+      where: {
+        customerId,
+        userId,
+        active: true,
+      },
+    });
+
+    if (remainingSourcesCount === 0) {
+      await tx.customerAssignment.deleteMany({
+        where: { customerId, userId },
+      });
+      return { completelyRevoked: true, remainingSourcesCount: 0 };
+    }
+
+    return { completelyRevoked: false, remainingSourcesCount };
+  }
+
+  /**
+   * Completely revokes ALL assignment grants (both DIRECT and CARE_SCHEDULE) for a partner and customer.
+   * Safely unassigns any linked care schedules without deleting them.
+   * Completely removes the customer from the partner's assigned scope.
+   */
+  async revokeAllAssignments(
+    tx: Prisma.TransactionClient,
+    params: {
+      customerId: string;
+      userId: string;
+    }
+  ): Promise<{ completelyRevoked: boolean; remainingSourcesCount: number }> {
+    const { customerId, userId } = params;
+
+    // 1. Fetch user to match follow-ups by either user.id or user.fullName
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { fullName: true },
+    });
+
+    const whereConditions: Prisma.FollowUpWhereInput[] = [
+      { assignedToUserId: userId },
+    ];
+    if (user?.fullName) {
+      whereConditions.push({ assignedTo: user.fullName });
+    }
+
+    // Unassign all follow-ups for this customer and partner
+    await tx.followUp.updateMany({
+      where: {
+        customerId,
+        OR: whereConditions,
+      },
+      data: {
+        assignedToUserId: null,
+        assignedTo: null,
+      },
+    });
+
+    // 2. Delete all grants for this customer and partner
+    await tx.customerAssignmentGrant.deleteMany({
+      where: {
+        customerId,
+        userId,
+      },
+    });
+
+    // 3. Delete customer_assignment row
+    await tx.customerAssignment.deleteMany({
+      where: {
+        customerId,
+        userId,
+      },
+    });
+
+    return { completelyRevoked: true, remainingSourcesCount: 0 };
+  }
+
+  /**
    * Backfills all historical care schedules for a specific Caregiver to their linked PARTNER account.
    * Processes records in safe batches to prevent transaction timeouts and locks on Cloud MySQL.
    * Fully idempotent: can be safely executed repeatedly without creating duplicates.

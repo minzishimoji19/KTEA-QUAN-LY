@@ -79,7 +79,7 @@ export const assignCustomers = async (req: Request, res: Response, next: NextFun
 
 export const unassignCustomer = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { partnerUserId, customerId } = req.body;
+    const { partnerUserId, customerId, sourceType, sourceId } = req.body;
 
     if (!partnerUserId || !customerId) {
       throw new BadRequestError('Vui lòng cung cấp partnerUserId và customerId');
@@ -88,10 +88,11 @@ export const unassignCustomer = async (req: Request, res: Response, next: NextFu
     const result = await userService.unassignCustomer(
       { id: req.user!.userId, email: req.user!.email },
       partnerUserId,
-      customerId
+      customerId,
+      { sourceType, sourceId }
     );
 
-    sendSuccess(res, result, 'Đã thu hồi quyền phụ trách khách hàng');
+    sendSuccess(res, result, result.message);
   } catch (error) {
     next(error);
   }
