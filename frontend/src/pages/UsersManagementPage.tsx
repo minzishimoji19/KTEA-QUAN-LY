@@ -74,16 +74,19 @@ export const UsersManagementPage: React.FC = () => {
     try {
       const data = await authService.getUsers();
       setUsers(data);
-      if (!selectedPartnerId && data.some((u) => u.role === 'PARTNER')) {
-        const firstPartner = data.find((u) => u.role === 'PARTNER');
-        if (firstPartner) setSelectedPartnerId(firstPartner.id);
-      }
+      setSelectedPartnerId((prev) => {
+        if (!prev && data.some((u) => u.role === 'PARTNER')) {
+          const firstPartner = data.find((u) => u.role === 'PARTNER');
+          return firstPartner ? firstPartner.id : '';
+        }
+        return prev;
+      });
     } catch (err: unknown) {
       toast.error('Lỗi tải danh sách tài khoản', err instanceof Error ? err.message : 'Lỗi không xác định');
     } finally {
       setIsLoadingUsers(false);
     }
-  }, [toast, selectedPartnerId]);
+  }, [toast]);
 
   useEffect(() => {
     loadUsers();
@@ -95,9 +98,10 @@ export const UsersManagementPage: React.FC = () => {
     setIsLoadingAssignments(true);
     try {
       const assignments = await authService.getUserAssignments(partnerId);
-      setPartnerAssignments(assignments);
+      setPartnerAssignments(assignments || []);
     } catch (err: unknown) {
-      toast.error('Lỗi tải danh sách phân công', err instanceof Error ? err.message : 'Lỗi không xác định');
+      setPartnerAssignments([]);
+      toast.error('Lỗi tải danh sách phân công', err instanceof Error ? err.message : 'Không tìm thấy dữ liệu phân công');
     } finally {
       setIsLoadingAssignments(false);
     }

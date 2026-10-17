@@ -376,6 +376,46 @@ export class UserService {
 
     return { success: true };
   }
+
+  /**
+   * Retrieves assignments for a specific user.
+   * ADMIN can view assignments for any user.
+   * PARTNER can only view their own assignments.
+   */
+  async getUserAssignments(
+    actor: { id: string; role: Role },
+    targetUserId: string
+  ) {
+    if (actor.role !== Role.ADMIN && actor.id !== targetUserId) {
+      throw new ForbiddenError('Bạn chỉ có quyền xem danh sách phân công của chính mình');
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, fullName: true, email: true, role: true },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundError('Tài khoản người dùng không tồn tại');
+    }
+
+    const assignments = await prisma.customerAssignment.findMany({
+      where: { userId: targetUserId },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            overallStatus: true,
+          },
+        },
+      },
+      orderBy: { assignedAt: 'desc' },
+    });
+
+    return assignments;
+  }
 }
 
 export const userService = new UserService();

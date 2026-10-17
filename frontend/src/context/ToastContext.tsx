@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { CheckCircle2, AlertCircle, Info, AlertTriangle, X } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
@@ -42,12 +42,15 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     [removeToast]
   );
 
-  const toast = {
-    success: (title: string, description?: string) => addToast('success', title, description),
-    error: (title: string, description?: string) => addToast('error', title, description),
-    info: (title: string, description?: string) => addToast('info', title, description),
-    warning: (title: string, description?: string) => addToast('warning', title, description),
-  };
+  const toast = useMemo(
+    () => ({
+      success: (title: string, description?: string) => addToast('success', title, description),
+      error: (title: string, description?: string) => addToast('error', title, description),
+      info: (title: string, description?: string) => addToast('info', title, description),
+      warning: (title: string, description?: string) => addToast('warning', title, description),
+    }),
+    [addToast]
+  );
 
   const getIcon = (type: ToastType) => {
     switch (type) {

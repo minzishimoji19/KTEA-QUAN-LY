@@ -107,3 +107,21 @@ export const getAuditLogs = async (req: Request, res: Response, next: NextFuncti
     next(error);
   }
 };
+
+export const getUserAssignments = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const targetUserId = req.params.id;
+    if (!targetUserId) {
+      throw new BadRequestError('Vui lòng cung cấp ID người dùng');
+    }
+
+    const assignments = await userService.getUserAssignments(
+      { id: req.user!.userId, role: req.user!.role },
+      targetUserId
+    );
+
+    sendSuccess(res, assignments, 'Danh sách khách hàng được phân công');
+  } catch (error) {
+    next(error);
+  }
+};

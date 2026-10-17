@@ -210,7 +210,40 @@ async function runAuthVerification() {
       'PARTNER cannot see system-wide customers (totalCustomers is 0, strictly scoped)'
     );
 
-    console.log('\n--- 4. Testing CORS & Anti-CSRF Policies ---');
+    console.log('\n--- 4. Testing User Assignments Endpoint (/api/users/:id/assignments) ---');
+
+    // 4.1 Unauthenticated assignments call -> 401
+    const unauthAssignments = await api(`/api/users/${testPartnerUser.id}/assignments`);
+    assert(unauthAssignments.status === 401, 'Unauthenticated /api/users/:id/assignments returns HTTP 401');
+
+    // 4.2 Non-existent user assignments call -> 404
+    const nonExistentUserAssignments = await api('/api/users/00000000-0000-0000-0000-000000000000/assignments', {
+      headers: { Authorization: `Bearer ${adminSessionToken}` },
+    });
+    assert(nonExistentUserAssignments.status === 404, 'Non-existent user assignments returns HTTP 404 Not Found');
+
+    // 4.3 User without assignments returns HTTP 200 with empty list []
+    const emptyAssignments = await api(`/api/users/${testPartnerUser.id}/assignments`, {
+      headers: { Authorization: `Bearer ${adminSessionToken}` },
+    });
+    assert(emptyAssignments.status === 200, 'User with 0 assignments returns HTTP 200');
+    assert(Array.isArray(emptyAssignments.body.data), 'Assignments response data is an Array');
+    assert(emptyAssignments.body.data.length === 0, 'Assignments array is empty for unassigned partner');
+
+    // 4.4 Partner viewing their own assignments -> HTTP 200
+    const partnerOwnAssignments = await api(`/api/users/${testPartnerUser.id}/assignments`, {
+      headers: { Authorization: `Bearer ${partnerToken}` },
+    });
+    assert(partnerOwnAssignments.status === 200, 'Partner viewing their OWN assignments returns HTTP 200');
+    assert(Array.isArray(partnerOwnAssignments.body.data), 'Partner own assignments data is an Array');
+
+    // 4.5 Partner attempting to view another user assignments (tampering URL user ID) -> 403 Forbidden
+    const partnerTamperedAssignments = await api(`/api/users/${testAdminUser.id}/assignments`, {
+      headers: { Authorization: `Bearer ${partnerToken}` },
+    });
+    assert(partnerTamperedAssignments.status === 403, 'Partner attempting to view another user assignments returns HTTP 403 Forbidden');
+
+    console.log('\n--- 5. Testing CORS & Anti-CSRF Policies ---');
 
     // 4.1 Production origin allowed with credentials
     const corsRes = await api('/api/auth/session', {
