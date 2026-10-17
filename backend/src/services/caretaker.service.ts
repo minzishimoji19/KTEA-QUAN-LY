@@ -3,6 +3,7 @@ import { NotFoundError, ConflictError, BadRequestError } from '../utils/errors.j
 import BaseService from './base.service.js';
 import prisma from '../config/database.js';
 import { auditLogService } from './auditLog.service.js';
+import { assignmentSyncService } from './assignmentSync.service.js';
 
 export class CaretakerService extends BaseService {
   /**
@@ -200,8 +201,25 @@ export class CaretakerService extends BaseService {
 
     const previousUserId = caretaker.userId;
 
+    // 1. If caregiver was previously linked to a different partner, clean up grants for that old partner
+    let previousRevocationResult: any = null;
+    if (previousUserId && previousUserId !== userId) {
+      previousRevocationResult = await assignmentSyncService.revokeCaregiverSchedules(prisma, {
+        caretakerName: caretaker.name,
+        userId: previousUserId,
+      });
+    }
+
+    // 2. Update caretaker mapping
     const updated = await caretakerRepository.update(caretakerId, {
       userId,
+    });
+
+    // 3. Automatically backfill all existing care schedules for this caregiver to the new partner
+    const backfillResult = await assignmentSyncService.backfillCaregiverSchedules(prisma, {
+      caretakerName: updated.name,
+      userId,
+      assignedById: actor.id,
     });
 
     const inUseCount = await caretakerRepository.countFollowUpsUsingName(updated.name);
@@ -219,6 +237,8 @@ export class CaretakerService extends BaseService {
         linkedUserEmail: user.email,
         linkedUserFullName: user.fullName,
         previousUserId,
+        previousRevocationResult,
+        backfillResult,
       },
     });
 
@@ -227,11 +247,13 @@ export class CaretakerService extends BaseService {
       _count: {
         followUps: inUseCount,
       },
+      backfill: backfillResult,
     };
   }
 
   /**
    * ADMIN only: Unlink a caregiver from their associated user account.
+   * Safely revokes schedule-based grants while preserving independent DIRECT assignments.
    */
   async unlinkCaretakerFromUser(
     actor: { id: string; email: string },
@@ -253,6 +275,13 @@ export class CaretakerService extends BaseService {
     const previousUserId = caretaker.userId;
     const previousUser = caretaker.user;
 
+    // 1. Revoke all schedule grants for this caregiver
+    const revocationResult = await assignmentSyncService.revokeCaregiverSchedules(prisma, {
+      caretakerName: caretaker.name,
+      userId: previousUserId,
+    });
+
+    // 2. Unlink user from caretaker
     const updated = await caretakerRepository.update(caretakerId, {
       userId: null,
     });
@@ -270,6 +299,7 @@ export class CaretakerService extends BaseService {
         caretakerName: updated.name,
         unlinkedUserId: previousUserId,
         unlinkedUserEmail: previousUser?.email,
+        revocationResult,
       },
     });
 
@@ -278,7 +308,160 @@ export class CaretakerService extends BaseService {
       _count: {
         followUps: inUseCount,
       },
+      revocation: revocationResult,
     };
+  }
+
+  /**
+   * ADMIN only: Manually trigger backfill for a single linked caregiver.
+   */
+  async backfillCaregiverAssignments(
+    actor: { id: string; email: string },
+    caretakerId: string
+  ) {
+    const caretaker = await caretakerRepository.findById(caretakerId);
+    if (!caretaker) {
+      throw new NotFoundError(`Người chăm sóc với ID '${caretakerId}' không tồn tại`);
+    }
+
+    if (!caretaker.userId) {
+      throw new BadRequestError(`Người chăm sóc '${caretaker.name}' chưa được liên kết với tài khoản đối tác nào`);
+    }
+
+    const result = await assignmentSyncService.backfillCaregiverSchedules(prisma, {
+      caretakerName: caretaker.name,
+      userId: caretaker.userId,
+      assignedById: actor.id,
+    });
+
+    await auditLogService.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'BACKFILL_CARETAKER_ASSIGNMENTS',
+      entityType: 'Caretaker',
+      entityId: caretakerId,
+      details: {
+        caretakerId,
+        caretakerName: caretaker.name,
+        userId: caretaker.userId,
+        result,
+      },
+    });
+
+    return result;
+  }
+
+  /**
+   * ADMIN only: Manually trigger backfill for ALL caregivers that have a linked PARTNER account.
+   */
+  async backfillAllCaregivers(actor: { id: string; email: string }) {
+    const allCaretakers = await caretakerRepository.findAll();
+    const linkedCaretakers = allCaretakers.filter((c) => c.userId);
+    const unlinkedCaretakers = allCaretakers.filter((c) => !c.userId);
+
+    const results: any[] = [];
+    let totalSchedules = 0;
+    let totalAssignmentsCreated = 0;
+    let totalGrantsProcessed = 0;
+
+    for (const c of linkedCaretakers) {
+      const syncRes = await assignmentSyncService.backfillCaregiverSchedules(prisma, {
+        caretakerName: c.name,
+        userId: c.userId!,
+        assignedById: actor.id,
+      });
+      results.push(syncRes);
+      totalSchedules += syncRes.totalSchedules;
+      totalAssignmentsCreated += syncRes.assignmentsCreated;
+      totalGrantsProcessed += syncRes.grantsProcessed;
+    }
+
+    await auditLogService.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'BACKFILL_ALL_CARETAKERS',
+      entityType: 'Caretaker',
+      details: {
+        totalCaregivers: allCaretakers.length,
+        linkedCaregiversCount: linkedCaretakers.length,
+        unlinkedCaregiversCount: unlinkedCaretakers.length,
+        totalSchedules,
+        totalGrantsProcessed,
+        totalAssignmentsCreated,
+      },
+    });
+
+    return {
+      summary: {
+        totalCaregivers: allCaretakers.length,
+        linkedCaregiversCount: linkedCaretakers.length,
+        unlinkedCaregiversCount: unlinkedCaretakers.length,
+        totalSchedules,
+        totalGrantsProcessed,
+        totalAssignmentsCreated,
+      },
+      details: results,
+      unlinkedCaregivers: unlinkedCaretakers.map((c) => ({
+        id: c.id,
+        name: c.name,
+        notice: 'Chưa liên kết tài khoản PARTNER. Khách hàng của người này vẫn được giữ nguyên an toàn.',
+      })),
+    };
+  }
+
+  /**
+   * ADMIN only: Preview the backfill report without modifying any data.
+   */
+  async getBackfillPreview() {
+    const caretakers = await caretakerRepository.findAll();
+    const previewList: any[] = [];
+
+    for (const c of caretakers) {
+      const schedulesCount = await prisma.followUp.count({
+        where: { assignedTo: c.name, status: { not: 'CANCELLED' } },
+      });
+
+      const distinctCustomers = (
+        await prisma.followUp.findMany({
+          where: { assignedTo: c.name, status: { not: 'CANCELLED' } },
+          select: { customerId: true },
+          distinct: ['customerId'],
+        })
+      ).length;
+
+      let existingGrants = 0;
+      let userDetails = null;
+
+      if (c.userId && c.user) {
+        existingGrants = await prisma.customerAssignmentGrant.count({
+          where: {
+            userId: c.userId,
+            sourceType: 'CARE_SCHEDULE',
+            active: true,
+          },
+        });
+        userDetails = {
+          id: c.user.id,
+          email: c.user.email,
+          fullName: c.user.fullName,
+          status: c.user.status,
+        };
+      }
+
+      previewList.push({
+        caretakerId: c.id,
+        caretakerName: c.name,
+        isLinked: Boolean(c.userId),
+        linkedUser: userDetails,
+        totalSchedules: schedulesCount,
+        distinctCustomers,
+        existingGrantsForUser: existingGrants,
+        pendingSyncCustomers: c.userId ? Math.max(0, distinctCustomers - existingGrants) : distinctCustomers,
+        status: c.userId ? 'SẴN SÀNG ĐỒNG BỘ' : 'CHƯA LIÊN KẾT (CHỜ ADMIN)',
+      });
+    }
+
+    return previewList;
   }
 
   async getCaretakerById(id: string) {

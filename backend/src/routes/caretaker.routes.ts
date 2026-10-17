@@ -8,6 +8,9 @@ import {
   deleteCaretaker,
   linkCaretaker,
   unlinkCaretaker,
+  getBackfillPreview,
+  backfillCaretaker,
+  backfillAllCaretakers,
 } from '../controllers/caretaker.controller.js';
 import { validateRequest } from '../middleware/validate.js';
 import {
@@ -32,6 +35,26 @@ router.get(
   '/available-partners',
   requireAdmin,
   getAvailablePartners
+);
+
+// Admin-only backfill preview and batch endpoints
+router.get(
+  '/backfill-preview',
+  requireAdmin,
+  getBackfillPreview
+);
+
+router.post(
+  '/backfill-all',
+  requireAdmin,
+  backfillAllCaretakers
+);
+
+router.post(
+  '/:id/backfill',
+  requireAdmin,
+  validateRequest({ params: caretakerIdParamSchema }),
+  backfillCaretaker
 );
 
 // Admin-only linking and unlinking endpoints

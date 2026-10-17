@@ -47,6 +47,38 @@ export const unlinkCaretaker = async (req: Request, res: Response, next: NextFun
   }
 };
 
+export const getBackfillPreview = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const preview = await caretakerService.getBackfillPreview();
+    sendSuccess(res, preview, 'Báo cáo xem trước đồng bộ dữ liệu phân công lịch sử');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const backfillCaretaker = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const result = await caretakerService.backfillCaregiverAssignments(
+      { id: req.user!.userId, email: req.user!.email },
+      req.params.id
+    );
+    sendSuccess(res, result, 'Đồng bộ khách hàng lịch sử cho người chăm sóc thành công');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const backfillAllCaretakers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const result = await caretakerService.backfillAllCaregivers(
+      { id: req.user!.userId, email: req.user!.email }
+    );
+    sendSuccess(res, result, 'Đồng bộ toàn bộ người chăm sóc đã liên kết thành công');
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getCaretakerById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const caretaker = await caretakerService.getCaretakerById(req.params.id);

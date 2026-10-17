@@ -1,4 +1,4 @@
-import { Prisma, AssignmentSourceType } from '@prisma/client';
+import { Prisma, AssignmentSourceType, PrismaClient } from '@prisma/client';
 import { auditLogService } from './auditLog.service.js';
 
 export interface SyncFollowUpResult {
@@ -310,7 +310,198 @@ export class AssignmentSyncService {
 
     return { completelyRevoked: false, remainingSourcesCount };
   }
+
+  /**
+   * Backfills all historical care schedules for a specific Caregiver to their linked PARTNER account.
+   * Processes records in safe batches to prevent transaction timeouts and locks on Cloud MySQL.
+   * Fully idempotent: can be safely executed repeatedly without creating duplicates.
+   */
+  async backfillCaregiverSchedules(
+    db: Prisma.TransactionClient | PrismaClient,
+    params: {
+      caretakerName: string;
+      userId: string;
+      assignedById?: string;
+    }
+  ): Promise<{
+    caretakerName: string;
+    userId: string;
+    totalSchedules: number;
+    distinctCustomers: number;
+    grantsProcessed: number;
+    assignmentsCreated: number;
+  }> {
+    const { caretakerName, userId, assignedById } = params;
+    const trimmedName = caretakerName.trim();
+
+    // 1. Fetch all active schedules associated with this caregiver name
+    const schedules = await db.followUp.findMany({
+      where: {
+        assignedTo: trimmedName,
+        status: { not: 'CANCELLED' },
+      },
+      select: {
+        id: true,
+        customerId: true,
+        status: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const distinctCustomerIds = Array.from(new Set(schedules.map((s: any) => s.customerId)));
+
+    let grantsProcessed = 0;
+    let assignmentsCreated = 0;
+
+    // 2. Process in chunks of 25 to respect Aiven connection limits
+    const CHUNK_SIZE = 25;
+    for (let i = 0; i < schedules.length; i += CHUNK_SIZE) {
+      const chunk = schedules.slice(i, i + CHUNK_SIZE);
+
+      for (const schedule of chunk) {
+        // Upsert grant for each schedule
+        await db.customerAssignmentGrant.upsert({
+          where: {
+            customer_user_source_unique: {
+              customerId: schedule.customerId,
+              userId,
+              sourceType: AssignmentSourceType.CARE_SCHEDULE,
+              sourceId: schedule.id,
+            },
+          },
+          create: {
+            customerId: schedule.customerId,
+            userId,
+            sourceType: AssignmentSourceType.CARE_SCHEDULE,
+            sourceId: schedule.id,
+            active: true,
+            assignedById: assignedById || null,
+            notes: `Đồng bộ từ lịch sử chăm sóc #${schedule.id} (${trimmedName})`,
+          },
+          update: {
+            active: true,
+            assignedById: assignedById || undefined,
+            notes: `Đồng bộ từ lịch sử chăm sóc #${schedule.id} (${trimmedName})`,
+          },
+        });
+        grantsProcessed++;
+      }
+    }
+
+    // 3. Ensure materialized assignment exists for each distinct customer
+    for (const customerId of distinctCustomerIds) {
+      const existingAssignment = await db.customerAssignment.findUnique({
+        where: {
+          customerId_userId: { customerId, userId },
+        },
+      });
+
+      if (!existingAssignment) {
+        await db.customerAssignment.create({
+          data: {
+            customerId,
+            userId,
+            assignedById: assignedById || null,
+            notes: `Đồng bộ từ người chăm sóc ${trimmedName}`,
+          },
+        });
+        assignmentsCreated++;
+      }
+    }
+
+    return {
+      caretakerName: trimmedName,
+      userId,
+      totalSchedules: schedules.length,
+      distinctCustomers: distinctCustomerIds.length,
+      grantsProcessed,
+      assignmentsCreated,
+    };
+  }
+
+  /**
+   * Revokes all schedule-based grants for a user when unlinking from a Caregiver.
+   * Safely retains customer_assignments if other sources (e.g. DIRECT or other schedule) exist.
+   */
+  async revokeCaregiverSchedules(
+    db: Prisma.TransactionClient | PrismaClient,
+    params: {
+      caretakerName: string;
+      userId: string;
+    }
+  ): Promise<{
+    caretakerName: string;
+    userId: string;
+    grantsRevoked: number;
+    assignmentsCompletelyRemoved: number;
+    assignmentsRetained: number;
+  }> {
+    const { caretakerName, userId } = params;
+    const trimmedName = caretakerName.trim();
+
+    // 1. Find all schedule IDs for this caregiver
+    const schedules = await db.followUp.findMany({
+      where: {
+        assignedTo: trimmedName,
+      },
+      select: { id: true, customerId: true },
+    });
+
+    const scheduleIds = schedules.map((s: any) => s.id);
+    const affectedCustomerIds = Array.from(new Set(schedules.map((s: any) => s.customerId)));
+
+    if (scheduleIds.length === 0) {
+      return {
+        caretakerName: trimmedName,
+        userId,
+        grantsRevoked: 0,
+        assignmentsCompletelyRemoved: 0,
+        assignmentsRetained: 0,
+      };
+    }
+
+    // 2. Delete grants originating from these schedules for this user
+    const deleteResult = await db.customerAssignmentGrant.deleteMany({
+      where: {
+        userId,
+        sourceType: AssignmentSourceType.CARE_SCHEDULE,
+        sourceId: { in: scheduleIds },
+      },
+    });
+
+    let assignmentsCompletelyRemoved = 0;
+    let assignmentsRetained = 0;
+
+    // 3. For each affected customer, check remaining active grants
+    for (const customerId of affectedCustomerIds) {
+      const remainingCount = await db.customerAssignmentGrant.count({
+        where: {
+          customerId,
+          userId,
+          active: true,
+        },
+      });
+
+      if (remainingCount === 0) {
+        await db.customerAssignment.deleteMany({
+          where: { customerId, userId },
+        });
+        assignmentsCompletelyRemoved++;
+      } else {
+        assignmentsRetained++;
+      }
+    }
+
+    return {
+      caretakerName: trimmedName,
+      userId,
+      grantsRevoked: deleteResult.count,
+      assignmentsCompletelyRemoved,
+      assignmentsRetained,
+    };
+  }
 }
 
 export const assignmentSyncService = new AssignmentSyncService();
 export default assignmentSyncService;
+
