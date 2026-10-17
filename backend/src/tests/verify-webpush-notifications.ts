@@ -15,8 +15,9 @@ async function runTests() {
 
   // Test 2: Xác thực passkey
   console.log('2. Kiểm tra xác thực passkey...');
+  const testPasskey = env.PUSH_AUTH_PASSKEY || 'ktea_crm_push_2026';
   assert(!pushNotificationService.verifyPasskey('sai_mat_khau'), 'Passkey sai phải bị từ chối');
-  assert(pushNotificationService.verifyPasskey(env.PUSH_AUTH_PASSKEY), 'Passkey đúng phải được chấp nhận');
+  assert(pushNotificationService.verifyPasskey(testPasskey), 'Passkey đúng phải được chấp nhận');
   console.log('   ✓ Xác thực passkey an toàn');
 
   // Test 3: Đăng ký thiết bị giả lập
@@ -33,7 +34,7 @@ async function runTests() {
     },
     deviceName: 'Test Device 1',
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-    passkey: env.PUSH_AUTH_PASSKEY,
+    passkey: testPasskey,
   };
 
   const registered = await pushNotificationService.registerSubscription(subData);
@@ -43,7 +44,7 @@ async function runTests() {
 
   // Test 4: Lấy danh sách thiết bị
   console.log('4. Kiểm tra lấy danh sách thiết bị...');
-  const devices = await pushNotificationService.getSubscriptionsForRecipient('Ktea', env.PUSH_AUTH_PASSKEY);
+  const devices = await pushNotificationService.getSubscriptionsForRecipient('Ktea', testPasskey);
   assert(devices.length > 0, 'Phải có ít nhất 1 thiết bị cho Ktea');
   assert(devices.some(d => d.id === registered.id), 'Danh sách phải chứa thiết bị vừa tạo');
   console.log('   ✓ Lấy danh sách thiết bị thành công (Tìm thấy:', devices.length, 'thiết bị)');

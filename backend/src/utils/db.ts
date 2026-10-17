@@ -26,7 +26,7 @@ export async function checkDatabaseHealth(): Promise<{
       connected: false,
       latencyMs: Date.now() - start,
       database: 'MySQL',
-      error: error instanceof Error ? error.message : 'Unknown database error',
+      error: 'Database connection degraded or unavailable',
     };
   }
 }

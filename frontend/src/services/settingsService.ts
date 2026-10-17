@@ -42,8 +42,10 @@ export const settingsService = {
   exportData: async (): Promise<void> => {
     const cleanUrl = getApiBaseUrl();
     const res = await fetch(`${cleanUrl}/data/export`, {
+      credentials: 'include',
       headers: {
         Accept: 'application/json',
+        'X-KTEA-REQUEST': '1',
       },
     });
     if (!res.ok) {

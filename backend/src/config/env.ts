@@ -9,17 +9,23 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   FRONTEND_API_URL: z.string().default('http://localhost:5173'),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
-  VAPID_PUBLIC_KEY: z.string().default('BEMG837SqZ_j5tIMFcT-SnswB6YBdnS8zW-mwjCRWcxzuZpFWnK0WLMHCaGTWHgREvCkSuLMZ3kqciWP7CeGaJk'),
-  VAPID_PRIVATE_KEY: z.string().default('f2-A2b55x1-I4LK29x56325451sx5BLGH7tPEa-sm8w'),
+  SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 characters long'),
+  CRON_SECRET: z.string().min(1).optional(),
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_SUBJECT: z.string().default('mailto:admin@kteacrm.com'),
-  PUSH_AUTH_PASSKEY: z.string().default('ktea-crm-2026'),
-  CRON_SECRET: z.string().default('ktea-cron-secret-2026'),
+  BOOTSTRAP_ADMIN_NAME: z.string().optional(),
+  BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
+  BOOTSTRAP_ADMIN_PASSWORD: z.string().min(8).optional(),
+  PUSH_AUTH_PASSKEY: z.string().optional(),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
 
 if (!parsedEnv.success) {
-  console.error('❌ Invalid environment configuration:', parsedEnv.error.format());
+  // Fail-fast with only missing variable names, never printing secret values
+  const missingKeys = Object.keys(parsedEnv.error.flatten().fieldErrors);
+  console.error('❌ Invalid or missing environment configuration:', missingKeys);
   process.exit(1);
 }
 

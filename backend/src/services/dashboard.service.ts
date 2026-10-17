@@ -2,8 +2,8 @@ import { dashboardRepository } from '../repositories/dashboard.repository.js';
 import BaseService from './base.service.js';
 
 export class DashboardService extends BaseService {
-  async getDashboard() {
-    const raw = await dashboardRepository.getDashboardData();
+  async getDashboard(scopedCustomerIds?: string[]) {
+    const raw = await dashboardRepository.getDashboardData(scopedCustomerIds);
 
     const normalizeScore = (score: any): number => {
       if (score === null || score === undefined) return 0;

@@ -13,6 +13,7 @@ import {
   updateCaretakerSchema,
   caretakerIdParamSchema,
 } from '../validations/caretaker.validation.js';
+import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -30,18 +31,21 @@ router.get(
 
 router.post(
   '/',
+  requireAdmin,
   validateRequest({ body: createCaretakerSchema }),
   createCaretaker
 );
 
 router.patch(
   '/:id',
+  requireAdmin,
   validateRequest({ params: caretakerIdParamSchema, body: updateCaretakerSchema }),
   updateCaretaker
 );
 
 router.delete(
   '/:id',
+  requireAdmin,
   validateRequest({ params: caretakerIdParamSchema }),
   deleteCaretaker
 );

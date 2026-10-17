@@ -77,7 +77,7 @@ export const corsOptions: cors.CorsOptions = {
     // Do not reflect unapproved origins; omit Access-Control-Allow-Origin
     return callback(null, false);
   },
-  credentials: false, // CRM uses token/header auth, not cross-origin cookies
+  credentials: true, // CRM uses signed HttpOnly cookies for session management
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
   allowedHeaders: [
     'Content-Type',
@@ -87,6 +87,7 @@ export const corsOptions: cors.CorsOptions = {
     'Origin',
     'x-passkey',
     'x-cron-secret',
+    'x-ktea-request',
     'Cache-Control',
     'Pragma',
     'If-Modified-Since',

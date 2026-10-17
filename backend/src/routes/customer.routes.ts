@@ -46,6 +46,7 @@ import { createNeedSchema } from '../validations/need.validation.js';
 import { createActivitySchema } from '../validations/activity.validation.js';
 import { createNoteSchema } from '../validations/note.validation.js';
 import { createPushRecordSchema } from '../validations/pushRecord.validation.js';
+import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -58,6 +59,7 @@ router.get(
 
 router.post(
   '/',
+  requireAdmin,
   validateRequest({ body: createCustomerSchema }),
   createCustomer
 );
@@ -65,6 +67,7 @@ router.post(
 // Bulk Customer Action Endpoint
 router.post(
   '/bulk-action',
+  requireAdmin,
   validateRequest({ body: bulkActionSchema }),
   executeBulkAction
 );
@@ -77,12 +80,14 @@ router.get(
 
 router.patch(
   '/:id',
+  requireAdmin,
   validateRequest({ params: customerIdParamSchema, body: updateCustomerSchema }),
   updateCustomer
 );
 
 router.delete(
   '/:id',
+  requireAdmin,
   validateRequest({ params: customerIdParamSchema }),
   deleteCustomer
 );

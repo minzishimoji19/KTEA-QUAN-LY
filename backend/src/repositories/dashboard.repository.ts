@@ -8,12 +8,15 @@ import {
 import BaseRepository from './base.repository.js';
 
 export class DashboardRepository extends BaseRepository {
-  async getDashboardData() {
+  async getDashboardData(scopedCustomerIds?: string[]) {
     const now = new Date();
     const startOfDay = new Date(now);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(now);
     endOfDay.setHours(23, 59, 59, 999);
+
+    const customerScope = scopedCustomerIds !== undefined ? { id: { in: scopedCustomerIds } } : {};
+    const fkScope = scopedCustomerIds !== undefined ? { customerId: { in: scopedCustomerIds } } : {};
 
     const [
       totalCustomers,
@@ -30,10 +33,12 @@ export class DashboardRepository extends BaseRepository {
       recentActivities,
     ] = await Promise.all([
       // 1. Overview counts
-      this.db.customer.count(),
+      this.db.customer.count({
+        where: customerScope,
+      }),
 
       this.db.customer.count({
-        where: { overallStatus: CustomerStatus.DANG_TU_VAN },
+        where: { overallStatus: CustomerStatus.DANG_TU_VAN, ...customerScope },
       }),
 
       this.db.customerCase.count({
@@ -41,6 +46,7 @@ export class DashboardRepository extends BaseRepository {
           caseStatus: {
             in: [CaseStatus.DRAFT, CaseStatus.SUBMITTED, CaseStatus.UNDER_REVIEW],
           },
+          ...fkScope,
         },
       }),
 
@@ -49,6 +55,7 @@ export class DashboardRepository extends BaseRepository {
           status: {
             in: [PushStatus.PENDING, PushStatus.IN_PROGRESS],
           },
+          ...fkScope,
         },
       }),
 
@@ -56,6 +63,7 @@ export class DashboardRepository extends BaseRepository {
         where: {
           status: { in: [FollowUpStatus.PENDING, FollowUpStatus.IN_PROGRESS] },
           dueAt: { lt: now },
+          ...fkScope,
         },
       }),
 
@@ -63,12 +71,14 @@ export class DashboardRepository extends BaseRepository {
         where: {
           status: { in: [FollowUpStatus.PENDING, FollowUpStatus.IN_PROGRESS] },
           dueAt: { gte: startOfDay, lte: endOfDay },
+          ...fkScope,
         },
       }),
 
       this.db.recommendation.count({
         where: {
           status: { in: [RecommendationStatus.NEW, RecommendationStatus.ACTIVE] },
+          ...fkScope,
         },
       }),
 
@@ -77,6 +87,7 @@ export class DashboardRepository extends BaseRepository {
         where: {
           status: { in: [FollowUpStatus.PENDING, FollowUpStatus.IN_PROGRESS] },
           dueAt: { lt: now },
+          ...fkScope,
         },
         include: {
           customer: {
@@ -98,6 +109,7 @@ export class DashboardRepository extends BaseRepository {
         where: {
           status: { in: [FollowUpStatus.PENDING, FollowUpStatus.IN_PROGRESS] },
           dueAt: { gte: startOfDay, lte: endOfDay },
+          ...fkScope,
         },
         include: {
           customer: {
@@ -119,6 +131,7 @@ export class DashboardRepository extends BaseRepository {
         where: {
           status: { in: [RecommendationStatus.NEW, RecommendationStatus.ACTIVE, RecommendationStatus.REVIEWED] },
           score: { not: null },
+          ...fkScope,
         },
         include: {
           customer: {
@@ -146,6 +159,7 @@ export class DashboardRepository extends BaseRepository {
       this.db.recommendation.findMany({
         where: {
           status: { in: [RecommendationStatus.NEW, RecommendationStatus.ACTIVE] },
+          ...fkScope,
         },
         include: {
           customer: {
@@ -171,6 +185,7 @@ export class DashboardRepository extends BaseRepository {
 
       // 6. Recent Activity Stream
       this.db.customerActivity.findMany({
+        where: fkScope,
         include: {
           customer: {
             select: {

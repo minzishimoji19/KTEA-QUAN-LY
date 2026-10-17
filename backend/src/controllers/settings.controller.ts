@@ -108,6 +108,8 @@ export const getDataStatus = async (
   }
 };
 
+import { auditLogService } from '../services/auditLog.service.js';
+
 export const exportData = async (
   req: Request,
   res: Response,
@@ -121,6 +123,18 @@ export const exportData = async (
       endDate: typeof endDate === 'string' ? endDate : undefined,
     };
     const exportBundle = await dataGovernanceService.exportAllData(filters);
+
+    if (req.user) {
+      await auditLogService.logAction(
+        req.user.userId,
+        'EXPORT',
+        'SYSTEM_DATA',
+        'ALL_DATA',
+        { filters },
+        req.ip
+      );
+    }
+
     res.setHeader('Content-Type', 'application/json');
     res.setHeader(
       'Content-Disposition',

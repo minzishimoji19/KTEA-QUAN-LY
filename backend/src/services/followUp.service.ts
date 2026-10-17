@@ -41,7 +41,8 @@ export class FollowUpService extends BaseService {
     filter?: 'today' | 'overdue' | 'upcoming' | 'completed' | 'all',
     status?: FollowUpStatus,
     customerId?: string,
-    assignedTo?: string
+    assignedTo?: string,
+    scopedCustomerIds?: string[]
   ) {
     if (customerId) {
       const customer = await customerRepository.findById(customerId);
@@ -49,7 +50,7 @@ export class FollowUpService extends BaseService {
         throw new NotFoundError(`Customer with ID '${customerId}' not found`);
       }
     }
-    return followUpRepository.findAll(filter, status, customerId, assignedTo);
+    return followUpRepository.findAll(filter, status, customerId, assignedTo, scopedCustomerIds);
   }
 
   async getFollowUpById(id: string) {

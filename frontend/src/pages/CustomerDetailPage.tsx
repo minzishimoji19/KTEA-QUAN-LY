@@ -30,6 +30,7 @@ import {
 } from '../components/common';
 import { Skeleton, CardSkeleton } from '../components/ui/Skeleton';
 import { Button } from '../components/ui/Button';
+import { useAuth } from '../context/AuthContext';
 import {
   useCustomerDetail,
   useDeleteCustomer,
@@ -67,6 +68,9 @@ export const CustomerDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const returnUrl = (location.state as { returnUrl?: string })?.returnUrl || '/customers';
+
+  // Context & Auth
+  const { role } = useAuth();
 
   // Queries
   const { data: customer, isLoading, isError, refetch } = useCustomerDetail(targetCustomerId);
@@ -289,27 +293,29 @@ export const CustomerDetailPage: React.FC = () => {
 
           {/* Quick Actions Bar */}
           <div className="flex flex-wrap items-center gap-1.5">
-            {/* Primary Actions required by Section 7 */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsEditOpen(true)}
-              className="h-7 px-2.5 text-xs gap-1.5 border-slate-700 hover:border-slate-500 text-slate-200"
-            >
-              <Edit className="w-3 h-3 text-blue-400" />
-              <span>Sửa thông tin</span>
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setIsAddCaseOpen(true)}
-              className="h-7 px-2.5 text-xs gap-1.5 bg-purple-600 hover:bg-purple-500 text-white font-medium"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ Tạo hồ sơ mới</span>
-            </Button>
-
-            <span className="text-slate-700 mx-0.5">|</span>
+            {role !== 'PARTNER' && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsEditOpen(true)}
+                  className="h-7 px-2.5 text-xs gap-1.5 border-slate-700 hover:border-slate-500 text-slate-200"
+                >
+                  <Edit className="w-3 h-3 text-blue-400" />
+                  <span>Sửa thông tin</span>
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setIsAddCaseOpen(true)}
+                  className="h-7 px-2.5 text-xs gap-1.5 bg-purple-600 hover:bg-purple-500 text-white font-medium"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Tạo hồ sơ mới</span>
+                </Button>
+                <span className="text-slate-700 mx-0.5">|</span>
+              </>
+            )}
 
             <Button
               variant="outline"
@@ -347,24 +353,28 @@ export const CustomerDetailPage: React.FC = () => {
               <CalendarCheck className="w-3 h-3 text-amber-400" />
               <span>Lên lịch chăm sóc</span>
             </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setIsCreatePushOpen(true)}
-              className="h-7 px-2 text-xs gap-1 bg-purple-600 hover:bg-purple-500 text-white border-0"
-            >
-              <Send className="w-3 h-3" />
-              <span>Chuyển khách</span>
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={handleDeleteCustomer}
-              className="h-7 w-7 p-0 ml-1"
-              title="Xóa hồ sơ khách hàng"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </Button>
+            {role !== 'PARTNER' && (
+              <>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setIsCreatePushOpen(true)}
+                  className="h-7 px-2 text-xs gap-1 bg-purple-600 hover:bg-purple-500 text-white border-0"
+                >
+                  <Send className="w-3 h-3" />
+                  <span>Chuyển khách</span>
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDeleteCustomer}
+                  className="h-7 w-7 p-0 ml-1"
+                  title="Xóa hồ sơ khách hàng"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </>
+            )}
           </div>
         </div>
 
@@ -579,14 +589,16 @@ export const CustomerDetailPage: React.FC = () => {
                   <User className="w-3.5 h-3.5 text-blue-400" />
                   Hồ sơ khách hàng
                 </h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsEditOpen(true)}
-                  className="h-6 px-1.5 text-[11px] text-blue-400"
-                >
-                  Chỉnh sửa
-                </Button>
+                {role !== 'PARTNER' && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsEditOpen(true)}
+                    className="h-6 px-1.5 text-[11px] text-blue-400"
+                  >
+                    Chỉnh sửa
+                  </Button>
+                )}
               </div>
 
               <div className="space-y-2 text-xs">
@@ -720,17 +732,19 @@ export const CustomerDetailPage: React.FC = () => {
                         </div>
                         <DateDisplay date={c.applicationDate || c.createdAt} className="text-[10px]" />
                       </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteCase(c);
-                        }}
-                        className="p-1 rounded text-slate-500 hover:text-red-400 flex-shrink-0"
-                        title="Xóa hồ sơ"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {role !== 'PARTNER' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteCase(c);
+                          }}
+                          className="p-1 rounded text-slate-500 hover:text-red-400 flex-shrink-0"
+                          title="Xóa hồ sơ"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1160,14 +1174,16 @@ export const CustomerDetailPage: React.FC = () => {
                       >
                         Chi tiết
                       </Button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCase(c)}
-                        className="p-1 rounded text-slate-500 hover:text-red-400"
-                        title="Xóa hồ sơ"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {role !== 'PARTNER' && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCase(c)}
+                          className="p-1 rounded text-slate-500 hover:text-red-400"
+                          title="Xóa hồ sơ"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   ),
                 },
@@ -1177,8 +1193,8 @@ export const CustomerDetailPage: React.FC = () => {
               isEmpty={!customer.cases || customer.cases.length === 0}
               emptyTitle="Khách hàng này chưa có hồ sơ"
               emptyDescription="Mỗi khách hàng có thể có nhiều hồ sơ sản phẩm theo thời gian."
-              emptyActionLabel="+ Tạo hồ sơ mới"
-              onEmptyAction={() => setIsAddCaseOpen(true)}
+              emptyActionLabel={role !== 'PARTNER' ? '+ Tạo hồ sơ mới' : undefined}
+              onEmptyAction={role !== 'PARTNER' ? () => setIsAddCaseOpen(true) : undefined}
               onRowClick={(c) => navigate(`/customers/${customer.id}/cases/${c.id}`)}
             />
           </div>

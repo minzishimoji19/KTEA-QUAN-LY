@@ -40,8 +40,10 @@ import { FollowUp } from '../types/models';
 import { categorizeFollowUps } from '../utils/followUpUtils';
 import { EditFollowUpModal } from '../features/customers/EditFollowUpModal';
 import { ScheduleFollowUpModal } from '../features/customers/ScheduleFollowUpModal';
+import { useAuth } from '../context/AuthContext';
 
 export const FollowUpsPage: React.FC = () => {
+  const { role } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: caretakers, isLoading: isCaretakersLoading } = useCaretakers();
@@ -342,15 +344,17 @@ export const FollowUpsPage: React.FC = () => {
             <ExternalLink className="w-3 h-3 text-blue-400" />
           </Button>
 
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => setDeleteTaskId(task.id)}
-            className="h-7 w-7 p-0"
-            title="Xóa lịch chăm sóc"
-          >
-            <Trash2 className="w-3 h-3 text-red-400" />
-          </Button>
+          {role !== 'PARTNER' && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setDeleteTaskId(task.id)}
+              className="h-7 w-7 p-0"
+              title="Xóa lịch chăm sóc"
+            >
+              <Trash2 className="w-3 h-3 text-red-400" />
+            </Button>
+          )}
         </div>
       </div>
     );
@@ -552,16 +556,18 @@ export const FollowUpsPage: React.FC = () => {
                 <span>Hoàn thành đã chọn</span>
               </Button>
 
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setIsBulkDeleteConfirmOpen(true)}
-                disabled={bulkCompleteMutation.isPending || bulkDeleteMutation.isPending}
-                className="h-7 px-3 text-xs gap-1.5"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Xóa lịch đã chọn</span>
-              </Button>
+              {role !== 'PARTNER' && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setIsBulkDeleteConfirmOpen(true)}
+                  disabled={bulkCompleteMutation.isPending || bulkDeleteMutation.isPending}
+                  className="h-7 px-3 text-xs gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Xóa lịch đã chọn</span>
+                </Button>
+              )}
 
               <button
                 type="button"

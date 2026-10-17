@@ -1,13 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
 import { pushRecordService } from '../services/pushRecord.service.js';
 import { sendSuccess, sendCreated } from '../utils/response.js';
-
-import { PushStatus } from '@prisma/client';
+import { PushStatus, Role } from '@prisma/client';
+import { customerAccessService } from '../services/customerAccess.service.js';
 
 export const getAllPushRecords = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const status = req.query.status as PushStatus | undefined;
-    const pushes = await pushRecordService.getAllPushRecords(status);
+    let scopedCustomerIds: string[] | undefined;
+    if (req.user && req.user.role === Role.PARTNER) {
+      scopedCustomerIds = await customerAccessService.getAssignedCustomerIds(req.user.userId);
+    }
+    const pushes = await pushRecordService.getAllPushRecords(status, scopedCustomerIds);
     sendSuccess(res, pushes, 'Push records retrieved');
   } catch (error) {
     next(error);
@@ -16,6 +20,12 @@ export const getAllPushRecords = async (req: Request, res: Response, next: NextF
 
 export const getPushRecordsByCustomer = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
+    if (req.user) {
+      await customerAccessService.assertCustomerAccess(
+        { id: req.user.userId, role: req.user.role },
+        req.params.id
+      );
+    }
     const pushes = await pushRecordService.getPushRecordsByCustomerId(req.params.id);
     sendSuccess(res, pushes, 'Customer push records loaded');
   } catch (error) {
@@ -25,6 +35,12 @@ export const getPushRecordsByCustomer = async (req: Request, res: Response, next
 
 export const createPushRecord = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
+    if (req.user) {
+      await customerAccessService.assertCustomerAccess(
+        { id: req.user.userId, role: req.user.role },
+        req.params.id
+      );
+    }
     const push = await pushRecordService.createPushRecord(req.params.id, req.body);
     sendCreated(res, push, 'Customer push record initiated');
   } catch (error) {
@@ -34,6 +50,12 @@ export const createPushRecord = async (req: Request, res: Response, next: NextFu
 
 export const updatePushRecord = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
+    if (req.user) {
+      await customerAccessService.assertPushRecordAccess(
+        { id: req.user.userId, role: req.user.role },
+        req.params.id
+      );
+    }
     const updated = await pushRecordService.updatePushRecord(req.params.id, req.body);
     sendSuccess(res, updated, 'Push record updated');
   } catch (error) {

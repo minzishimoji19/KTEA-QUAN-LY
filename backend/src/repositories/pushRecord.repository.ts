@@ -2,9 +2,16 @@ import { Prisma, PushStatus } from '@prisma/client';
 import BaseRepository from './base.repository.js';
 
 export class PushRecordRepository extends BaseRepository {
-  async findAll(status?: PushStatus) {
+  async findAll(status?: PushStatus, scopedCustomerIds?: string[]) {
+    const where: Prisma.PushRecordWhereInput = {};
+    if (status) {
+      where.status = status;
+    }
+    if (scopedCustomerIds !== undefined) {
+      where.customerId = { in: scopedCustomerIds };
+    }
     return this.db.pushRecord.findMany({
-      where: status ? { status } : undefined,
+      where: Object.keys(where).length > 0 ? where : undefined,
       include: {
         customer: {
           select: { id: true, fullName: true, phone: true, overallStatus: true },

@@ -15,6 +15,7 @@ export interface CustomerQueryFilters {
   endDate?: string;
   sortBy?: 'createdAt' | 'updatedAt' | 'fullName' | 'overallStatus';
   sortOrder?: 'asc' | 'desc';
+  scopedCustomerIds?: string[];
 }
 
 export class CustomerRepository extends BaseRepository {
@@ -136,6 +137,17 @@ export class CustomerRepository extends BaseRepository {
       }
       if (endDate) {
         where.createdAt.lte = new Date(endDate);
+      }
+    }
+
+    // Enforce RBAC scoped access for Partner
+    if (filters.scopedCustomerIds) {
+      const allowedSet = new Set(filters.scopedCustomerIds);
+      if (where.id && typeof where.id === 'object' && 'in' in where.id && Array.isArray((where.id as any).in)) {
+        const intersected = ((where.id as any).in as string[]).filter((id) => allowedSet.has(id));
+        where.id = { in: intersected.length > 0 ? intersected : ['__none__'] };
+      } else {
+        where.id = { in: filters.scopedCustomerIds.length > 0 ? filters.scopedCustomerIds : ['__none__'] };
       }
     }
 

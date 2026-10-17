@@ -5,11 +5,16 @@ export interface RecommendationQueryFilters {
   status?: RecommendationStatus;
   minScore?: number;
   productId?: string;
+  scopedCustomerIds?: string[];
 }
 
 export class RecommendationRepository extends BaseRepository {
   async findAll(filters?: RecommendationQueryFilters) {
     const where: Prisma.RecommendationWhereInput = {};
+
+    if (filters?.scopedCustomerIds !== undefined) {
+      where.customerId = { in: filters.scopedCustomerIds };
+    }
 
     if (filters?.status) {
       where.status = filters.status;

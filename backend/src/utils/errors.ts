@@ -42,3 +42,10 @@ export class UnauthorizedError extends AppError {
   }
 }
 
+export class ForbiddenError extends AppError {
+  constructor(message = 'Forbidden: Access denied', details?: unknown) {
+    super(message, 403, 'FORBIDDEN', details);
+  }
+}
+
+

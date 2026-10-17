@@ -1,8 +1,9 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, CalendarPlus, Send, X, Info } from 'lucide-react';
+import { UserPlus, CalendarPlus, Send, X, Info, Users } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
+import { useAuth } from '../../context/AuthContext';
 
 export interface QuickActionModalProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ export interface QuickActionModalProps {
 
 export const QuickActionModal: React.FC<QuickActionModalProps> = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
+  const { role } = useAuth();
 
   if (!isOpen) return null;
 
@@ -39,73 +41,123 @@ export const QuickActionModal: React.FC<QuickActionModalProps> = ({ isOpen, onCl
 
         {/* Action List */}
         <div className="p-4 space-y-2.5">
-          <div
-            onClick={() => {
-              onClose();
-              navigate('/customers');
-            }}
-            className="flex items-center justify-between p-3 rounded-md bg-slate-850 border border-slate-800 hover:border-blue-500/50 hover:bg-slate-800/80 cursor-pointer transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-                <UserPlus className="w-4 h-4" />
+          {role === 'ADMIN' ? (
+            <>
+              <div
+                onClick={() => {
+                  onClose();
+                  navigate('/customers');
+                }}
+                className="flex items-center justify-between p-3 rounded-md bg-slate-850 border border-slate-800 hover:border-blue-500/50 hover:bg-slate-800/80 cursor-pointer transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                    <UserPlus className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-slate-200">Đăng ký khách hàng mới</p>
+                    <p className="text-[10px] text-slate-400">Mở danh bạ quản lý khách hàng</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="font-mono text-[10px]">
+                  Danh bạ
+                </Badge>
               </div>
-              <div>
-                <p className="text-xs font-medium text-slate-200">Đăng ký khách hàng mới</p>
-                <p className="text-[10px] text-slate-400">Mở danh bạ quản lý khách hàng</p>
-              </div>
-            </div>
-            <Badge variant="outline" className="font-mono text-[10px]">
-              Danh bạ
-            </Badge>
-          </div>
 
-          <div
-            onClick={() => {
-              onClose();
-              navigate('/follow-ups');
-            }}
-            className="flex items-center justify-between p-3 rounded-md bg-slate-850 border border-slate-800 hover:border-amber-500/50 hover:bg-slate-800/80 cursor-pointer transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-                <CalendarPlus className="w-4 h-4" />
+              <div
+                onClick={() => {
+                  onClose();
+                  navigate('/follow-ups');
+                }}
+                className="flex items-center justify-between p-3 rounded-md bg-slate-850 border border-slate-800 hover:border-amber-500/50 hover:bg-slate-800/80 cursor-pointer transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                    <CalendarPlus className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-slate-200">Đặt lịch chăm sóc khách</p>
+                    <p className="text-[10px] text-slate-400">Mở hàng đợi lịch chăm sóc</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="font-mono text-[10px]">
+                  Lịch hẹn
+                </Badge>
               </div>
-              <div>
-                <p className="text-xs font-medium text-slate-200">Đặt lịch chăm sóc khách</p>
-                <p className="text-[10px] text-slate-400">Mở hàng đợi lịch chăm sóc</p>
-              </div>
-            </div>
-            <Badge variant="outline" className="font-mono text-[10px]">
-              Lịch hẹn
-            </Badge>
-          </div>
 
-          <div
-            onClick={() => {
-              onClose();
-              navigate('/push');
-            }}
-            className="flex items-center justify-between p-3 rounded-md bg-slate-850 border border-slate-800 hover:border-purple-500/50 hover:bg-slate-800/80 cursor-pointer transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
-                <Send className="w-4 h-4" />
+              <div
+                onClick={() => {
+                  onClose();
+                  navigate('/push');
+                }}
+                className="flex items-center justify-between p-3 rounded-md bg-slate-850 border border-slate-800 hover:border-purple-500/50 hover:bg-slate-800/80 cursor-pointer transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                    <Send className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-slate-200">Chuyển xử lý đề xuất</p>
+                    <p className="text-[10px] text-slate-400">Mở trung tâm chuyển khách</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="font-mono text-[10px]">
+                  Chuyển khách
+                </Badge>
               </div>
-              <div>
-                <p className="text-xs font-medium text-slate-200">Chuyển xử lý đề xuất</p>
-                <p className="text-[10px] text-slate-400">Mở trung tâm chuyển khách</p>
+            </>
+          ) : (
+            <>
+              <div
+                onClick={() => {
+                  onClose();
+                  navigate('/customers');
+                }}
+                className="flex items-center justify-between p-3 rounded-md bg-slate-850 border border-slate-800 hover:border-blue-500/50 hover:bg-slate-800/80 cursor-pointer transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-slate-200">Khách hàng của tôi</p>
+                    <p className="text-[10px] text-slate-400">Danh sách khách hàng được phân công</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="font-mono text-[10px]">
+                  Cá nhân
+                </Badge>
               </div>
-            </div>
-            <Badge variant="outline" className="font-mono text-[10px]">
-              Chuyển khách
-            </Badge>
-          </div>
+
+              <div
+                onClick={() => {
+                  onClose();
+                  navigate('/follow-ups');
+                }}
+                className="flex items-center justify-between p-3 rounded-md bg-slate-850 border border-slate-800 hover:border-amber-500/50 hover:bg-slate-800/80 cursor-pointer transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                    <CalendarPlus className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-slate-200">Lịch chăm sóc phân công</p>
+                    <p className="text-[10px] text-slate-400">Xem và xử lý các lịch hẹn đến hạn</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="font-mono text-[10px]">
+                  Lịch hẹn
+                </Badge>
+              </div>
+            </>
+          )}
 
           <div className="p-2.5 rounded bg-slate-950/60 border border-slate-800/70 flex items-start gap-2 text-[11px] text-slate-400">
             <Info className="w-3.5 h-3.5 text-blue-400 flex-shrink-0 mt-0.5" />
             <span>
-              Tất cả thao tác nhanh đều đồng bộ trực tiếp với cơ sở dữ liệu và tự động cập nhật nhật ký hoạt động.
+              {role === 'ADMIN'
+                ? 'Tất cả thao tác nhanh đều đồng bộ trực tiếp với cơ sở dữ liệu và tự động cập nhật nhật ký hoạt động.'
+                : 'Thao tác chỉ áp dụng cho danh sách khách hàng được Quản trị viên phân công cho bạn.'}
             </span>
           </div>
         </div>

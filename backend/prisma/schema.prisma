@@ -145,6 +145,7 @@ model Customer {
   followUps       FollowUp[]
   recommendations Recommendation[]
   pushRecords     PushRecord[]
+  assignments     CustomerAssignment[]
 
   @@index([phone])
   @@index([sourceId])
@@ -395,3 +396,71 @@ model Caretaker {
 
   @@map("caretakers")
 }
+
+enum Role {
+  ADMIN
+  PARTNER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique @map("email")
+  passwordHash String     @map("password_hash")
+  fullName     String     @map("full_name")
+  role         Role       @default(PARTNER) @map("role")
+  status       UserStatus @default(ACTIVE) @map("status")
+  phone        String?    @map("phone")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  assignedCustomers  CustomerAssignment[] @relation("AssignedPartner")
+  createdAssignments CustomerAssignment[] @relation("AssignedByAdmin")
+  auditLogs          AuditLog[]
+
+  @@map("users")
+}
+
+model CustomerAssignment {
+  id           String   @id @default(uuid())
+  customerId   String   @map("customer_id")
+  userId       String   @map("user_id")
+  assignedById String?  @map("assigned_by_id")
+  assignedAt   DateTime @default(now()) @map("assigned_at")
+  notes        String?  @map("notes") @db.Text
+
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  user       User     @relation("AssignedPartner", fields: [userId], references: [id], onDelete: Cascade)
+  assignedBy User?    @relation("AssignedByAdmin", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@unique([customerId, userId])
+  @@index([userId])
+  @@index([customerId])
+  @@map("customer_assignments")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?  @map("actor_id")
+  actorEmail String?  @map("actor_email")
+  action     String   @map("action")
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  details    String?  @map("details") @db.Text
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+

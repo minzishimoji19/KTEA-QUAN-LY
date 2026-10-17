@@ -8,8 +8,8 @@ import BaseService from './base.service.js';
 import prisma from '../config/database.js';
 
 export class PushRecordService extends BaseService {
-  async getAllPushRecords(status?: PushStatus) {
-    return pushRecordRepository.findAll(status);
+  async getAllPushRecords(status?: PushStatus, scopedCustomerIds?: string[]) {
+    return pushRecordRepository.findAll(status, scopedCustomerIds);
   }
 
   async getPushRecordsByCustomerId(customerId: string) {

@@ -6,11 +6,22 @@ export class FollowUpRepository extends BaseRepository {
     filter?: 'today' | 'overdue' | 'upcoming' | 'completed' | 'all',
     status?: FollowUpStatus,
     customerId?: string,
-    assignedTo?: string
+    assignedTo?: string,
+    scopedCustomerIds?: string[]
   ) {
     const where: Prisma.FollowUpWhereInput = {};
 
-    if (customerId) {
+    if (scopedCustomerIds !== undefined) {
+      if (customerId) {
+        if (!scopedCustomerIds.includes(customerId)) {
+          where.customerId = '__NO_MATCH__';
+        } else {
+          where.customerId = customerId;
+        }
+      } else {
+        where.customerId = { in: scopedCustomerIds };
+      }
+    } else if (customerId) {
       where.customerId = customerId;
     }
 

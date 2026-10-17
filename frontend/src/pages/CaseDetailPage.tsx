@@ -22,6 +22,7 @@ import { SelectProductModal } from '../features/customers/SelectProductModal';
 import { RejectCaseModal } from '../features/customers/RejectCaseModal';
 import { AddCaseModal } from '../features/customers/AddCaseModal';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 
 const NEXT_PROGRESS_MAP: Partial<
   Record<CaseProgress, { next: CaseProgress; label: string; actionText: string }>
@@ -67,6 +68,7 @@ export const CaseDetailPage: React.FC = () => {
   const { customerId, caseId } = useParams<{ customerId: string; caseId: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { role } = useAuth();
 
   const { data: customerCase, isLoading, isError, refetch } = useCase(caseId || '');
   const { data: customer } = useCustomerDetail(customerId);
@@ -170,15 +172,17 @@ export const CaseDetailPage: React.FC = () => {
               <span>Khách hàng</span>
             </Button>
           </Link>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsCreateNewCaseOpen(true)}
-            className="h-7 text-xs gap-1 border-purple-800/80 text-purple-300 hover:bg-purple-950/40"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Tạo hồ sơ mới</span>
-          </Button>
+          {role !== 'PARTNER' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsCreateNewCaseOpen(true)}
+              className="h-7 text-xs gap-1 border-purple-800/80 text-purple-300 hover:bg-purple-950/40"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Tạo hồ sơ mới</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -218,15 +222,21 @@ export const CaseDetailPage: React.FC = () => {
             {!isTerminal && (
               <>
                 {!customerCase.productId ? (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => setIsSelectProductOpen(true)}
-                    className="h-8 text-xs gap-1.5 bg-blue-600 hover:bg-blue-500 text-white"
-                  >
-                    <Package className="w-3.5 h-3.5" />
-                    <span>Chọn sản phẩm</span>
-                  </Button>
+                  role !== 'PARTNER' ? (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => setIsSelectProductOpen(true)}
+                      className="h-8 text-xs gap-1.5 bg-blue-600 hover:bg-blue-500 text-white"
+                    >
+                      <Package className="w-3.5 h-3.5" />
+                      <span>Chọn sản phẩm</span>
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-slate-500 font-mono italic">
+                      Chờ Quản trị viên chỉ định sản phẩm
+                    </span>
+                  )
                 ) : nextStepConfig ? (
                   <Button
                     variant="primary"
@@ -258,7 +268,7 @@ export const CaseDetailPage: React.FC = () => {
               </>
             )}
 
-            {isRejected && (
+            {isRejected && role !== 'PARTNER' && (
               <Button
                 variant="primary"
                 size="sm"

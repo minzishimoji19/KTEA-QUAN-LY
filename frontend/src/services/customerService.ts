@@ -1,4 +1,4 @@
-import apiClient, { getApiBaseUrl } from './apiClient';
+import apiClient from './apiClient';
 import { CustomerSummary, CustomerDetail } from '../types/models';
 import { PaginatedResponse } from '../types/api';
 
@@ -36,11 +36,7 @@ export const customerService = {
     if (params.sortOrder) query.append('sortOrder', params.sortOrder);
 
     const queryString = query.toString() ? `?${query.toString()}` : '';
-    const res = await fetch(`${getApiBaseUrl()}/customers${queryString}`);
-    if (!res.ok) {
-      throw new Error(`Failed to load customers (${res.status})`);
-    }
-    return res.json();
+    return apiClient.get<PaginatedResponse<CustomerSummary>>(`/customers${queryString}`);
   },
 
   getCustomerDetail: async (id: string): Promise<CustomerDetail> => {

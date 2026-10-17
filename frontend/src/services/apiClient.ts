@@ -27,6 +27,13 @@ export function getApiBaseUrl(): string {
   return normalizeApiUrl(import.meta.env.VITE_API_BASE_URL);
 }
 
+export type AuthErrorHandler = (status: number) => void;
+let onAuthError: AuthErrorHandler | null = null;
+
+export function setAuthErrorHandler(handler: AuthErrorHandler | null): void {
+  onAuthError = handler;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -40,11 +47,13 @@ class ApiClient {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Accept: 'application/json',
+      'X-KTEA-REQUEST': '1',
       ...((options.headers as Record<string, string>) || {}),
     };
 
     try {
       const response = await fetch(url, {
+        credentials: 'include',
         ...options,
         headers,
       });
@@ -54,6 +63,15 @@ class ApiClient {
       const data = isJson ? await response.json() : await response.text();
 
       if (!response.ok) {
+        if (
+          response.status === 401 &&
+          onAuthError &&
+          typeof window !== 'undefined' &&
+          !window.location.pathname.startsWith('/login')
+        ) {
+          onAuthError(401);
+        }
+
         const errorData = data as ApiErrorResponse;
         throw new ApiClientError(
           response.status,
@@ -65,9 +83,13 @@ class ApiClient {
 
       // If wrapped in standard ApiResponse envelope, return extracted data or response
       const apiResponse = data as ApiResponse<T>;
-      return (apiResponse && typeof apiResponse === 'object' && 'data' in apiResponse)
-        ? apiResponse.data
-        : (data as T);
+      if (apiResponse && typeof apiResponse === 'object' && 'data' in apiResponse) {
+        if ('pagination' in apiResponse) {
+          return apiResponse as unknown as T;
+        }
+        return apiResponse.data;
+      }
+      return data as T;
     } catch (error) {
       if (error instanceof ApiClientError) {
         throw error;

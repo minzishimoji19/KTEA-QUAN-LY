@@ -10,7 +10,11 @@ import {
 import { validateRequest } from '../middleware/validate.js';
 import { analyticsFilterQuerySchema } from '../validations/analytics.validation.js';
 
+import { requireAdmin } from '../middleware/auth.js';
+
 const router = Router();
+
+router.use(requireAdmin);
 
 router.get(
   '/foundation',

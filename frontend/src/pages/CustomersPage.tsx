@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import {
   PageHeader,
   FilterBar,
@@ -115,6 +116,7 @@ const CopyPhoneButton: React.FC<CopyPhoneButtonProps> = ({ phone }) => {
 export const CustomersPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { role } = useAuth();
 
   // Queries for filter options
   const { data: products } = useProducts();
@@ -384,29 +386,33 @@ export const CustomersPage: React.FC = () => {
 
   // Table Columns
   const columns: Column<CustomerSummary>[] = [
-    {
-      key: 'select',
-      header: (
-        <input
-          type="checkbox"
-          checked={isAllPageSelected}
-          onChange={handleToggleSelectAllPage}
-          className="rounded border-slate-700 bg-slate-900 text-blue-500 focus:ring-0 cursor-pointer w-3.5 h-3.5"
-          title="Chọn / bỏ chọn tất cả khách hàng trên trang này"
-        />
-      ),
-      width: '36px',
-      align: 'center',
-      render: (row) => (
-        <input
-          type="checkbox"
-          checked={selectedCustomerIds.includes(row.id)}
-          onClick={(e) => handleToggleSelectCustomer(row.id, e)}
-          onChange={() => {}}
-          className="rounded border-slate-700 bg-slate-900 text-blue-500 focus:ring-0 cursor-pointer w-3.5 h-3.5"
-        />
-      ),
-    },
+    ...(role !== 'PARTNER'
+      ? [
+          {
+            key: 'select',
+            header: (
+              <input
+                type="checkbox"
+                checked={isAllPageSelected}
+                onChange={handleToggleSelectAllPage}
+                className="rounded border-slate-700 bg-slate-900 text-blue-500 focus:ring-0 cursor-pointer w-3.5 h-3.5"
+                title="Chọn / bỏ chọn tất cả khách hàng trên trang này"
+              />
+            ),
+            width: '36px',
+            align: 'center' as const,
+            render: (row: CustomerSummary) => (
+              <input
+                type="checkbox"
+                checked={selectedCustomerIds.includes(row.id)}
+                onClick={(e) => handleToggleSelectCustomer(row.id, e)}
+                onChange={() => {}}
+                className="rounded border-slate-700 bg-slate-900 text-blue-500 focus:ring-0 cursor-pointer w-3.5 h-3.5"
+              />
+            ),
+          },
+        ]
+      : []),
     {
       key: 'fullName',
       header: 'Khách hàng',
@@ -642,9 +648,13 @@ export const CustomersPage: React.FC = () => {
     <div className="space-y-3.5 max-w-7xl mx-auto">
       {/* Page Header */}
       <PageHeader
-        title="Danh bạ khách hàng"
-        category="Khách hàng"
-        description="Quản lý thông tin định danh, trạng thái tài khoản, nhu cầu tài chính và hồ sơ thẩm định."
+        title={role === 'PARTNER' ? 'Khách hàng của tôi' : 'Danh bạ khách hàng'}
+        category={role === 'PARTNER' ? 'Phân công' : 'Khách hàng'}
+        description={
+          role === 'PARTNER'
+            ? 'Danh sách khách hàng được Quản trị viên phân công cho bạn xử lý và chăm sóc.'
+            : 'Quản lý thông tin định danh, trạng thái tài khoản, nhu cầu tài chính và hồ sơ thẩm định.'
+        }
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -655,15 +665,17 @@ export const CustomersPage: React.FC = () => {
             >
               Làm mới
             </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setIsCreateOpen(true)}
-              className="text-xs h-8 gap-1.5 bg-blue-600 hover:bg-blue-500 text-white font-medium"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Thêm khách hàng</span>
-            </Button>
+            {role !== 'PARTNER' && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setIsCreateOpen(true)}
+                className="text-xs h-8 gap-1.5 bg-blue-600 hover:bg-blue-500 text-white font-medium"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Thêm khách hàng</span>
+              </Button>
+            )}
           </div>
         }
       />
@@ -830,8 +842,8 @@ export const CustomersPage: React.FC = () => {
         </div>
       )}
 
-      {/* Sticky Bulk Action Toolbar */}
-      {selectedCustomerIds.length > 0 && (
+      {/* Sticky Bulk Action Toolbar (ADMIN only) */}
+      {role !== 'PARTNER' && selectedCustomerIds.length > 0 && (
         <div className="bg-slate-900/95 border border-blue-500/40 rounded-lg p-2.5 shadow-xl flex flex-wrap items-center justify-between gap-3 backdrop-blur animate-in fade-in duration-200">
           {/* Left: Selection Counter & Clear */}
           <div className="flex items-center flex-wrap gap-2">
@@ -986,17 +998,35 @@ export const CustomersPage: React.FC = () => {
         keyExtractor={(row) => row.id}
         isLoading={isLoading}
         isEmpty={customers.length === 0}
-        emptyTitle="Chưa có khách hàng phù hợp"
+        emptyTitle={role === 'PARTNER' ? 'Chưa có khách hàng' : 'Chưa có khách hàng phù hợp'}
         emptyDescription={
-          selectedSource
+          role === 'PARTNER'
+            ? activeFilterCount > 0
+              ? 'Không có khách hàng nào khớp với điều kiện lọc. Vui lòng điều chỉnh hoặc xóa bộ lọc.'
+              : 'Bạn chưa được phân công khách hàng nào hoặc tất cả phân công đã hoàn tất.'
+            : selectedSource
             ? `Không có khách hàng thuộc nguồn ${selectedSource.name}.`
             : activeFilterCount > 0
             ? 'Không có khách hàng nào khớp với điều kiện lọc. Vui lòng điều chỉnh hoặc xóa bộ lọc.'
             : 'Danh bạ khách hàng hiện đang trống. Nhấn "Thêm khách hàng" để tạo hồ sơ đầu tiên.'
         }
-        emptyActionLabel={activeFilterCount > 0 ? 'Xóa bộ lọc' : 'Thêm khách hàng'}
+        emptyActionLabel={
+          role === 'PARTNER'
+            ? activeFilterCount > 0
+              ? 'Xóa bộ lọc'
+              : undefined
+            : activeFilterCount > 0
+            ? 'Xóa bộ lọc'
+            : 'Thêm khách hàng'
+        }
         onEmptyAction={
-          activeFilterCount > 0 ? handleResetFilters : () => setIsCreateOpen(true)
+          role === 'PARTNER'
+            ? activeFilterCount > 0
+              ? handleResetFilters
+              : undefined
+            : activeFilterCount > 0
+            ? handleResetFilters
+            : () => setIsCreateOpen(true)
         }
         onRowClick={(row) =>
           navigate(`/customers/${row.id}`, {
@@ -1019,11 +1049,13 @@ export const CustomersPage: React.FC = () => {
         />
       )}
 
-      {/* Quick Create Customer Modal */}
-      <CreateCustomerModal
-        isOpen={isCreateOpen}
-        onClose={() => setIsCreateOpen(false)}
-      />
+      {/* Quick Create Customer Modal (ADMIN only) */}
+      {role !== 'PARTNER' && (
+        <CreateCustomerModal
+          isOpen={isCreateOpen}
+          onClose={() => setIsCreateOpen(false)}
+        />
+      )}
 
       {/* Requirement 1.3: Modal Gán Nguồn Khách Hàng */}
       {isAssignSourceModalOpen && (

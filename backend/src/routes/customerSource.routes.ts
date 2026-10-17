@@ -13,6 +13,7 @@ import {
   customerSourceIdParamSchema,
   listCustomerSourcesQuerySchema,
 } from '../validations/customerSource.validation.js';
+import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -24,6 +25,7 @@ router.get(
 
 router.post(
   '/',
+  requireAdmin,
   validateRequest({ body: createCustomerSourceSchema }),
   createCustomerSource
 );
@@ -36,6 +38,7 @@ router.get(
 
 router.patch(
   '/:id',
+  requireAdmin,
   validateRequest({
     params: customerSourceIdParamSchema,
     body: updateCustomerSourceSchema,
@@ -45,6 +48,7 @@ router.patch(
 
 router.delete(
   '/:id',
+  requireAdmin,
   validateRequest({ params: customerSourceIdParamSchema }),
   deleteCustomerSource
 );

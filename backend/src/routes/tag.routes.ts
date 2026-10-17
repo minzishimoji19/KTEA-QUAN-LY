@@ -11,6 +11,7 @@ import {
   updateTagSchema,
   tagIdParamSchema,
 } from '../validations/tag.validation.js';
+import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -18,18 +19,21 @@ router.get('/', getTags);
 
 router.post(
   '/',
+  requireAdmin,
   validateRequest({ body: createTagSchema }),
   createTag
 );
 
 router.patch(
   '/:id',
+  requireAdmin,
   validateRequest({ params: tagIdParamSchema, body: updateTagSchema }),
   updateTag
 );
 
 router.delete(
   '/:id',
+  requireAdmin,
   validateRequest({ params: tagIdParamSchema }),
   deleteTag
 );

@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import healthRoutes from './health.routes.js';
+import authRoutes from './auth.routes.js';
+import userRoutes from './user.routes.js';
 import customerRoutes from './customer.routes.js';
 import caseRoutes from './case.routes.js';
 import needRoutes from './need.routes.js';
@@ -16,33 +18,40 @@ import dataRoutes from './data.routes.js';
 import customerSourceRoutes from './customerSource.routes.js';
 import pushNotificationRoutes from './pushNotification.routes.js';
 import caretakerRoutes from './caretaker.routes.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
-// Health check endpoint
+// Health check endpoint (public, sanitized)
 router.use(healthRoutes);
 
-// Core Resource Endpoints
-router.use('/customers', customerRoutes);
-router.use('/cases', caseRoutes);
-router.use('/customer-sources', customerSourceRoutes);
-router.use('/caretakers', caretakerRoutes);
-router.use('/needs', needRoutes);
-router.use('/notes', noteRoutes);
-router.use('/tags', tagRoutes);
-router.use('/follow-ups', followUpRoutes);
-router.use('/products', productRoutes);
-router.use('/push-records', pushRecordRoutes);
-router.use('/recommendations', recommendationRoutes);
+// Authentication Endpoints (public login / session check)
+router.use('/auth', authRoutes);
 
-// Web Push Notification Endpoints
+// Web Push Notification Endpoints (cron has x-cron-secret, vapid-key public, subscription endpoints)
 router.use('/notifications', pushNotificationRoutes);
 
+// User & Role Management (authenticated, admin-only routes inside)
+router.use('/users', requireAuth, userRoutes);
+
+// Protected Core Resource Endpoints
+router.use('/customers', requireAuth, customerRoutes);
+router.use('/cases', requireAuth, caseRoutes);
+router.use('/customer-sources', requireAuth, customerSourceRoutes);
+router.use('/caretakers', requireAuth, caretakerRoutes);
+router.use('/needs', requireAuth, needRoutes);
+router.use('/notes', requireAuth, noteRoutes);
+router.use('/tags', requireAuth, tagRoutes);
+router.use('/follow-ups', requireAuth, followUpRoutes);
+router.use('/products', requireAuth, productRoutes);
+router.use('/push-records', requireAuth, pushRecordRoutes);
+router.use('/recommendations', requireAuth, recommendationRoutes);
+
 // Analytics, Dashboard, Settings & Data Governance Endpoints
-router.use('/analytics', analyticsRoutes);
-router.use('/dashboard', dashboardRoutes);
-router.use('/settings', settingsRoutes);
-router.use('/data', dataRoutes);
+router.use('/analytics', requireAuth, analyticsRoutes);
+router.use('/dashboard', requireAuth, dashboardRoutes);
+router.use('/settings', requireAuth, settingsRoutes);
+router.use('/data', requireAuth, dataRoutes);
 
 export default router;
 
