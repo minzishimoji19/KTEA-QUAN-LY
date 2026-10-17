@@ -17,7 +17,7 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
   followUp,
 }) => {
   const updateFollowUp = useUpdateFollowUp();
-  const { data: caretakers, isLoading: isCaretakersLoading } = useCaretakers();
+  const { data: caretakers, isLoading: isCaretakersLoading } = useCaretakers({ forScheduling: true });
 
   const [title, setTitle] = useState('');
   const [dueAt, setDueAt] = useState('');
@@ -158,7 +158,7 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
                       .filter((c) => c.active || (assignedTo && c.name.toLowerCase() === assignedTo.toLowerCase()))
                       .map((c) => (
                         <option key={c.id} value={c.name}>
-                          {c.name} {!c.active ? '(Đã ngừng hoạt động)' : ''}
+                          {c.name} {!c.active ? '(Đã ngừng hoạt động)' : c.user ? `(Đối tác: ${c.user.fullName})` : ''}
                         </option>
                       ))}
                 </select>

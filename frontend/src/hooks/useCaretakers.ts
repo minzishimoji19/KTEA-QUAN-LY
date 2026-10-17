@@ -1,10 +1,43 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import caretakerService from '../services/caretakerService';
 
-export const useCaretakers = (activeOnly?: boolean) => {
+export const useCaretakers = (options?: boolean | { activeOnly?: boolean; forScheduling?: boolean }) => {
+  const activeOnly = typeof options === 'boolean' ? options : options?.activeOnly;
+  const forScheduling = typeof options === 'object' ? options?.forScheduling : false;
+
   return useQuery({
-    queryKey: ['caretakers', { activeOnly }],
-    queryFn: () => caretakerService.getAll(activeOnly),
+    queryKey: ['caretakers', { activeOnly, forScheduling }],
+    queryFn: () => caretakerService.getAll(options),
+  });
+};
+
+export const useAvailablePartners = () => {
+  return useQuery({
+    queryKey: ['caretakers', 'available-partners'],
+    queryFn: () => caretakerService.getAvailablePartners(),
+  });
+};
+
+export const useLinkCaretaker = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ caretakerId, userId }: { caretakerId: string; userId: string }) =>
+      caretakerService.linkToUser(caretakerId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['caretakers'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+};
+
+export const useUnlinkCaretaker = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (caretakerId: string) => caretakerService.unlinkFromUser(caretakerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['caretakers'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
   });
 };
 
@@ -19,7 +52,7 @@ export const useCaretaker = (id: string) => {
 export const useCreateCaretaker = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; active?: boolean }) =>
+    mutationFn: (data: { name: string; active?: boolean; userId?: string | null }) =>
       caretakerService.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['caretakers'] });
@@ -30,7 +63,7 @@ export const useCreateCaretaker = () => {
 export const useUpdateCaretaker = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { name?: string; active?: boolean } }) =>
+    mutationFn: ({ id, data }: { id: string; data: { name?: string; active?: boolean; userId?: string | null } }) =>
       caretakerService.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['caretakers'] });
@@ -49,3 +82,4 @@ export const useDeleteCaretaker = () => {
     },
   });
 };
+

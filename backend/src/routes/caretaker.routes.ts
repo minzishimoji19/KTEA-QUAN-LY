@@ -1,16 +1,20 @@
 import { Router } from 'express';
 import {
   getCaretakers,
+  getAvailablePartners,
   getCaretakerById,
   createCaretaker,
   updateCaretaker,
   deleteCaretaker,
+  linkCaretaker,
+  unlinkCaretaker,
 } from '../controllers/caretaker.controller.js';
 import { validateRequest } from '../middleware/validate.js';
 import {
   listCaretakersQuerySchema,
   createCaretakerSchema,
   updateCaretakerSchema,
+  linkCaretakerSchema,
   caretakerIdParamSchema,
 } from '../validations/caretaker.validation.js';
 import { requireAdmin } from '../middleware/auth.js';
@@ -21,6 +25,28 @@ router.get(
   '/',
   validateRequest({ query: listCaretakersQuerySchema }),
   getCaretakers
+);
+
+// Admin-only route to list PARTNER accounts for caregiver linking
+router.get(
+  '/available-partners',
+  requireAdmin,
+  getAvailablePartners
+);
+
+// Admin-only linking and unlinking endpoints
+router.post(
+  '/:id/link',
+  requireAdmin,
+  validateRequest({ params: caretakerIdParamSchema, body: linkCaretakerSchema }),
+  linkCaretaker
+);
+
+router.post(
+  '/:id/unlink',
+  requireAdmin,
+  validateRequest({ params: caretakerIdParamSchema }),
+  unlinkCaretaker
 );
 
 router.get(

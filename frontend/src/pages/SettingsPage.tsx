@@ -22,6 +22,7 @@ import {
   Globe,
   BellRing,
   UserCheck,
+  Link2,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -52,6 +53,7 @@ import { TagModal } from '../features/settings/TagModal';
 import { NeedCategoryModal } from '../features/settings/NeedCategoryModal';
 import { CustomerSourceModal } from '../features/settings/CustomerSourceModal';
 import { CaretakerModal } from '../features/settings/CaretakerModal';
+import { LinkCaretakerModal } from '../features/settings/LinkCaretakerModal';
 import { NotificationSettings } from '../features/settings/NotificationSettings';
 
 type SettingsTab =
@@ -95,6 +97,7 @@ export const SettingsPage: React.FC = () => {
   const [isCaretakerModalOpen, setIsCaretakerModalOpen] = useState(false);
   const [editingCaretaker, setEditingCaretaker] = useState<Caretaker | null>(null);
   const [deletingCaretaker, setDeletingCaretaker] = useState<Caretaker | null>(null);
+  const [linkingCaretaker, setLinkingCaretaker] = useState<Caretaker | null>(null);
 
   // Customer Source Modal State
   const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
@@ -491,6 +494,7 @@ export const SettingsPage: React.FC = () => {
               <thead className="bg-slate-950/80 text-slate-400 font-mono text-[10px] border-b border-slate-800">
                 <tr>
                   <th className="py-2.5 px-4">Tên người chăm sóc</th>
+                  <th className="py-2.5 px-4">Tài khoản liên kết</th>
                   <th className="py-2.5 px-4">Lịch liên kết</th>
                   <th className="py-2.5 px-4">Trạng thái</th>
                   <th className="py-2.5 px-4">Ngày tạo</th>
@@ -500,13 +504,13 @@ export const SettingsPage: React.FC = () => {
               <tbody className="divide-y divide-slate-800/60 font-sans">
                 {isCaretakersLoading ? (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-slate-500 text-xs">
+                    <td colSpan={6} className="py-8 text-center text-slate-500 text-xs">
                       Đang tải danh sách người chăm sóc...
                     </td>
                   </tr>
                 ) : !caretakers || caretakers.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-slate-500 text-xs">
+                    <td colSpan={6} className="py-8 text-center text-slate-500 text-xs">
                       Chưa có người chăm sóc nào. Hãy nhấn "+ Thêm người chăm sóc" để tạo mới.
                     </td>
                   </tr>
@@ -518,6 +522,50 @@ export const SettingsPage: React.FC = () => {
                           <UserCheck className="w-3.5 h-3.5" />
                         </div>
                         <span>{c.name}</span>
+                      </td>
+                      <td className="py-3 px-4">
+                        {c.userId && c.user ? (
+                          <div className="flex items-center gap-2">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-medium text-slate-100 text-[11px]">{c.user.fullName}</span>
+                                <span
+                                  className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${
+                                    c.user.status === 'ACTIVE'
+                                      ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/50'
+                                      : 'bg-rose-950/80 text-rose-400 border border-rose-800/50'
+                                  }`}
+                                >
+                                  {c.user.status}
+                                </span>
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-mono block">{c.user.email}</span>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setLinkingCaretaker(c)}
+                              className="h-6 px-1.5 text-[10px] text-blue-400 hover:text-blue-300 hover:bg-blue-950/40"
+                              title="Đổi hoặc gỡ liên kết tài khoản"
+                            >
+                              <Link2 className="w-3 h-3 mr-0.5" />
+                              Đổi
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-amber-400/80 italic">Chưa liên kết</span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setLinkingCaretaker(c)}
+                              className="h-6 px-2 text-[10px] text-blue-400 border-blue-900/60 hover:bg-blue-950/40"
+                            >
+                              <Link2 className="w-3 h-3 mr-1" />
+                              Liên kết
+                            </Button>
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-slate-300 font-mono text-[11px]">
                         <span className="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 text-slate-300">
@@ -1800,6 +1848,14 @@ export const SettingsPage: React.FC = () => {
             setEditingCaretaker(null);
           }}
           caretaker={editingCaretaker}
+        />
+      )}
+
+      {linkingCaretaker && (
+        <LinkCaretakerModal
+          isOpen={Boolean(linkingCaretaker)}
+          onClose={() => setLinkingCaretaker(null)}
+          caretaker={linkingCaretaker}
         />
       )}
 

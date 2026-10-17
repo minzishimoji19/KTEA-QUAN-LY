@@ -22,7 +22,30 @@ export class FollowUpService extends BaseService {
       return null;
     }
 
-    const caretaker = await caretakerRepository.findByName(trimmed);
+    let caretaker = await caretakerRepository.findByName(trimmed);
+    if (!caretaker) {
+      // Check if this is an active PARTNER user not yet registered in caretakers
+      const partnerUser = await prisma.user.findFirst({
+        where: {
+          fullName: trimmed,
+          role: 'PARTNER',
+          status: 'ACTIVE',
+        },
+      });
+
+      if (partnerUser) {
+        try {
+          caretaker = await caretakerRepository.create({
+            name: trimmed,
+            active: true,
+            userId: partnerUser.id,
+          });
+        } catch (_) {
+          caretaker = await caretakerRepository.findByName(trimmed);
+        }
+      }
+    }
+
     if (!caretaker) {
       throw new BadRequestError(`Người chăm sóc '${trimmed}' không tồn tại trong hệ thống. Vui lòng thêm người chăm sóc trước.`);
     }
@@ -31,6 +54,13 @@ export class FollowUpService extends BaseService {
       const isSameAsCurrent = allowInactiveIfCurrentSame && allowInactiveIfCurrentSame.toLowerCase() === caretaker.name.toLowerCase();
       if (!isSameAsCurrent) {
         throw new BadRequestError(`Người chăm sóc '${caretaker.name}' đã ngừng hoạt động và không thể phân công mới.`);
+      }
+    }
+
+    // Verify linked user status: disabled/suspended accounts cannot be assigned new schedules
+    if (caretaker.userId && caretaker.user) {
+      if (caretaker.user.status !== 'ACTIVE') {
+        throw new BadRequestError(`Tài khoản đối tác '${caretaker.user.fullName}' đang bị tạm khóa hoặc ngừng hoạt động và không thể nhận lịch chăm sóc mới.`);
       }
     }
 

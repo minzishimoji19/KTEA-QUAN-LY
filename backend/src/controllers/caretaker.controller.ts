@@ -5,8 +5,43 @@ import { sendSuccess, sendCreated } from '../utils/response.js';
 export const getCaretakers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const activeOnly = req.query.activeOnly === 'true';
-    const caretakers = await caretakerService.getAllCaretakers(activeOnly);
+    const forScheduling = req.query.forScheduling === 'true';
+    const caretakers = await caretakerService.getAllCaretakers({ activeOnly, forScheduling });
     sendSuccess(res, caretakers, 'Danh sách người chăm sóc');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAvailablePartners = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const partners = await caretakerService.getAvailablePartners();
+    sendSuccess(res, partners, 'Danh sách tài khoản đối tác khả dụng để liên kết');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const linkCaretaker = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const updated = await caretakerService.linkCaretakerToUser(
+      { id: req.user!.userId, email: req.user!.email },
+      req.params.id,
+      req.body.userId
+    );
+    sendSuccess(res, updated, 'Liên kết người chăm sóc với tài khoản đối tác thành công');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const unlinkCaretaker = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const updated = await caretakerService.unlinkCaretakerFromUser(
+      { id: req.user!.userId, email: req.user!.email },
+      req.params.id
+    );
+    sendSuccess(res, updated, 'Đã gỡ liên kết tài khoản khỏi người chăm sóc');
   } catch (error) {
     next(error);
   }
@@ -47,3 +82,4 @@ export const deleteCaretaker = async (req: Request, res: Response, next: NextFun
     next(error);
   }
 };
+

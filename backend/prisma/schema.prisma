@@ -391,9 +391,13 @@ model Caretaker {
   id        String   @id @default(uuid())
   name      String   @unique @map("name")
   active    Boolean  @default(true) @map("active")
+  userId    String?  @unique @map("user_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
   @@map("caretakers")
 }
 
@@ -422,6 +426,7 @@ model User {
   assignedCustomers  CustomerAssignment[] @relation("AssignedPartner")
   createdAssignments CustomerAssignment[] @relation("AssignedByAdmin")
   auditLogs          AuditLog[]
+  caretaker          Caretaker?
 
   @@map("users")
 }

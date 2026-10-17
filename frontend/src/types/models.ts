@@ -28,15 +28,43 @@ export type BulkActionType = 'UPDATE_STATUS' | 'UPDATE_PRIORITY' | 'ADD_TAG' | '
 
 export const CARETAKERS = ['Ktea', 'xoaicaldez', 'mfast'] as const;
 
+export interface CaretakerLinkedUser {
+  id: string;
+  email: string;
+  fullName: string;
+  role: 'ADMIN' | 'PARTNER';
+  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+  phone?: string | null;
+}
+
 export interface Caretaker {
   id: string;
   name: string;
   active: boolean;
+  userId?: string | null;
+  user?: CaretakerLinkedUser | null;
+  isVirtualPartner?: boolean;
   createdAt: string;
   updatedAt: string;
   _count?: {
     followUps: number;
   };
+}
+
+export interface AvailablePartner {
+  id: string;
+  email: string;
+  fullName: string;
+  role: 'PARTNER';
+  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+  phone?: string | null;
+  createdAt: string;
+  isLinked: boolean;
+  linkedCaretaker: {
+    id: string;
+    name: string;
+    active: boolean;
+  } | null;
 }
 
 export interface BulkActionResult {

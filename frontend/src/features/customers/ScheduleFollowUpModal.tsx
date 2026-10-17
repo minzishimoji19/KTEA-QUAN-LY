@@ -28,7 +28,7 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
 }) => {
   const createFollowUp = useCreateFollowUp();
   const createBulkFollowUp = useCreateBulkFollowUp();
-  const { data: caretakers, isLoading: isCaretakersLoading } = useCaretakers(true);
+  const { data: caretakers, isLoading: isCaretakersLoading } = useCaretakers({ activeOnly: true, forScheduling: true });
 
   // Tomorrow by default
   const tomorrow = new Date();
@@ -365,11 +365,12 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
                   className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-medium focus:outline-none focus:border-blue-500"
                 >
                   <option value="">-- Chưa phân công --</option>
-                  {caretakers && caretakers.map((c) => (
-                    <option key={c.id} value={c.name}>
-                      {c.name}
-                    </option>
-                  ))}
+                  {caretakers &&
+                    caretakers.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name} {c.user ? `(Đối tác: ${c.user.fullName})` : ''}
+                      </option>
+                    ))}
                 </select>
               </div>
             </div>
