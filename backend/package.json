@@ -22,6 +22,7 @@
     "test:improvements": "tsx src/tests/verify-customer-improvements.ts",
     "test:bulk-tags": "tsx src/tests/verify-bulk-tags.ts",
     "test:followup-bulk": "tsx src/tests/verify-followup-bulk-fix.ts",
+    "test:bulk-timeout": "tsx src/tests/verify-bulk-care-schedule-timeout-fix.ts",
     "test:status-sync": "tsx src/tests/verify-sync-customer-status.ts",
     "test:care-and-catalog": "tsx src/tests/verify-care-and-catalog.ts",
     "test:care-followups": "tsx src/tests/verify-care-followups-and-navigation.ts",

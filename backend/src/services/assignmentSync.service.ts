@@ -1,4 +1,5 @@
 import { Prisma, AssignmentSourceType, PrismaClient } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { auditLogService } from './auditLog.service.js';
 
 export interface SyncFollowUpResult {
@@ -8,6 +9,16 @@ export interface SyncFollowUpResult {
   partnerEmail: string | null;
   unassignedPreviousUserId: string | null;
   retainedAccessForPrevious: boolean;
+  notice: string;
+}
+
+export interface SyncBulkFollowUpResult {
+  isLinked: boolean;
+  partnerUserId: string | null;
+  partnerName: string | null;
+  partnerEmail: string | null;
+  grantsCreated: number;
+  assignmentsCreated: number;
   notice: string;
 }
 
@@ -177,6 +188,156 @@ export class AssignmentSyncService {
       unassignedPreviousUserId,
       retainedAccessForPrevious,
       notice,
+    };
+  }
+
+  /**
+   * Synchronizes customer assignments in bulk when multiple care schedules are created.
+   * Resolves partner account once and inserts assignment grants & assignments using bulk createMany
+   * with skipDuplicates to eliminate N+1 roundtrips and avoid transaction timeouts on cloud databases.
+   */
+  async syncBulkFollowUpAssignments(
+    tx: Prisma.TransactionClient,
+    params: {
+      followUps: Array<{ followUpId: string; customerId: string }>;
+      caregiverUserId?: string | null;
+      caregiverName?: string | null;
+      assignedById?: string | null;
+      partnerUser?: { id: string; fullName: string; email: string } | null;
+    }
+  ): Promise<SyncBulkFollowUpResult> {
+    const { followUps, caregiverUserId, caregiverName, assignedById, partnerUser } = params;
+
+    let newPartnerUserId: string | null = partnerUser?.id || null;
+    let newPartnerName: string | null = partnerUser?.fullName || null;
+    let newPartnerEmail: string | null = partnerUser?.email || null;
+
+    if (!partnerUser) {
+      if (caregiverUserId && caregiverUserId.trim()) {
+        const user = await tx.user.findUnique({
+          where: { id: caregiverUserId.trim() },
+        });
+        if (user && user.status === 'ACTIVE') {
+          if (user.role === 'PARTNER') {
+            newPartnerUserId = user.id;
+            newPartnerName = user.fullName;
+            newPartnerEmail = user.email;
+          } else {
+            // ADMIN user: has global access, doesn't need partner grant
+            newPartnerUserId = null;
+            newPartnerName = user.fullName;
+            newPartnerEmail = user.email;
+          }
+        }
+      }
+
+      if (!newPartnerUserId && !newPartnerName && caregiverName && caregiverName.trim()) {
+        const trimmedCaregiver = caregiverName.trim();
+        let caretaker = await tx.caretaker.findUnique({
+          where: { id: trimmedCaregiver },
+          include: { user: true },
+        });
+        if (!caretaker) {
+          caretaker = await tx.caretaker.findFirst({
+            where: { name: trimmedCaregiver },
+            include: { user: true },
+          });
+        }
+
+        if (caretaker?.userId && caretaker.user && caretaker.user.status === 'ACTIVE') {
+          if (caretaker.user.role === 'PARTNER') {
+            newPartnerUserId = caretaker.userId;
+            newPartnerName = caretaker.user.fullName;
+            newPartnerEmail = caretaker.user.email;
+          } else {
+            newPartnerUserId = null;
+            newPartnerName = caretaker.user.fullName;
+            newPartnerEmail = caretaker.user.email;
+          }
+        }
+      }
+    }
+
+    if (!newPartnerUserId) {
+      let notice = '';
+      if (newPartnerName) {
+        notice = `Lịch chăm sóc được giao cho quản trị viên "${newPartnerName}" (không cần phân công quyền đối tác).`;
+      } else if (caregiverName && caregiverName.trim()) {
+        notice = `Lịch chăm sóc được giao cho "${caregiverName.trim()}". Người chăm sóc này chưa liên kết tài khoản đối tác nên chưa cấp quyền truy cập khách hàng.`;
+      } else {
+        notice = 'Lịch chăm sóc chưa phân công người phụ trách.';
+      }
+      return {
+        isLinked: false,
+        partnerUserId: null,
+        partnerName: newPartnerName,
+        partnerEmail: newPartnerEmail,
+        grantsCreated: 0,
+        assignmentsCreated: 0,
+        notice,
+      };
+    }
+
+    if (!followUps || followUps.length === 0) {
+      return {
+        isLinked: true,
+        partnerUserId: newPartnerUserId,
+        partnerName: newPartnerName,
+        partnerEmail: newPartnerEmail,
+        grantsCreated: 0,
+        assignmentsCreated: 0,
+        notice: `Đã xử lý 0 lịch chăm sóc cho đối tác ${newPartnerName}.`,
+      };
+    }
+
+    const BATCH_SIZE = 250;
+
+    // 1. Bulk insert assignment grants (skipDuplicates handles existing grants idempotently)
+    const grantsData = followUps.map((item) => ({
+      id: randomUUID(),
+      customerId: item.customerId,
+      userId: newPartnerUserId!,
+      sourceType: AssignmentSourceType.CARE_SCHEDULE,
+      sourceId: item.followUpId,
+      active: true,
+      assignedById: assignedById || null,
+      notes: `Tự động phát sinh từ lịch chăm sóc #${item.followUpId}`,
+    }));
+
+    for (let i = 0; i < grantsData.length; i += BATCH_SIZE) {
+      const batch = grantsData.slice(i, i + BATCH_SIZE);
+      await tx.customerAssignmentGrant.createMany({
+        data: batch,
+        skipDuplicates: true,
+      });
+    }
+
+    // 2. Bulk insert materialized customer assignments for distinct customers
+    const distinctCustomerIds = Array.from(new Set(followUps.map((f) => f.customerId)));
+    const assignmentsData = distinctCustomerIds.map((customerId) => ({
+      id: randomUUID(),
+      customerId,
+      userId: newPartnerUserId!,
+      assignedById: assignedById || null,
+      notes: 'Phân công qua lịch chăm sóc',
+    }));
+
+    for (let i = 0; i < assignmentsData.length; i += BATCH_SIZE) {
+      const batch = assignmentsData.slice(i, i + BATCH_SIZE);
+      await tx.customerAssignment.createMany({
+        data: batch,
+        skipDuplicates: true,
+      });
+    }
+
+    return {
+      isLinked: true,
+      partnerUserId: newPartnerUserId,
+      partnerName: newPartnerName,
+      partnerEmail: newPartnerEmail,
+      grantsCreated: grantsData.length,
+      assignmentsCreated: assignmentsData.length,
+      notice: `Đã phân công ${distinctCustomerIds.length} khách hàng cho đối tác ${newPartnerName} (${newPartnerEmail}) qua lịch chăm sóc.`,
     };
   }
 

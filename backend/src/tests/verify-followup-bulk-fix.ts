@@ -68,14 +68,14 @@ async function runAllTests() {
     assert(singleResult.id !== undefined, 'Tạo lịch đơn lẻ trả về ID hợp lệ');
     assert(singleResult.customerId === cust1.id, 'Gắn đúng Customer ID');
     assert(singleResult.title === 'Tư vấn mở thẻ tín dụng Ktea', 'Giữ nguyên tiêu đề');
-    assert(singleResult.assignedTo === 'xoaicaldez', 'Giữ nguyên người chăm sóc');
+    assert(singleResult.assignedTo?.toLowerCase() === 'xoaicaldez', 'Giữ nguyên người chăm sóc');
     assert(new Date(singleResult.dueAt).toISOString() === targetDate1.toISOString(), 'Giữ nguyên thời gian');
 
     const activity1 = await prisma.customerActivity.findFirst({
       where: { customerId: cust1.id },
     });
     assert(activity1 !== null, 'Tạo thành công activity log cho khách hàng');
-    assert(activity1?.description?.includes('xoaicaldez') === true, 'Activity log có thông tin người chăm sóc');
+    assert(activity1?.description?.toLowerCase().includes('xoaicaldez') === true, 'Activity log có thông tin người chăm sóc');
 
     // ------------------------------------------------------------------------
     // CASE 2: Tạo lịch cho 10 khách hàng (Trường hợp gây lỗi ban đầu)

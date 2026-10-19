@@ -282,11 +282,26 @@ export class FollowUpService extends BaseService {
     const dueDateStr = dueDate.toISOString().split('T')[0];
     const BATCH_SIZE = 250;
 
+    // Pre-resolve partner user outside transaction to minimize queries and duration within the transaction
+    let partnerUser: { id: string; fullName: string; email: string } | null = null;
+    if (assignedUserId) {
+      const user = await prisma.user.findUnique({
+        where: { id: assignedUserId },
+        select: { id: true, fullName: true, email: true, role: true, status: true },
+      });
+      if (user && user.status === 'ACTIVE' && user.role === 'PARTNER') {
+        partnerUser = { id: user.id, fullName: user.fullName, email: user.email };
+      }
+    }
+
+    // Sort customer IDs to guarantee consistent row lock ordering and avoid MySQL deadlocks
+    const sortedCustomerIds = [...uniqueCustomerIds].sort();
+
     const result = await prisma.$transaction(
       async (tx) => {
-        // Row-level lock on customers to serialize concurrent requests on the same customers
-        if (uniqueCustomerIds.length > 0) {
-          await tx.$queryRaw`SELECT id FROM customers WHERE id IN (${Prisma.join(uniqueCustomerIds)}) FOR UPDATE`;
+        // Row-level lock on customers in consistent sorted order
+        if (sortedCustomerIds.length > 0) {
+          await tx.$queryRaw`SELECT id FROM customers WHERE id IN (${Prisma.join(sortedCustomerIds)}) FOR UPDATE`;
         }
 
         // Check for existing follow-ups with same criteria to prevent duplicate records on retry
@@ -332,30 +347,39 @@ export class FollowUpService extends BaseService {
         }));
 
         // Batch insert follow-ups
-        for (let i = 0; i < followUpRecords.length; i += BATCH_SIZE) {
-          const batch = followUpRecords.slice(i, i + BATCH_SIZE);
-          await tx.followUp.createMany({
-            data: batch,
-          });
+        if (followUpRecords.length > 0) {
+          for (let i = 0; i < followUpRecords.length; i += BATCH_SIZE) {
+            const batch = followUpRecords.slice(i, i + BATCH_SIZE);
+            await tx.followUp.createMany({
+              data: batch,
+            });
+          }
         }
 
-        // Synchronize assignment grants for each created follow-up record sequentially
-        for (const record of followUpRecords) {
-          await assignmentSyncService.syncFollowUpAssignment(tx, {
-            followUpId: record.id,
-            customerId: record.customerId,
+        // Synchronize assignment grants and materialized assignments in bulk (O(1) queries instead of O(N) loops)
+        const followUpsToSync = [
+          ...followUpRecords.map((r) => ({ followUpId: r.id, customerId: r.customerId })),
+          ...existingFollowUps.map((r) => ({ followUpId: r.id, customerId: r.customerId })),
+        ];
+
+        if (followUpsToSync.length > 0) {
+          await assignmentSyncService.syncBulkFollowUpAssignments(tx, {
+            followUps: followUpsToSync,
             caregiverUserId: assignedUserId,
             caregiverName: caretaker,
             assignedById: (data as any).assignedById || null,
+            partnerUser,
           });
         }
 
         // Batch insert customer activities
-        for (let i = 0; i < activityRecords.length; i += BATCH_SIZE) {
-          const batch = activityRecords.slice(i, i + BATCH_SIZE);
-          await tx.customerActivity.createMany({
-            data: batch,
-          });
+        if (activityRecords.length > 0) {
+          for (let i = 0; i < activityRecords.length; i += BATCH_SIZE) {
+            const batch = activityRecords.slice(i, i + BATCH_SIZE);
+            await tx.customerActivity.createMany({
+              data: batch,
+            });
+          }
         }
 
         // Query newly created follow-ups with customer relation to preserve API contract
@@ -367,6 +391,9 @@ export class FollowUpService extends BaseService {
                 include: {
                   customer: {
                     select: { id: true, fullName: true, phone: true },
+                  },
+                  assignedToUser: {
+                    select: { id: true, fullName: true, email: true, role: true },
                   },
                 },
               })
@@ -387,8 +414,8 @@ export class FollowUpService extends BaseService {
         };
       },
       {
-        maxWait: 5000,
-        timeout: 15000,
+        maxWait: 10000,
+        timeout: 30000,
       }
     );
 
