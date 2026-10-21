@@ -1,4 +1,4 @@
-import { CustomerStatus, Gender, PriorityLevel, ActivityType } from '@prisma/client';
+import { CustomerStatus, Gender, PriorityLevel, ActivityType, Role } from '@prisma/client';
 import { customerRepository } from '../repositories/customer.repository.js';
 import { customerSourceRepository } from '../repositories/customerSource.repository.js';
 import { tagRepository } from '../repositories/tag.repository.js';
@@ -131,19 +131,23 @@ export class CustomerService extends BaseService {
     });
   }
 
-  async updateCustomer(id: string, data: {
-    fullName?: string;
-    phone?: string;
-    email?: string | null;
-    gender?: Gender | null;
-    dateOfBirth?: string | Date | null;
-    address?: string | null;
-    note?: string | null;
-    source?: string | null;
-    sourceId?: string | null;
-    overallStatus?: CustomerStatus;
-    priority?: PriorityLevel | null;
-  }) {
+  async updateCustomer(
+    id: string,
+    data: {
+      fullName?: string;
+      phone?: string;
+      email?: string | null;
+      gender?: Gender | null;
+      dateOfBirth?: string | Date | null;
+      address?: string | null;
+      note?: string | null;
+      source?: string | null;
+      sourceId?: string | null;
+      overallStatus?: CustomerStatus;
+      priority?: PriorityLevel | null;
+    },
+    actorUser?: { userId?: string; role?: Role; fullName?: string; email?: string }
+  ) {
     const current = await this.getCustomerById(id);
 
     // If phone is being changed, check uniqueness
@@ -185,8 +189,10 @@ export class CustomerService extends BaseService {
       ? (data.dateOfBirth ? new Date(data.dateOfBirth) : null)
       : undefined;
 
-    return prisma.$transaction(async (tx) => {
-      const updated = await tx.customer.update({
+    const currentStatusValue = current.rawOverallStatus || current.overallStatus;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.customer.update({
         where: { id },
         data: {
           ...data,
@@ -195,25 +201,23 @@ export class CustomerService extends BaseService {
           ...(updateSourceId !== undefined ? { sourceId: updateSourceId } : {}),
           ...(updateSourceName !== undefined ? { source: updateSourceName } : {}),
         },
-        include: {
-          customerSource: true,
-        },
       });
 
       // If status changed, log immutable lifecycle activity
-      if (data.overallStatus && data.overallStatus !== current.overallStatus) {
+      if (data.overallStatus && data.overallStatus !== currentStatusValue) {
+        const actorDesc = actorUser ? ` bởi ${actorUser.role} (${actorUser.fullName || actorUser.email || actorUser.userId})` : '';
         await tx.customerActivity.create({
           data: {
             customerId: id,
             type: ActivityType.SYSTEM_EVENT,
             title: 'Overall Status Transition',
-            description: `Customer lifecycle status shifted from ${current.overallStatus} to ${data.overallStatus}.`,
+            description: `Customer lifecycle status shifted from ${currentStatusValue} to ${data.overallStatus}${actorDesc}.`,
           },
         });
       }
-
-      return enrichCustomerWithStatus(updated);
     });
+
+    return this.getCustomerDetail(id);
   }
 
   async deleteCustomer(id: string) {

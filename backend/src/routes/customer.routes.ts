@@ -80,7 +80,6 @@ router.get(
 
 router.patch(
   '/:id',
-  requireAdmin,
   validateRequest({ params: customerIdParamSchema, body: updateCustomerSchema }),
   updateCustomer
 );

@@ -293,17 +293,18 @@ export const CustomerDetailPage: React.FC = () => {
 
           {/* Quick Actions Bar */}
           <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsEditOpen(true)}
+              className="h-7 px-2.5 text-xs gap-1.5 border-slate-700 hover:border-slate-500 text-slate-200"
+            >
+              <Edit className="w-3 h-3 text-blue-400" />
+              <span>{role === 'PARTNER' ? 'Đổi trạng thái' : 'Sửa thông tin'}</span>
+            </Button>
+
             {role !== 'PARTNER' && (
               <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsEditOpen(true)}
-                  className="h-7 px-2.5 text-xs gap-1.5 border-slate-700 hover:border-slate-500 text-slate-200"
-                >
-                  <Edit className="w-3 h-3 text-blue-400" />
-                  <span>Sửa thông tin</span>
-                </Button>
                 <Button
                   variant="primary"
                   size="sm"
@@ -616,16 +617,14 @@ export const CustomerDetailPage: React.FC = () => {
                   <User className="w-3.5 h-3.5 text-blue-400" />
                   Hồ sơ khách hàng
                 </h3>
-                {role !== 'PARTNER' && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsEditOpen(true)}
-                    className="h-6 px-1.5 text-[11px] text-blue-400"
-                  >
-                    Chỉnh sửa
-                  </Button>
-                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsEditOpen(true)}
+                  className="h-6 px-1.5 text-[11px] text-blue-400"
+                >
+                  {role === 'PARTNER' ? 'Đổi trạng thái' : 'Chỉnh sửa'}
+                </Button>
               </div>
 
               <div className="space-y-2 text-xs">
@@ -666,6 +665,10 @@ export const CustomerDetailPage: React.FC = () => {
                     </span>
                   </div>
                 )}
+                <div className="flex justify-between py-1 border-b border-slate-800/60 items-center">
+                  <span className="text-slate-400">Trạng thái chăm sóc</span>
+                  <StatusBadge status={customer.rawOverallStatus || customer.overallStatus} />
+                </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/60 items-center">
                   <span className="text-slate-400">Số lần chăm sóc</span>
                   {(() => {

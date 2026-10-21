@@ -177,6 +177,8 @@ export function resolveCustomerCareStats(customer: Record<string, any>): Custome
  * Attaches resolved status and care statistics to customer object consistently for all API responses.
  */
 export function enrichCustomerWithStatus<T extends CustomerWithCases>(customer: T): T & {
+  rawOverallStatus: string;
+  careStatus: string;
   overallStatus: string;
   currentStatus: string;
   latestCase: any | null;
@@ -195,12 +197,15 @@ export function enrichCustomerWithStatus<T extends CustomerWithCases>(customer: 
     assignedTo: string | null;
   }>;
 } {
+  const rawStatus = (customer as any).rawOverallStatus || (customer as any).careStatus || customer.overallStatus;
   const latestCase = getLatestCase(customer.cases);
   const resolvedStatus = latestCase && latestCase.progress ? latestCase.progress : customer.overallStatus;
   const careStats = resolveCustomerCareStats(customer);
 
   return {
     ...customer,
+    rawOverallStatus: rawStatus,
+    careStatus: rawStatus,
     overallStatus: resolvedStatus,
     currentStatus: resolvedStatus,
     latestCase: latestCase || null,

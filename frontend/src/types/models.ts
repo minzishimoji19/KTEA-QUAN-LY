@@ -315,6 +315,8 @@ export interface CustomerSummary {
   sourceId?: string | null;
   customerSource?: CustomerSource | null;
   overallStatus: CustomerStatus;
+  rawOverallStatus?: CustomerStatus;
+  careStatus?: CustomerStatus;
   priority?: PriorityLevel | null;
   createdAt: string;
   updatedAt: string;

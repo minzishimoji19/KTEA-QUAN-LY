@@ -6,9 +6,10 @@ import { X, UserCheck, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useUpdateCustomer } from '../../hooks/useCustomers';
 import { useCustomerSources } from '../../hooks/useCustomerSources';
+import { useAuth } from '../../context/AuthContext';
 import { CustomerDetail } from '../../types/models';
 
-const editCustomerFormSchema = z.object({
+const adminCustomerFormSchema = z.object({
   fullName: z.string().min(1, 'Họ và tên là bắt buộc').max(255),
   phone: z.string().min(8, 'Số điện thoại phải có ít nhất 8 số').max(20),
   email: z.string().email('Địa chỉ email không hợp lệ').optional().or(z.literal('')),
@@ -20,7 +21,21 @@ const editCustomerFormSchema = z.object({
   priority: z.enum(['CHUA_CO_NHU_CAU', 'THANH_KHOAN', 'TIN_DUNG', 'THANH_KHOAN_TIN_DUNG']).optional().nullable(),
 });
 
-type CustomerFormData = z.infer<typeof editCustomerFormSchema>;
+const partnerCustomerFormSchema = z.object({
+  fullName: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().optional().nullable(),
+  gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional().nullable(),
+  dateOfBirth: z.string().optional().nullable(),
+  note: z.string().optional().nullable(),
+  sourceId: z.string().optional().nullable(),
+  overallStatus: z.enum(['LEAD_MOI', 'DANG_TIEP_CAN', 'DANG_TU_VAN', 'THANH_CONG', 'KHONG_KHA_THI'], {
+    errorMap: () => ({ message: 'Vui lòng chọn trạng thái chăm sóc hợp lệ' }),
+  }),
+  priority: z.enum(['CHUA_CO_NHU_CAU', 'THANH_KHOAN', 'TIN_DUNG', 'THANH_KHOAN_TIN_DUNG']).optional().nullable(),
+});
+
+type CustomerFormData = z.infer<typeof adminCustomerFormSchema>;
 
 export interface EditCustomerModalProps {
   isOpen: boolean;
@@ -33,6 +48,9 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
   onClose,
   customer,
 }) => {
+  const { role } = useAuth();
+  const isPartner = role === 'PARTNER';
+
   const updateCustomer = useUpdateCustomer(customer.id);
   const { data: sources, isLoading: isSourcesLoading } = useCustomerSources();
 
@@ -42,7 +60,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
     reset,
     formState: { errors, isSubmitting },
   } = useForm<CustomerFormData>({
-    resolver: zodResolver(editCustomerFormSchema),
+    resolver: zodResolver(isPartner ? partnerCustomerFormSchema : adminCustomerFormSchema),
   });
 
   useEffect(() => {
@@ -56,6 +74,13 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
         }
       }
 
+      const initialStatus =
+        customer.rawOverallStatus ||
+        customer.careStatus ||
+        (['LEAD_MOI', 'DANG_TIEP_CAN', 'DANG_TU_VAN', 'THANH_CONG', 'KHONG_KHA_THI'].includes(customer.overallStatus)
+          ? customer.overallStatus
+          : 'LEAD_MOI');
+
       reset({
         fullName: customer.fullName || '',
         phone: customer.phone || '',
@@ -64,8 +89,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
         dateOfBirth: formattedDob,
         note: customer.note || customer.address || '',
         sourceId: customer.sourceId || '',
-        // overallStatus may hold a CaseProgress value at runtime (derived from latest case)
-        overallStatus: (customer.overallStatus || 'LEAD_MOI') as any,
+        overallStatus: initialStatus as any,
         priority: customer.priority || 'CHUA_CO_NHU_CAU',
       });
     }
@@ -75,22 +99,32 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
 
   const onSubmit = async (data: CustomerFormData) => {
     try {
-      const noteValue = data.note?.trim() || null;
-      await updateCustomer.mutateAsync({
-        customerId: customer.id,
-        data: {
-          fullName: data.fullName.trim(),
-          phone: data.phone.trim(),
-          email: data.email?.trim() || null,
-          gender: data.gender || null,
-          dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth).toISOString() : null,
-          note: noteValue,
-          address: noteValue, // Keep address synced safely
-          sourceId: data.sourceId || null,
-          overallStatus: data.overallStatus,
-          priority: data.priority || null,
-        },
-      });
+      if (isPartner) {
+        if (!data.overallStatus) return;
+        await updateCustomer.mutateAsync({
+          customerId: customer.id,
+          data: {
+            overallStatus: data.overallStatus,
+          },
+        });
+      } else {
+        const noteValue = data.note?.trim() || null;
+        await updateCustomer.mutateAsync({
+          customerId: customer.id,
+          data: {
+            fullName: data.fullName.trim(),
+            phone: data.phone.trim(),
+            email: data.email?.trim() || null,
+            gender: data.gender || null,
+            dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth).toISOString() : null,
+            note: noteValue,
+            address: noteValue, // Keep address synced safely
+            sourceId: data.sourceId || null,
+            overallStatus: data.overallStatus,
+            priority: data.priority || null,
+          },
+        });
+      }
       onClose();
     } catch {
       // Handled by mutation state
@@ -113,7 +147,11 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-semibold text-slate-100 font-mono">Chỉnh sửa hồ sơ khách hàng</h3>
-              <p className="text-[10px] text-slate-400">Cập nhật dữ liệu khách hàng và trạng thái chăm sóc</p>
+              <p className="text-[10px] text-slate-400">
+                {isPartner
+                  ? 'Cập nhật trạng thái chăm sóc của khách hàng được phân công'
+                  : 'Cập nhật dữ liệu khách hàng và trạng thái chăm sóc'}
+              </p>
             </div>
           </div>
           <button
@@ -136,15 +174,25 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
               </div>
             )}
 
+            {isPartner && (
+              <div className="p-2.5 rounded bg-blue-950/40 border border-blue-800/50 text-blue-300 flex items-center gap-2 text-[11px]">
+                <UserCheck className="w-4 h-4 text-blue-400 shrink-0" />
+                <span>
+                  Tài khoản Đối tác (PARTNER): Bạn có quyền cập nhật <strong>Trạng thái chăm sóc</strong>. Các thông tin cá nhân khác chỉ do Quản trị viên (ADMIN) quản lý.
+                </span>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                  Họ và tên <span className="text-red-400">*</span>
+                  Họ và tên {!isPartner && <span className="text-red-400">*</span>}
                 </label>
                 <input
                   type="text"
                   {...register('fullName')}
-                  className="w-full h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-100 focus:outline-none focus:border-blue-500"
+                  disabled={isPartner}
+                  className="w-full h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-100 focus:outline-none focus:border-blue-500 disabled:opacity-60 disabled:bg-slate-950/60 disabled:cursor-not-allowed"
                 />
                 {errors.fullName && (
                   <p className="text-[10px] text-red-400 mt-1">{errors.fullName.message}</p>
@@ -153,12 +201,13 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
 
               <div>
                 <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                  Số điện thoại <span className="text-red-400">*</span>
+                  Số điện thoại {!isPartner && <span className="text-red-400">*</span>}
                 </label>
                 <input
                   type="text"
                   {...register('phone')}
-                  className="w-full h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-100 font-mono focus:outline-none focus:border-blue-500"
+                  disabled={isPartner}
+                  className="w-full h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-100 font-mono focus:outline-none focus:border-blue-500 disabled:opacity-60 disabled:bg-slate-950/60 disabled:cursor-not-allowed"
                 />
                 {errors.phone && (
                   <p className="text-[10px] text-red-400 mt-1">{errors.phone.message}</p>
@@ -172,7 +221,8 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                 <input
                   type="email"
                   {...register('email')}
-                  className="w-full h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-100 focus:outline-none focus:border-blue-500"
+                  disabled={isPartner}
+                  className="w-full h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-100 focus:outline-none focus:border-blue-500 disabled:opacity-60 disabled:bg-slate-950/60 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -180,7 +230,8 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                 <label className="block text-[11px] font-medium text-slate-400 mb-1">Giới tính</label>
                 <select
                   {...register('gender')}
-                  className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-blue-500"
+                  disabled={isPartner}
+                  className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-blue-500 disabled:opacity-60 disabled:bg-slate-950/60 disabled:cursor-not-allowed"
                 >
                   <option value="">Chưa xác định</option>
                   <option value="MALE">Nam</option>
@@ -196,7 +247,8 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                 <input
                   type="date"
                   {...register('dateOfBirth')}
-                  className="w-full h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono focus:outline-none focus:border-blue-500"
+                  disabled={isPartner}
+                  className="w-full h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono focus:outline-none focus:border-blue-500 disabled:opacity-60 disabled:bg-slate-950/60 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -204,8 +256,8 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                 <label className="block text-[11px] font-medium text-slate-400 mb-1">Nguồn khách hàng</label>
                 <select
                   {...register('sourceId')}
-                  disabled={isSourcesLoading}
-                  className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-blue-500 font-sans text-xs"
+                  disabled={isPartner || isSourcesLoading}
+                  className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-blue-500 font-sans text-xs disabled:opacity-60 disabled:bg-slate-950/60 disabled:cursor-not-allowed"
                 >
                   <option value="">-- Chưa chọn nguồn --</option>
                   {availableSources.map((s) => (
@@ -219,10 +271,12 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[11px] font-medium text-slate-400 mb-1">Trạng thái chăm sóc</label>
+                <label className="block text-[11px] font-medium text-blue-400 mb-1">
+                  Trạng thái chăm sóc <span className="text-red-400">*</span>
+                </label>
                 <select
                   {...register('overallStatus')}
-                  className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono focus:outline-none focus:border-blue-500"
+                  className="w-full h-8 px-2 bg-slate-950 border border-blue-500/70 rounded text-slate-100 font-mono focus:outline-none focus:border-blue-400 text-xs shadow-sm"
                 >
                   <option value="LEAD_MOI">Lead mới (LEAD_MOI)</option>
                   <option value="DANG_TIEP_CAN">Đang tiếp cận (DANG_TIEP_CAN)</option>
@@ -230,13 +284,17 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                   <option value="THANH_CONG">Thành công (THANH_CONG)</option>
                   <option value="KHONG_KHA_THI">Không khả thi (KHONG_KHA_THI)</option>
                 </select>
+                {errors.overallStatus && (
+                  <p className="text-[10px] text-red-400 mt-1">{errors.overallStatus.message}</p>
+                )}
               </div>
 
               <div>
                 <label className="block text-[11px] font-medium text-slate-400 mb-1">Độ ưu tiên</label>
                 <select
                   {...register('priority')}
-                  className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono focus:outline-none focus:border-blue-500"
+                  disabled={isPartner}
+                  className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono focus:outline-none focus:border-blue-500 disabled:opacity-60 disabled:bg-slate-950/60 disabled:cursor-not-allowed"
                 >
                   <option value="CHUA_CO_NHU_CAU">Chưa có nhu cầu</option>
                   <option value="THANH_KHOAN">Thanh khoản</option>
@@ -251,9 +309,10 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
               <label className="block text-[11px] font-medium text-slate-300 mb-1">Ghi chú</label>
               <textarea
                 rows={3}
-                placeholder="Nhập ghi chú về khách hàng..."
+                placeholder={isPartner ? 'Chỉ quản trị viên mới được sửa ghi chú hồ sơ' : 'Nhập ghi chú về khách hàng...'}
                 {...register('note')}
-                className="w-full p-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-blue-500 font-sans text-xs resize-y"
+                disabled={isPartner}
+                className="w-full p-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-blue-500 font-sans text-xs resize-y disabled:opacity-60 disabled:bg-slate-950/60 disabled:cursor-not-allowed"
               />
             </div>
           </div>
