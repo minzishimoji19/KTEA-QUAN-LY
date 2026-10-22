@@ -170,6 +170,20 @@ export class CustomerRepository extends BaseRepository {
           customerTags: {
             include: { tag: true },
           },
+          assignments: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  email: true,
+                  role: true,
+                  status: true,
+                },
+              },
+            },
+            orderBy: { assignedAt: 'asc' },
+          },
           cases: {
             include: { product: true },
             orderBy: [
@@ -235,6 +249,20 @@ export class CustomerRepository extends BaseRepository {
         customerTags: {
           include: { tag: true },
         },
+        assignments: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                role: true,
+                status: true,
+              },
+            },
+          },
+          orderBy: { assignedAt: 'asc' },
+        },
         cases: {
           include: { product: true },
           orderBy: [
@@ -277,6 +305,20 @@ export class CustomerRepository extends BaseRepository {
       where: { id },
       include: {
         customerSource: true,
+        assignments: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                role: true,
+                status: true,
+              },
+            },
+          },
+          orderBy: { assignedAt: 'asc' },
+        },
         cases: {
           include: {
             product: true,

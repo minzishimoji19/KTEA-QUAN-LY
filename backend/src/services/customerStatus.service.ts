@@ -196,11 +196,45 @@ export function enrichCustomerWithStatus<T extends CustomerWithCases>(customer: 
     completedAt: string | null;
     assignedTo: string | null;
   }>;
+  assignedCaregivers: Array<{
+    id: string;
+    fullName: string;
+    email?: string | null;
+    role?: string;
+    status?: string;
+    assignedAt?: string | Date;
+  }>;
+  assignedCaregiverName: string;
+  caregiverName: string;
 } {
   const rawStatus = (customer as any).rawOverallStatus || (customer as any).careStatus || customer.overallStatus;
   const latestCase = getLatestCase(customer.cases);
   const resolvedStatus = latestCase && latestCase.progress ? latestCase.progress : customer.overallStatus;
   const careStats = resolveCustomerCareStats(customer);
+
+  const rawAssignments = Array.isArray((customer as any).assignments) ? (customer as any).assignments : [];
+  const assignedCaregivers = rawAssignments.length > 0
+    ? rawAssignments
+        .filter((a: any) => a && a.user && a.user.fullName)
+        .map((a: any) => ({
+          id: a.user.id,
+          fullName: a.user.fullName,
+          email: a.user.email || null,
+          role: a.user.role,
+          status: a.user.status,
+          assignedAt: a.assignedAt,
+        }))
+    : Array.isArray((customer as any).assignedCaregivers)
+    ? (customer as any).assignedCaregivers
+    : [];
+
+  const caregiverNames = assignedCaregivers.map((c: any) => c.fullName).filter(Boolean);
+  const assignedCaregiverName =
+    caregiverNames.length > 0
+      ? caregiverNames.join(', ')
+      : ((customer as any).assignedCaregiverName && (customer as any).assignedCaregiverName !== 'Chưa phân công'
+          ? (customer as any).assignedCaregiverName
+          : 'Chưa phân công');
 
   return {
     ...customer,
@@ -215,6 +249,9 @@ export function enrichCustomerWithStatus<T extends CustomerWithCases>(customer: 
     completedCareCount: careStats.completedCareCount,
     pendingCareCount: careStats.pendingCareCount,
     careFollowUps: careStats.careFollowUps,
+    assignedCaregivers,
+    assignedCaregiverName,
+    caregiverName: assignedCaregiverName,
   };
 }
 

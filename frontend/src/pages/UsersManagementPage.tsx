@@ -21,6 +21,7 @@ import {
   Square,
 } from 'lucide-react';
 import { authService } from '../services/authService';
+import { useQueryClient } from '@tanstack/react-query';
 import { customerService } from '../services/customerService';
 import { AuthUser, UserRole, UserStatus, CustomerAssignmentItem, AuditLogItem } from '../types/auth';
 import { CustomerSummary } from '../types/models';
@@ -31,6 +32,7 @@ import { DateDisplay } from '../components/common';
 
 export const UsersManagementPage: React.FC = () => {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'users' | 'assignments' | 'audit'>('users');
 
   // Users State
@@ -278,6 +280,7 @@ export const UsersManagementPage: React.FC = () => {
       toast.success(`Phân công thành công ${res.affected} khách hàng!`);
       setSelectedCustomerIds([]);
       setAssignmentNotes('');
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
       await loadPartnerAssignments(selectedPartnerId);
       await loadUsers();
     } catch (err: unknown) {
@@ -308,6 +311,7 @@ export const UsersManagementPage: React.FC = () => {
       }
 
       setUnassigningAssignment(null);
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
       await loadPartnerAssignments(selectedPartnerId);
       await loadUsers();
     } catch (err: unknown) {
@@ -373,6 +377,7 @@ export const UsersManagementPage: React.FC = () => {
 
       setSelectedAssignedIds([]);
       setIsBulkUnassignConfirmOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
       await loadPartnerAssignments(selectedPartnerId);
       await loadUsers();
     } catch (err: unknown) {
@@ -405,6 +410,7 @@ export const UsersManagementPage: React.FC = () => {
       setIsBulkReassignModalOpen(false);
       setTargetReassignUserId('');
       setBulkReassignNotes('');
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
       await loadPartnerAssignments(selectedPartnerId);
       await loadUsers();
     } catch (err: unknown) {

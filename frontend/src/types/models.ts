@@ -335,6 +335,28 @@ export interface CustomerSummary {
     completedAt: string | null;
     assignedTo: string | null;
   }>;
+  assignedCaregivers?: Array<{
+    id: string;
+    fullName: string;
+    email?: string | null;
+    role?: string;
+    status?: string;
+    assignedAt?: string;
+  }>;
+  assignedCaregiverName?: string;
+  caregiverName?: string;
+  assignments?: Array<{
+    id: string;
+    userId: string;
+    assignedAt: string;
+    user: {
+      id: string;
+      fullName: string;
+      email?: string | null;
+      role?: string;
+      status?: string;
+    };
+  }>;
   cases?: CustomerCase[];
   needs?: CustomerNeed[];
   activities?: CustomerActivity[];

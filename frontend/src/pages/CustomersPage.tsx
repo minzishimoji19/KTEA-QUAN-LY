@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Plus,
   ExternalLink,
@@ -25,7 +26,6 @@ import {
   Column,
   StatusBadge,
   TagBadge,
-  DateDisplay,
   Pagination,
   ErrorState,
 } from '../components/common';
@@ -118,6 +118,7 @@ const CopyPhoneButton: React.FC<CopyPhoneButtonProps> = ({ phone }) => {
 
 export const CustomersPage: React.FC = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const { role } = useAuth();
 
@@ -393,6 +394,7 @@ export const CustomersPage: React.FC = () => {
       setSelectedCustomerIds([]);
       setIsBulkCaregiverModalOpen(false);
       setSelectedCaregiverId('');
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
       refetch();
     } catch (err: any) {
       setBulkNotification({
@@ -712,14 +714,69 @@ export const CustomersPage: React.FC = () => {
       },
     },
     {
-      key: 'lastCareAt',
-      header: 'Lần chăm sóc gần nhất',
-      width: '170px',
+      key: 'caregiver',
+      header: 'Người chăm sóc',
+      width: '180px',
       render: (row) => {
-        if (!row.lastCareAt) {
-          return <span className="text-slate-500 font-sans text-xs">Chưa có lịch sử chăm sóc</span>;
+        if ((row as any).caregiverLoadError) {
+          return (
+            <span
+              className="inline-flex items-center gap-1 text-xs text-rose-400 font-sans"
+              title="Không thể tải thông tin người chăm sóc"
+            >
+              <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+              <span>Lỗi tải người chăm sóc</span>
+            </span>
+          );
         }
-        return <DateDisplay date={row.lastCareAt} className="text-xs font-mono" />;
+
+        const caregivers =
+          row.assignedCaregivers && row.assignedCaregivers.length > 0
+            ? row.assignedCaregivers
+            : (row.assignments?.map((a) => a.user).filter(Boolean) as Array<{ id: string; fullName: string }>) || [];
+
+        const caregiverName =
+          row.assignedCaregiverName && row.assignedCaregiverName !== 'Chưa phân công'
+            ? row.assignedCaregiverName
+            : caregivers.length > 0
+            ? caregivers.map((c) => c.fullName).join(', ')
+            : null;
+
+        if (!caregiverName || caregivers.length === 0) {
+          return (
+            <span className="text-slate-500 font-sans text-xs">
+              Chưa phân công
+            </span>
+          );
+        }
+
+        if (caregivers.length === 1) {
+          return (
+            <div className="flex items-center gap-1.5 min-w-0" title={`Người phụ trách: ${caregivers[0].fullName}`}>
+              <div className="w-5 h-5 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
+                <UserCheck className="w-3 h-3 text-blue-400" />
+              </div>
+              <span className="text-xs font-medium text-slate-200 truncate">
+                {caregivers[0].fullName}
+              </span>
+            </div>
+          );
+        }
+
+        const names = caregivers.map((c) => c.fullName).join(', ');
+        return (
+          <div className="flex items-center gap-1.5 min-w-0" title={`Người phụ trách: ${names}`}>
+            <div className="w-5 h-5 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0">
+              <UserCheck className="w-3 h-3 text-indigo-400" />
+            </div>
+            <span className="text-xs font-medium text-slate-200 truncate">
+              {names}
+            </span>
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shrink-0">
+              +{caregivers.length}
+            </span>
+          </div>
+        );
       },
     },
     {
