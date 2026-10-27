@@ -163,6 +163,45 @@ export interface CustomerTag {
   tag: Tag;
 }
 
+export type ProductCategory =
+  | 'LOAN_UNSECURED'
+  | 'LOAN_SECURED'
+  | 'CREDIT_CARD'
+  | 'INSURANCE'
+  | 'SAVINGS'
+  | 'OTHER';
+
+export type InterestRateUnit =
+  | 'PERCENT_PER_YEAR'
+  | 'PERCENT_PER_MONTH';
+
+export interface ProductFinancialDetail {
+  id?: string;
+  productId?: string;
+  category: ProductCategory;
+  providerName?: string | null;
+  minAmount?: number | null;
+  maxAmount?: number | null;
+  minInterestRate?: number | null;
+  maxInterestRate?: number | null;
+  interestRateUnit?: InterestRateUnit;
+  minTenureMonths?: number | null;
+  maxTenureMonths?: number | null;
+  feesDescription?: string | null;
+  minAge?: number | null;
+  maxAge?: number | null;
+  minIncome?: number | null;
+  acceptBadDebt?: boolean;
+  eligibilityCriteria?: string[] | Record<string, unknown> | null;
+  benefits?: string[] | null;
+  risks?: string[] | null;
+  officialUrl?: string | null;
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Product {
   id: string;
   code: string;
@@ -171,6 +210,7 @@ export interface Product {
   active: boolean;
   createdAt: string;
   updatedAt: string;
+  financialDetail?: ProductFinancialDetail | null;
   _count?: {
     cases: number;
     recommendations: number;

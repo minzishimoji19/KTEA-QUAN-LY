@@ -36,6 +36,10 @@
     "test:unification": "tsx src/tests/verify-user-caregiver-unification.ts",
     "test:unassign-bug": "tsx src/tests/verify-unassign-bug-fix.ts",
     "test:care-bulk": "tsx src/tests/verify-care-status-and-bulk-actions.ts",
+    "test:product-financial": "tsx src/tests/verify-product-financial-details.ts",
+    "test:questionnaires": "tsx src/tests/verify-questionnaires.ts",
+    "test:assessments": "tsx src/tests/verify-assessments.ts",
+    "test:assessment-recommendations": "tsx src/tests/verify-assessment-recommendations.ts",
     "bootstrap:admin": "tsx src/scripts/bootstrapAdmin.ts",
     "test": "tsx src/tests/verify-backend-rbac-full.ts"
   },

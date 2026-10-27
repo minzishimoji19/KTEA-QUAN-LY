@@ -1,4 +1,8 @@
-import { productRepository } from '../repositories/product.repository.js';
+import {
+  productRepository,
+  CreateProductRepoInput,
+  UpdateProductRepoInput,
+} from '../repositories/product.repository.js';
 import { NotFoundError, ConflictError } from '../utils/errors.js';
 import BaseService from './base.service.js';
 import prisma from '../config/database.js';
@@ -16,12 +20,7 @@ export class ProductService extends BaseService {
     return product;
   }
 
-  async createProduct(data: {
-    code: string;
-    name: string;
-    description?: string | null;
-    active?: boolean;
-  }) {
+  async createProduct(data: CreateProductRepoInput) {
     const existing = await productRepository.findByCode(data.code);
     if (existing) {
       throw new ConflictError(`Product with code '${data.code}' already exists`);
@@ -29,12 +28,7 @@ export class ProductService extends BaseService {
     return productRepository.create(data);
   }
 
-  async updateProduct(id: string, data: {
-    code?: string;
-    name?: string;
-    description?: string | null;
-    active?: boolean;
-  }) {
+  async updateProduct(id: string, data: UpdateProductRepoInput) {
     await this.getProductById(id);
     if (data.code) {
       const existing = await productRepository.findByCode(data.code);

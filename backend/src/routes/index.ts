@@ -18,6 +18,9 @@ import dataRoutes from './data.routes.js';
 import customerSourceRoutes from './customerSource.routes.js';
 import pushNotificationRoutes from './pushNotification.routes.js';
 import caretakerRoutes from './caretaker.routes.js';
+import questionnaireRoutes from './questionnaire.routes.js';
+import assessmentRoutes from './assessment.routes.js';
+import assessmentRecommendationRoutes from './assessmentRecommendation.routes.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
@@ -44,6 +47,9 @@ router.use('/notes', requireAuth, noteRoutes);
 router.use('/tags', requireAuth, tagRoutes);
 router.use('/follow-ups', requireAuth, followUpRoutes);
 router.use('/products', requireAuth, productRoutes);
+router.use('/questionnaires', requireAuth, questionnaireRoutes);
+router.use('/assessments', requireAuth, assessmentRoutes);
+router.use('/', assessmentRecommendationRoutes);
 router.use('/push-records', requireAuth, pushRecordRoutes);
 router.use('/recommendations', requireAuth, recommendationRoutes);
 

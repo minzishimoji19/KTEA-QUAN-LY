@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   getProducts,
+  getProductById,
   createProduct,
   updateProduct,
   deleteProduct,
@@ -16,6 +17,12 @@ import { requireAdmin } from '../middleware/auth.js';
 const router = Router();
 
 router.get('/', getProducts);
+
+router.get(
+  '/:id',
+  validateRequest({ params: productIdParamSchema }),
+  getProductById
+);
 
 router.post(
   '/',

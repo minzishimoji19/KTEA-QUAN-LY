@@ -24,6 +24,7 @@ import {
   BellRing,
   UserCheck,
   Users,
+  Building2,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -46,7 +47,7 @@ import { useProducts, useUpdateProduct, useDeleteProduct } from '../hooks/usePro
 import { useTags, useDeleteTag } from '../hooks/useTags';
 import { useCustomerSources, useUpdateCustomerSource, useDeleteCustomerSource } from '../hooks/useCustomerSources';
 import { useEligibleCaregivers } from '../hooks/useCaretakers';
-import { Product, Tag, CustomerSource } from '../types/models';
+import { Product, Tag, CustomerSource, ProductCategory } from '../types/models';
 import { AuthUser } from '../types/auth';
 import { NeedCategorySetting } from '../types/settings';
 import settingsService from '../services/settingsService';
@@ -55,12 +56,14 @@ import { TagModal } from '../features/settings/TagModal';
 import { NeedCategoryModal } from '../features/settings/NeedCategoryModal';
 import { CustomerSourceModal } from '../features/settings/CustomerSourceModal';
 import { NotificationSettings } from '../features/settings/NotificationSettings';
+import { QuestionnaireManagement } from '../features/settings/QuestionnaireManagement';
 
 type SettingsTab =
   | 'general'
   | 'caregivers'
   | 'sources'
   | 'products'
+  | 'questionnaires'
   | 'tags'
   | 'needs'
   | 'statuses'
@@ -117,6 +120,8 @@ export const SettingsPage: React.FC = () => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
+  const [productSearch, setProductSearch] = useState('');
+  const [productCategoryFilter, setProductCategoryFilter] = useState<string>('ALL');
 
   // Tag Modal State
   const [editingTag, setEditingTag] = useState<Tag | null>(null);
@@ -321,6 +326,7 @@ export const SettingsPage: React.FC = () => {
           { key: 'caregivers', label: `Nhân viên chăm sóc (${eligibleCaregivers?.length || 0})`, icon: <UserCheck className="w-3.5 h-3.5 text-emerald-400" /> },
           { key: 'sources', label: `Nguồn khách (${sources?.length || 0})`, icon: <Globe className="w-3.5 h-3.5" /> },
           { key: 'products', label: `Sản phẩm (${products?.length || 0})`, icon: <Package className="w-3.5 h-3.5" /> },
+          { key: 'questionnaires', label: 'Khảo sát nhu cầu', icon: <HelpCircle className="w-3.5 h-3.5 text-indigo-400" /> },
           { key: 'tags', label: `Thẻ khách hàng (${tags?.length || 0})`, icon: <TagIcon className="w-3.5 h-3.5" /> },
           { key: 'needs', label: `Nhóm nhu cầu (${settings.needCategories.length})`, icon: <Target className="w-3.5 h-3.5" /> },
           { key: 'statuses', label: 'Phân loại trạng thái', icon: <Layers className="w-3.5 h-3.5" /> },
@@ -674,117 +680,271 @@ export const SettingsPage: React.FC = () => {
       {/* ========================================================================= */}
       {/* SECTION 2: PRODUCTS (Create / Edit / Deactivate)                           */}
       {/* ========================================================================= */}
-      {activeTab === 'products' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-100 font-mono">Danh mục sản phẩm</h3>
-              <p className="text-xs text-slate-400">
-                Danh mục sản phẩm sử dụng trong hồ sơ khách hàng, phân bổ chuyển giao và khớp quy tắc đề xuất
-              </p>
-            </div>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => {
-                setEditingProduct(null);
-                setIsProductModalOpen(true);
-              }}
-              className="bg-blue-600 hover:bg-blue-500 text-white gap-1.5 text-xs h-8"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Thêm sản phẩm</span>
-            </Button>
-          </div>
+      {activeTab === 'products' && (() => {
+        const filteredProducts = (products || []).filter((prod) => {
+          const matchesCategory =
+            productCategoryFilter === 'ALL' ||
+            (prod.financialDetail?.category || 'OTHER') === productCategoryFilter;
 
-          <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/80 text-slate-400 font-mono text-[10px] border-b border-slate-800">
-                <tr>
-                  <th className="p-3">Mã định danh</th>
-                  <th className="p-3">Tên sản phẩm</th>
-                  <th className="p-3">Mô tả</th>
-                  <th className="p-3">Trạng thái</th>
-                  <th className="p-3 text-right">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
-                {isProductsLoading ? (
+          const query = productSearch.toLowerCase().trim();
+          const matchesSearch =
+            !query ||
+            prod.code.toLowerCase().includes(query) ||
+            prod.name.toLowerCase().includes(query) ||
+            (prod.financialDetail?.providerName || '').toLowerCase().includes(query) ||
+            (prod.description || '').toLowerCase().includes(query);
+
+          return matchesCategory && matchesSearch;
+        });
+
+        const renderCategoryBadge = (cat?: ProductCategory | null) => {
+          switch (cat) {
+            case 'LOAN_UNSECURED':
+              return (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-950/60 text-purple-300 border border-purple-800/50">
+                  Vay tín chấp
+                </span>
+              );
+            case 'LOAN_SECURED':
+              return (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-950/60 text-indigo-300 border border-indigo-800/50">
+                  Vay thế chấp
+                </span>
+              );
+            case 'CREDIT_CARD':
+              return (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-950/60 text-blue-300 border border-blue-800/50">
+                  Thẻ tín dụng
+                </span>
+              );
+            case 'INSURANCE':
+              return (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-950/60 text-emerald-300 border border-emerald-800/50">
+                  Bảo hiểm
+                </span>
+              );
+            case 'SAVINGS':
+              return (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-950/60 text-amber-300 border border-amber-800/50">
+                  Tiết kiệm
+                </span>
+              );
+            default:
+              return (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700">
+                  Khác
+                </span>
+              );
+          }
+        };
+
+        const formatFinancialSummary = (prod: Product) => {
+          const d = prod.financialDetail;
+          if (!d) return <span className="text-slate-600">—</span>;
+
+          const parts: string[] = [];
+          if (d.minAmount || d.maxAmount) {
+            const minA = d.minAmount ? `${(Number(d.minAmount) / 1_000_000).toLocaleString('vi-VN')}M` : '0';
+            const maxA = d.maxAmount ? `${(Number(d.maxAmount) / 1_000_000).toLocaleString('vi-VN')}M` : '∞';
+            parts.push(`${minA} - ${maxA}`);
+          }
+          if (d.minInterestRate || d.maxInterestRate) {
+            const unit = d.interestRateUnit === 'PERCENT_PER_MONTH' ? '%/tháng' : '%/năm';
+            if (d.minInterestRate === d.maxInterestRate) {
+              parts.push(`${d.minInterestRate}${unit}`);
+            } else {
+              parts.push(`${d.minInterestRate || 0}% - ${d.maxInterestRate || 0}${unit}`);
+            }
+          }
+          if (d.minTenureMonths || d.maxTenureMonths) {
+            if (d.minTenureMonths === d.maxTenureMonths) {
+              parts.push(`${d.minTenureMonths}T`);
+            } else {
+              parts.push(`${d.minTenureMonths || 1}-${d.maxTenureMonths || '∞'}T`);
+            }
+          }
+
+          if (parts.length === 0) return <span className="text-slate-600">—</span>;
+          return <span className="text-slate-200 font-mono text-[11px]">{parts.join(' · ')}</span>;
+        };
+
+        return (
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-100 font-mono">
+                  Danh mục sản phẩm tài chính
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Quản lý gói vay, thẻ tín dụng, bảo hiểm, tiết kiệm chuẩn hóa dùng cho gợi ý đề xuất & thẩm định hồ sơ
+                </p>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  setEditingProduct(null);
+                  setIsProductModalOpen(true);
+                }}
+                className="bg-blue-600 hover:bg-blue-500 text-white gap-1.5 text-xs h-8 self-start sm:self-auto"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Thêm sản phẩm</span>
+              </Button>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl border border-slate-800 bg-slate-900/60">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-slate-400 font-mono">Lọc theo loại:</span>
+                {[
+                  { key: 'ALL', label: 'Tất cả' },
+                  { key: 'LOAN_UNSECURED', label: 'Vay tín chấp' },
+                  { key: 'LOAN_SECURED', label: 'Vay thế chấp' },
+                  { key: 'CREDIT_CARD', label: 'Thẻ tín dụng' },
+                  { key: 'INSURANCE', label: 'Bảo hiểm' },
+                  { key: 'SAVINGS', label: 'Tiết kiệm' },
+                  { key: 'OTHER', label: 'Khác' },
+                ].map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => setProductCategoryFilter(f.key)}
+                    className={`px-2 py-1 rounded text-[11px] font-mono transition-colors ${
+                      productCategoryFilter === f.key
+                        ? 'bg-blue-600 text-white font-semibold'
+                        : 'bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="w-full sm:w-64">
+                <input
+                  type="text"
+                  placeholder="Tìm mã, tên, đối tác..."
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* Products Table */}
+            <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-950/80 text-slate-400 font-mono text-[10px] border-b border-slate-800">
                   <tr>
-                    <td colSpan={5} className="p-6 text-center text-slate-500">
-                      Đang tải danh mục sản phẩm...
-                    </td>
+                    <th className="p-3">Mã sản phẩm</th>
+                    <th className="p-3">Tên & Nhà cung cấp</th>
+                    <th className="p-3">Loại sản phẩm</th>
+                    <th className="p-3">Hạn mức / Lãi suất / Kỳ hạn</th>
+                    <th className="p-3">Trạng thái</th>
+                    <th className="p-3 text-right">Thao tác</th>
                   </tr>
-                ) : (products || []).length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="p-6 text-center text-slate-500">
-                      Chưa có sản phẩm nào. Hãy thêm sản phẩm đầu tiên vào danh mục.
-                    </td>
-                  </tr>
-                ) : (
-                  (products || []).map((prod) => (
-                    <tr key={prod.id} className="hover:bg-slate-800/30 text-slate-300">
-                      <td className="p-3 font-semibold text-blue-400">{prod.code}</td>
-                      <td className="p-3 font-sans font-medium text-slate-100">{prod.name}</td>
-                      <td className="p-3 font-sans text-slate-400 max-w-xs truncate" title={prod.description || ''}>
-                        {prod.description || '—'}
-                      </td>
-                      <td className="p-3">
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                            prod.active
-                              ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-900/60'
-                              : 'bg-slate-800 text-slate-400 border border-slate-700'
-                          }`}
-                        >
-                          {prod.active ? 'ĐANG DÙNG' : 'ĐÃ TẮT'}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleToggleProductActive(prod)}
-                            className={`h-7 px-2 text-[10px] font-mono ${
-                              prod.active ? 'text-amber-400 hover:text-amber-300' : 'text-emerald-400 hover:text-emerald-300'
-                            }`}
-                            title={prod.active ? 'Tắt kích hoạt sản phẩm' : 'Kích hoạt sản phẩm'}
-                          >
-                            <Power className="w-3 h-3 mr-1" />
-                            {prod.active ? 'Tắt' : 'Bật'}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setEditingProduct(prod);
-                              setIsProductModalOpen(true);
-                            }}
-                            className="h-7 px-2 text-[10px] text-slate-300 hover:text-white"
-                            title="Chỉnh sửa sản phẩm"
-                          >
-                            <Edit className="w-3 h-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setDeletingProduct(prod)}
-                            className="h-7 px-2 text-[10px] text-rose-400 hover:text-rose-300 hover:bg-rose-950/40"
-                            title="Xóa sản phẩm"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        </div>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                  {isProductsLoading ? (
+                    <tr>
+                      <td colSpan={6} className="p-6 text-center text-slate-500">
+                        Đang tải danh mục sản phẩm...
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : filteredProducts.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-6 text-center text-slate-500">
+                        {products && products.length > 0
+                          ? 'Không tìm thấy sản phẩm phù hợp với bộ lọc.'
+                          : 'Chưa có sản phẩm nào. Hãy thêm sản phẩm đầu tiên vào danh mục.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredProducts.map((prod) => (
+                      <tr key={prod.id} className="hover:bg-slate-800/30 text-slate-300">
+                        <td className="p-3 font-semibold text-blue-400">{prod.code}</td>
+                        <td className="p-3 font-sans">
+                          <div className="font-medium text-slate-100">{prod.name}</div>
+                          {prod.financialDetail?.providerName ? (
+                            <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                              <Building2 className="w-3 h-3 text-slate-500" />
+                              <span>{prod.financialDetail.providerName}</span>
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-slate-500 italic mt-0.5">Chưa gắn đối tác</div>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          {renderCategoryBadge(prod.financialDetail?.category)}
+                        </td>
+                        <td className="p-3 font-sans">
+                          {formatFinancialSummary(prod)}
+                        </td>
+                        <td className="p-3">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                              prod.active
+                                ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-900/60'
+                                : 'bg-slate-800 text-slate-400 border border-slate-700'
+                            }`}
+                          >
+                            {prod.active ? 'ĐANG DÙNG' : 'ĐÃ TẮT'}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleToggleProductActive(prod)}
+                              className={`h-7 px-2 text-[10px] font-mono ${
+                                prod.active
+                                  ? 'text-amber-400 hover:text-amber-300'
+                                  : 'text-emerald-400 hover:text-emerald-300'
+                              }`}
+                              title={prod.active ? 'Tắt kích hoạt sản phẩm' : 'Kích hoạt sản phẩm'}
+                            >
+                              <Power className="w-3 h-3 mr-1" />
+                              {prod.active ? 'Tắt' : 'Bật'}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditingProduct(prod);
+                                setIsProductModalOpen(true);
+                              }}
+                              className="h-7 px-2 text-[10px] text-slate-300 hover:text-white"
+                              title="Chỉnh sửa sản phẩm"
+                            >
+                              <Edit className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setDeletingProduct(prod)}
+                              className="h-7 px-2 text-[10px] text-rose-400 hover:text-rose-300 hover:bg-rose-950/40"
+                              title="Xóa sản phẩm"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
+      {/* ========================================================================= */}
+      {/* SECTION 2.5: DYNAMIC QUESTIONNAIRE MANAGEMENT (Phase 2)                   */}
+      {/* ========================================================================= */}
+      {activeTab === 'questionnaires' && <QuestionnaireManagement />}
 
       {/* ========================================================================= */}
       {/* SECTION 3: TAGS (Create / Edit / Delete)                                   */}

@@ -46,6 +46,11 @@ import { createNeedSchema } from '../validations/need.validation.js';
 import { createActivitySchema } from '../validations/activity.validation.js';
 import { createNoteSchema } from '../validations/note.validation.js';
 import { createPushRecordSchema } from '../validations/pushRecord.validation.js';
+import {
+  getAssessmentsByCustomer,
+  startAssessment,
+} from '../controllers/assessment.controller.js';
+import { createAssessmentSchema } from '../validations/assessment.validation.js';
 import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
@@ -174,6 +179,19 @@ router.get(
   '/:id/recommendations',
   validateRequest({ params: customerIdParamSchema }),
   getRecommendationsByCustomer
+);
+
+// Nested Sub-Resource Endpoints: Assessments (Phase 3)
+router.get(
+  '/:id/assessments',
+  validateRequest({ params: customerIdParamSchema }),
+  getAssessmentsByCustomer
+);
+
+router.post(
+  '/:id/assessments',
+  validateRequest({ params: customerIdParamSchema, body: createAssessmentSchema }),
+  startAssessment
 );
 
 export default router;

@@ -108,6 +108,20 @@ enum PushStatus {
   CANCELLED
 }
 
+enum ProductCategory {
+  LOAN_UNSECURED
+  LOAN_SECURED
+  CREDIT_CARD
+  INSURANCE
+  SAVINGS
+  OTHER
+}
+
+enum InterestRateUnit {
+  PERCENT_PER_YEAR
+  PERCENT_PER_MONTH
+}
+
 model CustomerSource {
   id          String     @id @default(uuid())
   name        String     @unique @map("name")
@@ -147,6 +161,8 @@ model Customer {
   pushRecords     PushRecord[]
   assignments     CustomerAssignment[]
   assignmentGrants CustomerAssignmentGrant[]
+  assessments     Assessment[]
+  assessmentRuns  AssessmentRecommendationRun[]
 
   @@index([phone])
   @@index([sourceId])
@@ -157,19 +173,54 @@ model Customer {
 }
 
 model Product {
-  id              String            @id @default(uuid())
-  code            String            @unique @map("code")
-  name            String            @map("name")
-  description     String?           @map("description") @db.Text
-  active          Boolean           @default(true) @map("active")
-  createdAt       DateTime          @default(now()) @map("created_at")
-  updatedAt       DateTime          @updatedAt @map("updated_at")
+  id              String                  @id @default(uuid())
+  code            String                  @unique @map("code")
+  name            String                  @map("name")
+  description     String?                 @map("description") @db.Text
+  active          Boolean                 @default(true) @map("active")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
 
+  financialDetail ProductFinancialDetail?
   cases           CustomerCase[]
   recommendations Recommendation[]
   pushRecords     PushRecord[]
+  assessmentRecommendationItems AssessmentRecommendationItem[]
 
   @@map("products")
+}
+
+model ProductFinancialDetail {
+  id                  String           @id @default(uuid())
+  productId           String           @unique @map("product_id")
+  category            ProductCategory  @default(OTHER) @map("category")
+  providerName        String?          @map("provider_name")
+  minAmount           Decimal?         @map("min_amount") @db.Decimal(15, 2)
+  maxAmount           Decimal?         @map("max_amount") @db.Decimal(15, 2)
+  minInterestRate     Decimal?         @map("min_interest_rate") @db.Decimal(5, 2)
+  maxInterestRate     Decimal?         @map("max_interest_rate") @db.Decimal(5, 2)
+  interestRateUnit    InterestRateUnit @default(PERCENT_PER_YEAR) @map("interest_rate_unit")
+  minTenureMonths     Int?             @map("min_tenure_months")
+  maxTenureMonths     Int?             @map("max_tenure_months")
+  feesDescription     String?          @map("fees_description") @db.Text
+  minAge              Int?             @map("min_age")
+  maxAge              Int?             @map("max_age")
+  minIncome           Decimal?         @map("min_income") @db.Decimal(15, 2)
+  acceptBadDebt       Boolean          @default(false) @map("accept_bad_debt")
+  eligibilityCriteria Json?            @map("eligibility_criteria")
+  benefits            Json?            @map("benefits")
+  risks               Json?            @map("risks")
+  officialUrl         String?          @map("official_url") @db.VarChar(500)
+  effectiveFrom       DateTime?        @map("effective_from")
+  effectiveTo         DateTime?        @map("effective_to")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  product             Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([category])
+  @@index([providerName])
+  @@map("product_financial_details")
 }
 
 model CustomerNeed {
@@ -434,6 +485,8 @@ model User {
   auditLogs          AuditLog[]
   caretaker          Caretaker?
   assignedFollowUps  FollowUp[] @relation("UserAssignedFollowUps")
+  performedAssessments Assessment[] @relation("UserPerformedAssessments")
+  performedRecommendationRuns AssessmentRecommendationRun[] @relation("UserPerformedRecommendationRuns")
 
   @@map("users")
 }
@@ -504,4 +557,254 @@ model AuditLog {
   @@index([createdAt])
   @@map("audit_logs")
 }
+
+// =========================================================================
+// PHASE 2: DYNAMIC QUESTIONNAIRE & QUESTIONNAIRE VERSIONING
+// =========================================================================
+
+enum QuestionnaireVersionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum QuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  YES_NO
+  NUMBER
+  CURRENCY
+  TEXT
+  LONG_TEXT
+  DATE
+}
+
+model Questionnaire {
+  id          String                 @id @default(uuid())
+  code        String                 @unique @map("code")
+  title       String                 @map("title")
+  description String?                @map("description") @db.Text
+  active      Boolean                @default(true) @map("active")
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+
+  versions    QuestionnaireVersion[]
+
+  @@map("questionnaires")
+}
+
+model QuestionnaireVersion {
+  id              String                     @id @default(uuid())
+  questionnaireId String                     @map("questionnaire_id")
+  versionNumber   Int                        @map("version_number")
+  status          QuestionnaireVersionStatus @default(DRAFT) @map("status")
+  isCurrent       Boolean                    @default(false) @map("is_current")
+  title           String?                    @map("title")
+  description     String?                    @map("description") @db.Text
+  changeLog       String?                    @map("change_log") @db.Text
+  publishedAt     DateTime?                  @map("published_at")
+  publishedBy     String?                    @map("published_by")
+  createdBy       String?                    @map("created_by")
+  createdAt       DateTime                   @default(now()) @map("created_at")
+  updatedAt       DateTime                   @updatedAt @map("updated_at")
+
+  questionnaire   Questionnaire              @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  questions       QuestionDefinition[]
+  assessments     Assessment[]
+
+  @@unique([questionnaireId, versionNumber])
+  @@index([questionnaireId])
+  @@index([status])
+  @@index([isCurrent])
+  @@map("questionnaire_versions")
+}
+
+model QuestionDefinition {
+  id                String               @id @default(uuid())
+  versionId         String               @map("version_id")
+  code              String               @map("code")
+  questionText      String               @map("question_text") @db.Text
+  description       String?              @map("description") @db.Text
+  questionType      QuestionType         @map("question_type")
+  isRequired        Boolean              @default(false) @map("is_required")
+  displayOrder      Int                  @default(0) @map("display_order")
+  options           Json?                @map("options")
+  validationConfig  Json?                @map("validation_config")
+  conditionalLogic  Json?                @map("conditional_logic")
+  active            Boolean              @default(true) @map("active")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  version           QuestionnaireVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, code])
+  @@index([versionId])
+  @@index([displayOrder])
+  @@map("question_definitions")
+}
+
+// =========================================================================
+// PHASE 3: CUSTOMER NEEDS ASSESSMENT & ANSWER STORAGE
+// =========================================================================
+
+enum AssessmentStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Assessment {
+  id                     String               @id @default(uuid())
+  customerId             String               @map("customer_id")
+  questionnaireVersionId String               @map("questionnaire_version_id")
+  status                 AssessmentStatus     @default(IN_PROGRESS) @map("status")
+  performedById          String?              @map("performed_by_id")
+  startedAt              DateTime             @default(now()) @map("started_at")
+  completedAt            DateTime?            @map("completed_at")
+  notes                  String?              @map("notes") @db.Text
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+
+  customer               Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  questionnaireVersion   QuestionnaireVersion @relation(fields: [questionnaireVersionId], references: [id], onDelete: Restrict)
+  performedBy            User?                @relation("UserPerformedAssessments", fields: [performedById], references: [id], onDelete: SetNull)
+  answers                AssessmentAnswer[]
+  recommendationRuns     AssessmentRecommendationRun[]
+
+  @@index([customerId])
+  @@index([questionnaireVersionId])
+  @@index([status])
+  @@index([startedAt])
+  @@map("assessments")
+}
+
+model AssessmentAnswer {
+  id           String     @id @default(uuid())
+  assessmentId String     @map("assessment_id")
+  questionId   String?    @map("question_id")
+  questionCode String     @map("question_code")
+  answerValue  Json       @map("answer_value")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, questionCode], name: "assessment_question_unique")
+  @@index([assessmentId])
+  @@index([questionCode])
+  @@map("assessment_answers")
+}
+
+// =========================================================================
+// PHASE 4: DETERMINISTIC & EXPLAINABLE RECOMMENDATION ENGINE
+// =========================================================================
+
+enum RuleVersionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum RecommendationRunStatus {
+  COMPLETED
+  FAILED
+}
+
+model AssessmentRecommendationRuleSet {
+  id          String                                @id @default(uuid())
+  code        String                                @unique @map("code")
+  title       String                                @map("title")
+  description String?                               @map("description") @db.Text
+  active      Boolean                               @default(true) @map("active")
+  createdAt   DateTime                              @default(now()) @map("created_at")
+  updatedAt   DateTime                              @updatedAt @map("updated_at")
+
+  versions    AssessmentRecommendationRuleVersion[]
+
+  @@map("assessment_recommendation_rule_sets")
+}
+
+model AssessmentRecommendationRuleVersion {
+  id            String                          @id @default(uuid())
+  ruleSetId     String                          @map("rule_set_id")
+  versionNumber Int                             @map("version_number")
+  status        RuleVersionStatus               @default(DRAFT) @map("status")
+  isCurrent     Boolean                         @default(false) @map("is_current")
+  rules         Json                            @map("rules")
+  changeLog     String?                         @map("change_log") @db.Text
+  publishedAt   DateTime?                       @map("published_at")
+  publishedBy   String?                         @map("published_by")
+  createdBy     String?                         @map("created_by")
+  createdAt     DateTime                        @default(now()) @map("created_at")
+  updatedAt     DateTime                        @updatedAt @map("updated_at")
+
+  ruleSet       AssessmentRecommendationRuleSet @relation(fields: [ruleSetId], references: [id], onDelete: Cascade)
+  runs          AssessmentRecommendationRun[]
+
+  @@unique([ruleSetId, versionNumber])
+  @@index([ruleSetId])
+  @@index([status])
+  @@index([isCurrent])
+  @@map("assessment_recommendation_rule_versions")
+}
+
+model AssessmentRecommendationRun {
+  id                       String                              @id @default(uuid())
+  customerId               String                              @map("customer_id")
+  assessmentId             String                              @map("assessment_id")
+  ruleVersionId            String                              @map("rule_version_id")
+  performedById            String?                             @map("performed_by_id")
+  status                   RecommendationRunStatus             @default(COMPLETED) @map("status")
+  answersSnapshot          Json                                @map("answers_snapshot")
+  rulesSnapshot            Json                                @map("rules_snapshot")
+  totalCandidatesEvaluated Int                                 @default(0) @map("total_candidates_evaluated")
+  totalRecommended         Int                                 @default(0) @map("total_recommended")
+  executionTimeMs          Int?                                @map("execution_time_ms")
+  notes                    String?                             @map("notes") @db.Text
+  createdAt                DateTime                            @default(now()) @map("created_at")
+
+  customer                 Customer                            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  assessment               Assessment                          @relation(fields: [assessmentId], references: [id], onDelete: Restrict)
+  ruleVersion              AssessmentRecommendationRuleVersion @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
+  performedBy              User?                               @relation("UserPerformedRecommendationRuns", fields: [performedById], references: [id], onDelete: SetNull)
+  items                    AssessmentRecommendationItem[]
+
+  @@index([customerId])
+  @@index([assessmentId])
+  @@index([ruleVersionId])
+  @@index([createdAt])
+  @@map("assessment_recommendation_runs")
+}
+
+model AssessmentRecommendationItem {
+  id                 String                      @id @default(uuid())
+  runId              String                      @map("run_id")
+  productId          String                      @map("product_id")
+  productName        String                      @map("product_name")
+  productCode        String                      @map("product_code")
+  productCategory    ProductCategory             @map("product_category")
+  productSnapshot    Json                        @map("product_snapshot")
+  score              Decimal                     @map("score") @db.Decimal(5, 2)
+  rank               Int                         @default(1) @map("rank")
+  confidence         Int                         @default(100) @map("confidence")
+  isEligible         Boolean                     @default(true) @map("is_eligible")
+  matchSummary       String                      @map("match_summary") @db.Text
+  passedCriteria     Json                        @map("passed_criteria")
+  failedCriteria     Json                        @map("failed_criteria")
+  unassessedCriteria Json                        @map("unassessed_criteria")
+  warnings           Json                        @map("warnings")
+  answersUsed        Json                        @map("answers_used")
+  createdAt          DateTime                    @default(now()) @map("created_at")
+
+  run                AssessmentRecommendationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  product            Product                     @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([runId, productId], name: "run_product_unique")
+  @@index([runId])
+  @@index([productId])
+  @@index([score])
+  @@index([isEligible])
+  @@map("assessment_recommendation_items")
+}
+
 

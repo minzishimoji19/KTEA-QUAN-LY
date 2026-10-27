@@ -17,6 +17,7 @@ import {
   Plus,
   CheckCircle2,
   XCircle,
+  HelpCircle,
 } from 'lucide-react';
 import {
   StatCard,
@@ -60,6 +61,7 @@ import { ScheduleFollowUpModal } from '../features/customers/ScheduleFollowUpMod
 import { EditFollowUpModal } from '../features/customers/EditFollowUpModal';
 import { CreatePushModal } from '../features/customers/CreatePushModal';
 import { ActivityTimeline } from '../features/activities/ActivityTimeline';
+import { CustomerAssessmentsTab } from '../features/assessments/CustomerAssessmentsTab';
 import { getNextPendingFollowUp } from '../utils/followUpUtils';
 
 export const CustomerDetailPage: React.FC = () => {
@@ -90,7 +92,7 @@ export const CustomerDetailPage: React.FC = () => {
 
   // Active section tab
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'cases' | 'timeline' | 'notes' | 'followups' | 'recommendations' | 'pushes'
+    'overview' | 'cases' | 'timeline' | 'notes' | 'followups' | 'assessments' | 'recommendations' | 'pushes'
   >('overview');
 
   // Quick Action Modal States
@@ -301,6 +303,17 @@ export const CustomerDetailPage: React.FC = () => {
             >
               <Edit className="w-3 h-3 text-blue-400" />
               <span>{role === 'PARTNER' ? 'Đổi trạng thái' : 'Sửa thông tin'}</span>
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setActiveTab('assessments')}
+              className="h-7 px-2.5 text-xs gap-1.5 border-indigo-700/60 bg-indigo-950/30 text-indigo-300 hover:bg-indigo-900/40"
+              title="Khảo sát nhu cầu khách hàng"
+            >
+              <HelpCircle className="w-3 h-3 text-indigo-400" />
+              <span>Khảo sát nhu cầu</span>
             </Button>
 
             {role !== 'PARTNER' && (
@@ -554,6 +567,7 @@ export const CustomerDetailPage: React.FC = () => {
             { key: 'timeline', label: `Hoạt động (${customer.activities?.length || 0})` },
             { key: 'notes', label: `Ghi chú (${customer.notes?.length || 0})` },
             { key: 'followups', label: `Lịch chăm sóc (${customer.followUps?.length || 0})` },
+            { key: 'assessments', label: 'Khảo sát nhu cầu' },
             { key: 'recommendations', label: `Đề xuất (${customer.recommendations?.length || 0})` },
             { key: 'pushes', label: `Chuyển khách (${customer.pushRecords?.length || 0})` },
           ].map((tab) => (
@@ -1638,6 +1652,14 @@ export const CustomerDetailPage: React.FC = () => {
           </div>
         );
       })()}
+
+      {/* 6.5. Assessments Tab (Phase 3) */}
+      {activeTab === 'assessments' && (
+        <CustomerAssessmentsTab
+          customerId={customer.id}
+          customerName={customer.fullName}
+        />
+      )}
 
       {/* 7. Recommendations Tab */}
       {activeTab === 'recommendations' && (
