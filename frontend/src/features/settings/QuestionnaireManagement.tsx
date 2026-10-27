@@ -191,12 +191,28 @@ export const QuestionnaireManagement: React.FC = () => {
   // Create new Questionnaire
   const handleCreateQuestionnaire = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newQCode || !newQTitle) return;
+    const trimmedCode = newQCode.trim().toUpperCase();
+    const trimmedTitle = newQTitle.trim();
+    if (!trimmedCode || !trimmedTitle) return;
+
+    if (trimmedCode.length < 3 || trimmedCode.length > 50) {
+      toast.error('Mã bộ câu hỏi phải có từ 3 đến 50 ký tự.');
+      return;
+    }
+    if (!/^[A-Z0-9_-]+$/.test(trimmedCode)) {
+      toast.error('Mã bộ câu hỏi chỉ được chứa chữ hoa, số, dấu gạch dưới (_) hoặc gạch nối (-), không có khoảng trắng.');
+      return;
+    }
+    if (trimmedTitle.length < 3 || trimmedTitle.length > 255) {
+      toast.error('Tiêu đề bộ câu hỏi phải có từ 3 đến 255 ký tự.');
+      return;
+    }
+
     setIsCreatingQ(true);
     try {
       const created = await questionnaireService.createQuestionnaire({
-        code: newQCode.trim().toUpperCase(),
-        title: newQTitle.trim(),
+        code: trimmedCode,
+        title: trimmedTitle,
         description: newQDesc.trim() || null,
       });
       toast.success('Đã tạo bộ câu hỏi mới thành công');
@@ -803,11 +819,17 @@ export const QuestionnaireManagement: React.FC = () => {
                 <input
                   type="text"
                   required
+                  minLength={3}
+                  maxLength={50}
+                  pattern="[A-Za-z0-9_-]+"
                   placeholder="Ví dụ: KTEA_MORTGAGE_LOAN_SURVEY"
                   value={newQCode}
                   onChange={(e) => setNewQCode(e.target.value.toUpperCase())}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 font-mono focus:outline-none focus:border-blue-500 uppercase"
                 />
+                <p className="text-[10px] text-slate-400">
+                  Tối thiểu 3 ký tự. Chỉ dùng chữ cái viết hoa, chữ số, gạch dưới (_) hoặc gạch ngang (-). Không có khoảng trắng.
+                </p>
               </div>
 
               <div className="space-y-1">
@@ -817,11 +839,16 @@ export const QuestionnaireManagement: React.FC = () => {
                 <input
                   type="text"
                   required
+                  minLength={3}
+                  maxLength={255}
                   placeholder="Ví dụ: Khảo sát nhu cầu vay thế chấp bất động sản"
                   value={newQTitle}
                   onChange={(e) => setNewQTitle(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 focus:outline-none focus:border-blue-500"
                 />
+                <p className="text-[10px] text-slate-400">
+                  Tối thiểu 3 ký tự.
+                </p>
               </div>
 
               <div className="space-y-1">
