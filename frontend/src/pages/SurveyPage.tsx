@@ -572,11 +572,15 @@ export const SurveyPage: React.FC = () => {
   // Switch entire page background to clean slate-50 light mode
   useEffect(() => {
     const originalBodyClass = document.body.className;
+    const originalHtmlClass = document.documentElement.className;
+    document.documentElement.classList.remove('bg-slate-950', 'text-slate-100');
+    document.documentElement.classList.add('bg-slate-50', 'text-slate-900');
     document.body.classList.remove('bg-slate-950', 'text-slate-100');
     document.body.classList.add('bg-slate-50', 'text-slate-900');
 
     return () => {
       document.body.className = originalBodyClass;
+      document.documentElement.className = originalHtmlClass;
     };
   }, []);
 
@@ -603,7 +607,14 @@ export const SurveyPage: React.FC = () => {
         if (data.status === 'COMPLETED') setStatus('completed');
         else if (data.status === 'EXPIRED') setStatus('expired');
         else if (data.status === 'REVOKED') setStatus('revoked');
-        else setStatus('intro');
+        else {
+          const params = new URLSearchParams(window.location.search);
+          if (params.get('start') === 'true') {
+            setStatus('filling');
+          } else {
+            setStatus('intro');
+          }
+        }
       })
       .catch((err) => {
         setErrorMsg(err.message || 'Không thể tải thông tin khảo sát.');
@@ -789,8 +800,8 @@ export const SurveyPage: React.FC = () => {
   // ==========================================================
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200/80 p-8 shadow-sm text-center space-y-4">
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-3 sm:p-6 w-full max-w-full overflow-x-hidden">
+        <div className="w-full max-w-md min-w-0 bg-white rounded-2xl sm:rounded-3xl border border-slate-200/80 p-6 sm:p-8 shadow-sm text-center space-y-4">
           <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
             <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
           </div>
@@ -806,23 +817,23 @@ export const SurveyPage: React.FC = () => {
   // ==========================================================
   if (status === 'completed') {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-lg bg-white rounded-3xl border border-slate-200/90 p-8 sm:p-10 shadow-lg shadow-slate-200/50 text-center space-y-6">
-          <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center mx-auto shadow-sm">
-            <Check className="w-8 h-8 stroke-[3]" />
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-3 sm:p-6 w-full max-w-full overflow-x-hidden">
+        <div className="w-full max-w-lg min-w-0 bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 p-5 sm:p-8 shadow-md shadow-slate-200/40 text-center space-y-6">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center mx-auto shadow-sm">
+            <Check className="w-7 h-7 sm:w-8 sm:h-8 stroke-[3]" />
           </div>
 
           <div className="space-y-2">
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
               Gửi khảo sát thành công!
             </h1>
-            <p className="text-sm text-slate-600 leading-relaxed max-w-md mx-auto">
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-md mx-auto">
               Cảm ơn Quý khách đã dành thời gian cung cấp thông tin. Hệ thống KTEA đã ghi nhận
               toàn bộ câu trả lời để phân tích và chuẩn bị giải pháp tài chính tốt nhất.
             </p>
           </div>
 
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 text-left space-y-2">
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 text-left space-y-2">
             <div className="flex items-center gap-2 font-semibold text-slate-800">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
               <span>Bước tiếp theo:</span>
@@ -846,19 +857,19 @@ export const SurveyPage: React.FC = () => {
   // ==========================================================
   if (status === 'expired') {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white rounded-3xl border border-amber-200/80 p-8 shadow-sm text-center space-y-5">
-          <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center mx-auto">
-            <Clock className="w-7 h-7" />
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-3 sm:p-6 w-full max-w-full overflow-x-hidden">
+        <div className="w-full max-w-md min-w-0 bg-white rounded-2xl sm:rounded-3xl border border-amber-200/80 p-5 sm:p-8 shadow-sm text-center space-y-5">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center mx-auto">
+            <Clock className="w-6 h-6 sm:w-7 sm:h-7" />
           </div>
           <div className="space-y-2">
-            <h2 className="text-xl font-bold text-slate-900">Link khảo sát đã hết hạn</h2>
-            <p className="text-sm text-slate-600 leading-relaxed">
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900">Link khảo sát đã hết hạn</h2>
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
               Vì lý do bảo mật thông tin, đường link khảo sát có thời hạn sử dụng 7 ngày và hiện đã
               hết hạn.
             </p>
           </div>
-          <div className="p-4 rounded-xl bg-amber-50/60 border border-amber-200/60 text-xs text-amber-800 text-left">
+          <div className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200/60 text-xs text-amber-800 text-left">
             Quý khách vui lòng liên hệ nhân viên tư vấn KTEA để được cấp đường link khảo sát mới.
           </div>
         </div>
@@ -871,18 +882,18 @@ export const SurveyPage: React.FC = () => {
   // ==========================================================
   if (status === 'revoked') {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white rounded-3xl border border-rose-200/80 p-8 shadow-sm text-center space-y-5">
-          <div className="w-14 h-14 rounded-full bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center mx-auto">
-            <X className="w-7 h-7" />
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-3 sm:p-6 w-full max-w-full overflow-x-hidden">
+        <div className="w-full max-w-md min-w-0 bg-white rounded-2xl sm:rounded-3xl border border-rose-200/80 p-5 sm:p-8 shadow-sm text-center space-y-5">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center mx-auto">
+            <X className="w-6 h-6 sm:w-7 sm:h-7" />
           </div>
           <div className="space-y-2">
-            <h2 className="text-xl font-bold text-slate-900">Link khảo sát đã bị thu hồi</h2>
-            <p className="text-sm text-slate-600 leading-relaxed">
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900">Link khảo sát đã bị thu hồi</h2>
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
               Đường link này không còn hiệu lực do đã được cập nhật hoặc thay thế bởi hệ thống.
             </p>
           </div>
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
             Vui lòng liên hệ với chuyên viên KTEA để nhận thông tin hỗ trợ mới nhất.
           </div>
         </div>
@@ -895,21 +906,21 @@ export const SurveyPage: React.FC = () => {
   // ==========================================================
   if (status === 'error') {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 p-8 shadow-sm text-center space-y-5">
-          <div className="w-14 h-14 rounded-full bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center mx-auto">
-            <AlertCircle className="w-7 h-7" />
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-3 sm:p-6 w-full max-w-full overflow-x-hidden">
+        <div className="w-full max-w-md min-w-0 bg-white rounded-2xl sm:rounded-3xl border border-slate-200 p-5 sm:p-8 shadow-sm text-center space-y-5">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center mx-auto">
+            <AlertCircle className="w-6 h-6 sm:w-7 sm:h-7" />
           </div>
           <div className="space-y-2">
-            <h2 className="text-xl font-bold text-slate-900">Không thể mở bài khảo sát</h2>
-            <p className="text-sm text-slate-600 leading-relaxed">
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900">Không thể mở bài khảo sát</h2>
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
               {errorMsg || 'Đường dẫn không tồn tại hoặc đã xảy ra lỗi kết nối.'}
             </p>
           </div>
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-colors"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-colors active:scale-[0.99] touch-manipulation cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>Thử tải lại</span>
@@ -932,62 +943,68 @@ export const SurveyPage: React.FC = () => {
     const hasPreviousAnswers = surveyData.savedAnswers.length > 0;
 
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 sm:p-6">
-        <div className="w-full max-w-xl bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-10 shadow-xl shadow-slate-200/40 space-y-6 sm:space-y-8">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-3 sm:p-6 w-full overflow-x-hidden">
+        <div className="w-full max-w-lg bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 p-4 sm:p-8 shadow-md shadow-slate-200/40 space-y-5 sm:space-y-6">
           {/* Header Brand */}
-          <div className="flex items-center justify-between border-b border-slate-100 pb-5">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-700 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 font-bold text-lg tracking-wider">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3.5">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
                 KT
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 tracking-tight">KTEA FINTECH CRM</h3>
-                <p className="text-[11px] text-slate-400 font-medium">Hệ thống khảo sát tài chính</p>
+              <div className="min-w-0">
+                <h3 className="text-xs sm:text-sm font-bold text-slate-900 tracking-tight truncate">
+                  KTEA FINTECH CRM
+                </h3>
+                <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium truncate">
+                  Hệ thống khảo sát tài chính
+                </p>
               </div>
             </div>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200/60">
-              <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+            <span className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200/60">
+              <ShieldCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
               <span>Bảo mật 100%</span>
             </span>
           </div>
 
           {/* Survey Title & Purpose */}
-          <div className="space-y-3">
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight leading-snug">
+          <div className="space-y-2 sm:space-y-3">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight leading-snug">
               {surveyTitle}
             </h1>
-            <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
               {surveyData.questionnaire.description ||
                 'Vui lòng cung cấp một số thông tin cơ bản về nhu cầu và điều kiện tài chính để chúng tôi tư vấn gói sản phẩm phù hợp nhất với Quý khách.'}
             </p>
           </div>
 
           {/* Stats Meta Grid */}
-          <div className="grid grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200/70">
-            <div className="flex items-center gap-3 p-2">
-              <div className="w-9 h-9 rounded-xl bg-white text-blue-600 border border-slate-200 flex items-center justify-center shrink-0 shadow-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 p-3 sm:p-3.5 rounded-xl bg-slate-50 border border-slate-200/70">
+            <div className="flex items-center gap-2.5 p-1 sm:p-1.5">
+              <div className="w-8 h-8 rounded-lg bg-white text-blue-600 border border-slate-200 flex items-center justify-center shrink-0 shadow-xs">
                 <HelpCircle className="w-4 h-4" />
               </div>
-              <div>
-                <span className="text-[11px] text-slate-400 block font-medium">Quy mô khảo sát</span>
-                <span className="text-sm font-bold text-slate-800">{totalVisibleCount} câu hỏi</span>
+              <div className="min-w-0">
+                <span className="text-[10px] text-slate-400 block font-medium">Quy mô khảo sát</span>
+                <span className="text-xs sm:text-sm font-bold text-slate-800">{totalVisibleCount} câu hỏi</span>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 p-2">
-              <div className="w-9 h-9 rounded-xl bg-white text-emerald-600 border border-slate-200 flex items-center justify-center shrink-0 shadow-xs">
+            <div className="flex items-center gap-2.5 p-1 sm:p-1.5">
+              <div className="w-8 h-8 rounded-lg bg-white text-emerald-600 border border-slate-200 flex items-center justify-center shrink-0 shadow-xs">
                 <Clock className="w-4 h-4" />
               </div>
-              <div>
-                <span className="text-[11px] text-slate-400 block font-medium">Thời gian ước tính</span>
-                <span className="text-sm font-bold text-slate-800">~{Math.max(3, Math.ceil(totalVisibleCount * 0.4))} phút</span>
+              <div className="min-w-0">
+                <span className="text-[10px] text-slate-400 block font-medium">Thời gian ước tính</span>
+                <span className="text-xs sm:text-sm font-bold text-slate-800">
+                  ~{Math.max(3, Math.ceil(totalVisibleCount * 0.4))} phút
+                </span>
               </div>
             </div>
           </div>
 
           {/* Resume notification if previous answers exist */}
           {hasPreviousAnswers && (
-            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200/80 text-xs text-emerald-900 flex items-start gap-3">
+            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-xs text-emerald-900 flex items-start gap-2.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <div>
                 <span className="font-semibold block text-emerald-950">
@@ -1002,8 +1019,8 @@ export const SurveyPage: React.FC = () => {
           )}
 
           {/* Trust and Privacy Note */}
-          <div className="text-[11px] text-slate-400 leading-relaxed border-t border-slate-100 pt-4">
-            🔒 <strong>Cam kết bảo mật:</strong> Thông tin của Quý khách được mã hóa chuẩn an toàn
+          <div className="text-[11px] text-slate-400 leading-relaxed border-t border-slate-100 pt-3.5">
+            🔒 <strong>Cam kết bảo mật:</strong> Thông tin của Quý khách được mã hóa an toàn
             và chỉ phục vụ mục đích thẩm định, tư vấn gói tài chính phù hợp từ ngân hàng đối tác.
           </div>
 
@@ -1011,7 +1028,7 @@ export const SurveyPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setStatus('filling')}
-            className="w-full h-13 sm:h-14 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold text-base rounded-2xl shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center gap-2 active:scale-[0.99]"
+            className="w-full h-12 sm:h-13 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm sm:text-base rounded-xl shadow-md shadow-blue-500/20 transition-all flex items-center justify-center gap-2 active:scale-[0.99] touch-manipulation cursor-pointer"
           >
             <span>{hasPreviousAnswers ? 'Tiếp tục làm bài' : 'Bắt đầu khảo sát'}</span>
             <ArrowRight className="w-4 h-4" />
