@@ -40,6 +40,8 @@
     "test:questionnaires": "tsx src/tests/verify-questionnaires.ts",
     "test:assessments": "tsx src/tests/verify-assessments.ts",
     "test:assessment-recommendations": "tsx src/tests/verify-assessment-recommendations.ts",
+    "test:seed-questionnaires": "tsx src/tests/verify-seed-questionnaires.ts",
+    "seed:questionnaires": "tsx src/scripts/seedNeedsAssessmentQuestionnaires.ts",
     "bootstrap:admin": "tsx src/scripts/bootstrapAdmin.ts",
     "test": "tsx src/tests/verify-backend-rbac-full.ts"
   },
