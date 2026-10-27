@@ -21,6 +21,11 @@ import caretakerRoutes from './caretaker.routes.js';
 import questionnaireRoutes from './questionnaire.routes.js';
 import assessmentRoutes from './assessment.routes.js';
 import assessmentRecommendationRoutes from './assessmentRecommendation.routes.js';
+import {
+  staffSurveyRouter,
+  surveyLinkManagementRouter,
+  publicSurveyRouter,
+} from './publicSurvey.routes.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
@@ -33,6 +38,9 @@ router.use('/auth', authRoutes);
 
 // Web Push Notification Endpoints (cron has x-cron-secret, vapid-key public, subscription endpoints)
 router.use('/notifications', pushNotificationRoutes);
+
+// Public Survey Endpoints (unauthenticated, token-only auth)
+router.use('/public/survey', publicSurveyRouter);
 
 // User & Role Management (authenticated, admin-only routes inside)
 router.use('/users', requireAuth, userRoutes);
@@ -52,6 +60,10 @@ router.use('/assessments', requireAuth, assessmentRoutes);
 router.use('/', assessmentRecommendationRoutes);
 router.use('/push-records', requireAuth, pushRecordRoutes);
 router.use('/recommendations', requireAuth, recommendationRoutes);
+
+// Public Survey: staff management routes (authenticated)
+router.use('/customers/:customerId/survey-links', requireAuth, staffSurveyRouter);
+router.use('/survey-links', requireAuth, surveyLinkManagementRouter);
 
 // Analytics, Dashboard, Settings & Data Governance Endpoints
 router.use('/analytics', requireAuth, analyticsRoutes);

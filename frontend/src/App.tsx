@@ -17,6 +17,7 @@ import { AnalyticsPage } from './pages/AnalyticsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { UsersManagementPage } from './pages/UsersManagementPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { SurveyPage } from './pages/SurveyPage';
 
 // Component redirecting PARTNER to their scoped customers page instead of system-wide dashboard
 const DashboardOrPartnerRedirect: React.FC = () => {
@@ -36,6 +37,9 @@ export const App: React.FC = () => {
             <Routes>
               {/* Public Authentication Route */}
               <Route path="/login" element={<LoginPage />} />
+
+              {/* Public Survey Route for customers - No login required */}
+              <Route path="/survey/:token" element={<SurveyPage />} />
 
               {/* Protected Authenticated Routes */}
               <Route
