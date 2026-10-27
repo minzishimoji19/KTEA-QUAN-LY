@@ -29,7 +29,6 @@ const publicSurveyLimiter = rateLimit({
   max: 60,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip || 'unknown',
   message: {
     error: {
       code: 'RATE_LIMIT_EXCEEDED',
