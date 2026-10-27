@@ -171,6 +171,40 @@ class ApiClient {
   public delete<T>(endpoint: string, options?: RequestInit): Promise<T> {
     return this.request<T>(endpoint, { ...options, method: 'DELETE' });
   }
+
+  public async downloadBlob(endpoint: string, options: RequestInit = {}): Promise<Blob> {
+    const url = `${this.baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+    const headers: Record<string, string> = {
+      'X-KTEA-REQUEST': '1',
+      ...((options.headers as Record<string, string>) || {}),
+    };
+    if (options.body && !headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+    }
+    const authToken = getAuthToken();
+    if (authToken && !headers.Authorization) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+
+    const response = await fetch(url, {
+      credentials: 'include',
+      ...options,
+      headers,
+    });
+
+    if (!response.ok) {
+      let errorMessage = `Tải file thất bại (mã lỗi ${response.status})`;
+      try {
+        const errorJson = await response.json();
+        if (errorJson?.error?.message) {
+          errorMessage = errorJson.error.message;
+        }
+      } catch (_) {}
+      throw new ApiClientError(response.status, 'DOWNLOAD_ERROR', errorMessage);
+    }
+
+    return response.blob();
+  }
 }
 
 export const apiClient = new ApiClient();

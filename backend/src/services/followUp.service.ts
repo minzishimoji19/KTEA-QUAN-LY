@@ -679,6 +679,158 @@ export class FollowUpService extends BaseService {
       failed,
     };
   }
+
+  /**
+   * Bulk reopens completed follow-ups back to PENDING.
+   * Clears completedAt without deleting history, notes, or customer linkages.
+   */
+  async reopenBulkFollowUps(data: { ids: string[] }): Promise<{
+    total: number;
+    succeeded: string[];
+    failed: Array<{ id: string; reason: string }>;
+  }> {
+    const uniqueIds = Array.from(new Set(data.ids.filter((id) => Boolean(id && id.trim()))));
+    const succeeded: string[] = [];
+    const failed: Array<{ id: string; reason: string }> = [];
+
+    for (const id of uniqueIds) {
+      try {
+        const fu = await prisma.followUp.findUnique({
+          where: { id },
+        });
+
+        if (!fu) {
+          failed.push({ id, reason: 'Không tìm thấy lịch chăm sóc' });
+          continue;
+        }
+
+        if (fu.status === FollowUpStatus.CANCELLED) {
+          failed.push({ id, reason: 'Lịch chăm sóc đã bị hủy, không thể mở lại' });
+          continue;
+        }
+
+        if (fu.status === FollowUpStatus.PENDING || fu.status === FollowUpStatus.IN_PROGRESS) {
+          // Already open
+          succeeded.push(id);
+          continue;
+        }
+
+        // Status is COMPLETED: transition back to PENDING and clear completedAt
+        await prisma.$transaction(async (tx) => {
+          await tx.followUp.update({
+            where: { id },
+            data: {
+              status: FollowUpStatus.PENDING,
+              completedAt: null,
+            },
+          });
+
+          await tx.customerActivity.create({
+            data: {
+              customerId: fu.customerId,
+              type: ActivityType.SYSTEM_EVENT,
+              title: `Mở lại lịch chăm sóc: ${fu.title}`,
+              description: `Lịch chăm sóc được mở lại (chuyển từ Hoàn thành về Chưa hoàn thành).`,
+            },
+          });
+        });
+
+        succeeded.push(id);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Lỗi khi mở lại lịch chăm sóc';
+        failed.push({ id, reason: msg });
+      }
+    }
+
+    return {
+      total: uniqueIds.length,
+      succeeded,
+      failed,
+    };
+  }
+
+  /**
+   * Bulk reassigns caregivers across multiple follow-ups.
+   * Validates target caretaker, updates follow-up records, and synchronizes assignment grants.
+   */
+  async reassignBulkFollowUps(data: {
+    ids: string[];
+    assignedTo?: string | null;
+    assignedToUserId?: string | null;
+    assignedById?: string | null;
+  }): Promise<{
+    total: number;
+    succeeded: string[];
+    failed: Array<{ id: string; reason: string }>;
+    targetCaregiver: string | null;
+  }> {
+    const uniqueIds = Array.from(new Set(data.ids.filter((id) => Boolean(id && id.trim()))));
+    const succeeded: string[] = [];
+    const failed: Array<{ id: string; reason: string }> = [];
+
+    const validatedCaregiver = await this.validateAssignedTo(
+      data.assignedToUserId !== undefined && data.assignedToUserId !== null
+        ? data.assignedToUserId
+        : data.assignedTo
+    );
+
+    const targetName = validatedCaregiver ? validatedCaregiver.name : null;
+    const targetUserId = validatedCaregiver ? validatedCaregiver.userId : null;
+
+    for (const id of uniqueIds) {
+      try {
+        const fu = await prisma.followUp.findUnique({
+          where: { id },
+        });
+
+        if (!fu) {
+          failed.push({ id, reason: 'Không tìm thấy lịch chăm sóc' });
+          continue;
+        }
+
+        await prisma.$transaction(async (tx) => {
+          await tx.followUp.update({
+            where: { id },
+            data: {
+              assignedTo: targetName,
+              assignedToUserId: targetUserId,
+            },
+          });
+
+          // Synchronize customer assignment grant
+          const syncRes = await assignmentSyncService.syncFollowUpAssignment(tx, {
+            followUpId: id,
+            customerId: fu.customerId,
+            caregiverUserId: targetUserId,
+            caregiverName: targetName,
+            previousCaregiverName: fu.assignedTo,
+            assignedById: data.assignedById || null,
+          });
+
+          await tx.customerActivity.create({
+            data: {
+              customerId: fu.customerId,
+              type: ActivityType.SYSTEM_EVENT,
+              title: `Đổi người chăm sóc: ${fu.title}`,
+              description: `Người chăm sóc đổi từ "${fu.assignedTo || 'Chưa phân công'}" sang "${targetName || 'Chưa phân công'}".${syncRes.notice ? ` ${syncRes.notice}` : ''}`,
+            },
+          });
+        });
+
+        succeeded.push(id);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Lỗi khi cập nhật người chăm sóc';
+        failed.push({ id, reason: msg });
+      }
+    }
+
+    return {
+      total: uniqueIds.length,
+      succeeded,
+      failed,
+      targetCaregiver: targetName,
+    };
+  }
 }
 
 export const followUpService = new FollowUpService();

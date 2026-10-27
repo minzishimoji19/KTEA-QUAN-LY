@@ -77,23 +77,38 @@ export const createBulkFollowUps = async (req: Request, res: Response, next: Nex
 
 export const completeBulkFollowUps = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    if (req.user && req.user.role === Role.PARTNER) {
-      const assignedIds = await customerAccessService.getAssignedCustomerIds(req.user.userId);
-      const assignedSet = new Set(assignedIds);
-      const ids: string[] = Array.isArray(req.body.ids) ? req.body.ids : [];
-      
-      const followUps = await prisma.followUp.findMany({
-        where: { id: { in: ids } },
-        select: { id: true, customerId: true },
-      });
-
-      const unauthorized = followUps.some((f) => !assignedSet.has(f.customerId));
-      if (unauthorized) {
-        throw new ForbiddenError('Bạn không có quyền hoàn thành lịch chăm sóc ngoài phạm vi phân công');
-      }
+    if (req.user && req.user.role !== Role.ADMIN) {
+      throw new ForbiddenError('Chỉ Quản trị viên (ADMIN) mới có quyền hoàn thành lịch chăm sóc');
     }
     const result = await followUpService.completeBulkFollowUps(req.body);
     sendSuccess(res, result, 'Lịch chăm sóc đã được cập nhật hoàn thành');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const reopenBulkFollowUps = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (req.user && req.user.role !== Role.ADMIN) {
+      throw new ForbiddenError('Chỉ Quản trị viên (ADMIN) mới có quyền mở lại lịch chăm sóc');
+    }
+    const result = await followUpService.reopenBulkFollowUps(req.body);
+    sendSuccess(res, result, 'Mở lại lịch chăm sóc hoàn tất');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const reassignBulkFollowUps = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (req.user && req.user.role !== Role.ADMIN) {
+      throw new ForbiddenError('Chỉ Quản trị viên (ADMIN) mới có quyền đổi người chăm sóc');
+    }
+    const result = await followUpService.reassignBulkFollowUps({
+      ...req.body,
+      assignedById: req.user?.userId || null,
+    });
+    sendSuccess(res, result, 'Cập nhật người chăm sóc hàng loạt hoàn tất');
   } catch (error) {
     next(error);
   }
@@ -114,6 +129,11 @@ export const deleteBulkFollowUps = async (req: Request, res: Response, next: Nex
 export const updateFollowUp = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (req.user) {
+      // Bắt buộc: Chỉ ADMIN mới được chuyển trạng thái sang COMPLETED
+      if (req.user.role !== Role.ADMIN && req.body.status === FollowUpStatus.COMPLETED) {
+        throw new ForbiddenError('Chỉ Quản trị viên (ADMIN) mới có quyền hoàn thành lịch chăm sóc');
+      }
+
       if (req.user.role === Role.PARTNER && (req.body.assignedTo !== undefined || req.body.assignedToUserId !== undefined)) {
         throw new ForbiddenError('Đối tác không có quyền thay đổi người chăm sóc');
       }

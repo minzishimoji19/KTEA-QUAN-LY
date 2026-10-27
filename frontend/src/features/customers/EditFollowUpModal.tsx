@@ -3,6 +3,7 @@ import { X, CalendarCheck, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useUpdateFollowUp } from '../../hooks/useFollowUps';
 import { useEligibleCaregivers } from '../../hooks/useCaretakers';
+import { useAuth } from '../../context/AuthContext';
 import { FollowUp, FollowUpStatus } from '../../types/models';
 import { AuthUser } from '../../types/auth';
 
@@ -17,6 +18,7 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
   onClose,
   followUp,
 }) => {
+  const { role } = useAuth();
   const updateFollowUp = useUpdateFollowUp();
   const { data: caregivers, isLoading: isCaregiversLoading } = useEligibleCaregivers();
 
@@ -155,8 +157,8 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
                     const found = caregivers?.find((u: AuthUser) => u.id === uId);
                     setAssignedTo(found ? found.fullName : '');
                   }}
-                  disabled={isCaregiversLoading}
-                  className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-medium focus:outline-none focus:border-blue-500"
+                  disabled={role === 'PARTNER' || isCaregiversLoading}
+                  className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-medium focus:outline-none focus:border-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <option value="">-- Chưa phân công --</option>
                   {!assignedToUserId && assignedTo && (
@@ -169,6 +171,9 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
                       </option>
                     ))}
                 </select>
+                {role === 'PARTNER' && (
+                  <p className="text-[10px] text-slate-500 mt-0.5">Chỉ Quản trị viên mới có quyền đổi người chăm sóc.</p>
+                )}
               </div>
             </div>
 
@@ -183,9 +188,14 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
               >
                 <option value="PENDING">Đang chờ xử lý (PENDING)</option>
                 <option value="IN_PROGRESS">Đang thực hiện (IN_PROGRESS)</option>
-                <option value="COMPLETED">Đã hoàn thành (COMPLETED)</option>
+                {role === 'ADMIN' && (
+                  <option value="COMPLETED">Đã hoàn thành (COMPLETED)</option>
+                )}
                 <option value="CANCELLED">Đã hủy (CANCELLED)</option>
               </select>
+              {role !== 'ADMIN' && (
+                <p className="text-[10px] text-amber-500/80 mt-0.5">Chỉ Quản trị viên (ADMIN) mới có quyền hoàn thành lịch chăm sóc.</p>
+              )}
             </div>
 
             <div>

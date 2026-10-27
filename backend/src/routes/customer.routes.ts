@@ -7,6 +7,7 @@ import {
   deleteCustomer,
   addCustomerTag,
   removeCustomerTag,
+  exportCustomers,
 } from '../controllers/customer.controller.js';
 import { executeBulkAction } from '../controllers/bulkAction.controller.js';
 import {
@@ -39,6 +40,7 @@ import {
   updateCustomerSchema,
   customerIdParamSchema,
   customerTagParamSchema,
+  exportCustomersSchema,
 } from '../validations/customer.validation.js';
 import { bulkActionSchema } from '../validations/bulkAction.validation.js';
 import { createCaseSchema } from '../validations/case.validation.js';
@@ -75,6 +77,19 @@ router.post(
   requireAdmin,
   validateRequest({ body: bulkActionSchema }),
   executeBulkAction
+);
+
+// Export Customers to Excel
+router.get(
+  '/export',
+  validateRequest({ query: exportCustomersSchema }),
+  exportCustomers
+);
+
+router.post(
+  '/export',
+  validateRequest({ body: exportCustomersSchema }),
+  exportCustomers
 );
 
 router.get(

@@ -15,6 +15,12 @@ export const bulkFollowUpIdsSchema = z.object({
   ids: z.array(z.string().min(1, 'Mã lịch chăm sóc không được để trống')).min(1, 'Phải chọn ít nhất một lịch chăm sóc'),
 });
 
+export const bulkReassignFollowUpsSchema = z.object({
+  ids: z.array(z.string().min(1, 'Mã lịch chăm sóc không được để trống')).min(1, 'Phải chọn ít nhất một lịch chăm sóc'),
+  assignedTo: z.string().trim().max(100).optional().nullable().transform((val) => (val === '' ? null : val)),
+  assignedToUserId: z.string().trim().max(100).optional().nullable().transform((val) => (val === '' ? null : val)),
+});
+
 export const createFollowUpSchema = z.object({
   customerId: z.string().min(1, 'Customer ID is required'),
   title: z.string().min(1, 'Title is required').max(255),

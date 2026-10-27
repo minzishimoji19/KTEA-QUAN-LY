@@ -161,24 +161,27 @@ export const questionnaireRepository = {
 
       // 3. Insert initial questions if provided
       if (data.initialQuestions && data.initialQuestions.length > 0) {
-        for (let i = 0; i < data.initialQuestions.length; i++) {
-          const q = data.initialQuestions[i];
-          await tx.questionDefinition.create({
-            data: {
-              versionId: version.id,
-              code: q.code,
-              questionText: q.questionText,
-              description: q.description,
-              questionType: q.questionType,
-              isRequired: q.isRequired ?? false,
-              displayOrder: q.displayOrder ?? i + 1,
-              options: q.options ? (q.options as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
-              validationConfig: q.validationConfig ? (q.validationConfig as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
-              conditionalLogic: q.conditionalLogic ? (q.conditionalLogic as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
-              active: q.active ?? true,
-            },
-          });
-        }
+        const questionRecords = data.initialQuestions.map((q, i) => ({
+          versionId: version.id,
+          code: q.code,
+          questionText: q.questionText,
+          description: q.description || null,
+          questionType: q.questionType,
+          isRequired: q.isRequired ?? false,
+          displayOrder: q.displayOrder ?? i + 1,
+          options: q.options ? (q.options as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+          validationConfig: q.validationConfig
+            ? (q.validationConfig as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+          conditionalLogic: q.conditionalLogic
+            ? (q.conditionalLogic as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+          active: q.active ?? true,
+        }));
+
+        await tx.questionDefinition.createMany({
+          data: questionRecords,
+        });
       }
 
       return tx.questionnaire.findUnique({
@@ -193,6 +196,9 @@ export const questionnaireRepository = {
           },
         },
       });
+    }, {
+      maxWait: 15000,
+      timeout: 60000,
     });
   },
 
@@ -279,47 +285,58 @@ export const questionnaireRepository = {
   },
 
   async saveDraftQuestions(versionId: string, questions: QuestionDefinitionInput[]) {
-    return prisma.$transaction(async (tx) => {
-      // Delete old questions for this draft version
-      await tx.questionDefinition.deleteMany({
-        where: { versionId },
-      });
+    return prisma.$transaction(
+      async (tx) => {
+        // Delete old questions for this draft version
+        await tx.questionDefinition.deleteMany({
+          where: { versionId },
+        });
 
-      // Insert new questions in ordered sequence
-      for (let i = 0; i < questions.length; i++) {
-        const q = questions[i];
-        await tx.questionDefinition.create({
-          data: {
+        // Insert new questions in ordered sequence via createMany
+        if (questions.length > 0) {
+          const questionRecords = questions.map((q, i) => ({
             versionId,
             code: q.code,
             questionText: q.questionText,
-            description: q.description,
+            description: q.description || null,
             questionType: q.questionType,
             isRequired: q.isRequired ?? false,
             displayOrder: q.displayOrder ?? i + 1,
             options: q.options ? (q.options as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
-            validationConfig: q.validationConfig ? (q.validationConfig as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
-            conditionalLogic: q.conditionalLogic ? (q.conditionalLogic as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+            validationConfig: q.validationConfig
+              ? (q.validationConfig as unknown as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
+            conditionalLogic: q.conditionalLogic
+              ? (q.conditionalLogic as unknown as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
             active: q.active ?? true,
+          }));
+
+          await tx.questionDefinition.createMany({
+            data: questionRecords,
+          });
+        }
+
+        // Update version timestamp
+        await tx.questionnaireVersion.update({
+          where: { id: versionId },
+          data: { updatedAt: new Date() },
+        });
+
+        return tx.questionnaireVersion.findUnique({
+          where: { id: versionId },
+          include: {
+            questions: {
+              orderBy: { displayOrder: 'asc' },
+            },
           },
         });
+      },
+      {
+        maxWait: 15000,
+        timeout: 60000,
       }
-
-      // Update version timestamp
-      await tx.questionnaireVersion.update({
-        where: { id: versionId },
-        data: { updatedAt: new Date() },
-      });
-
-      return tx.questionnaireVersion.findUnique({
-        where: { id: versionId },
-        include: {
-          questions: {
-            orderBy: { displayOrder: 'asc' },
-          },
-        },
-      });
-    });
+    );
   },
 
   async reorderQuestions(versionId: string, orders: Array<{ id: string; displayOrder: number }>) {

@@ -71,6 +71,26 @@ export const customerService = {
       data
     );
   },
+
+  exportCustomers: async (params: {
+    selectedIds?: string[];
+    search?: string;
+    status?: string;
+    priority?: string;
+    sourceId?: string;
+    product?: string;
+    need?: string;
+    tag?: string;
+    startDate?: string;
+    endDate?: string;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+  }): Promise<Blob> => {
+    return apiClient.downloadBlob('/customers/export', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  },
 };
 
 export default customerService;

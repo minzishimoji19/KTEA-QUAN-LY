@@ -41,3 +41,23 @@ export const customerTagParamSchema = z.object({
   id: z.string().min(1, 'Customer ID is required'),
   tagId: z.string().min(1, 'Tag ID is required'),
 });
+
+export const exportCustomersSchema = z.object({
+  selectedIds: z
+    .union([
+      z.array(z.string()),
+      z.string().transform((val) => (val ? val.split(',').map((s) => s.trim()).filter(Boolean) : [])),
+    ])
+    .optional(),
+  search: z.string().optional(),
+  status: z.union([z.nativeEnum(CustomerStatus), z.nativeEnum(CaseProgress), z.string()]).optional(),
+  priority: z.nativeEnum(PriorityLevel).optional(),
+  sourceId: z.string().trim().optional().transform((val) => (val && val !== 'all' ? val : undefined)),
+  product: z.string().optional(),
+  need: z.string().optional(),
+  tag: z.string().optional(),
+  startDate: z.string().datetime({ offset: true }).optional().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()),
+  endDate: z.string().datetime({ offset: true }).optional().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()),
+  sortBy: z.enum(['createdAt', 'updatedAt', 'fullName', 'overallStatus']).optional().default('createdAt'),
+  sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
+});

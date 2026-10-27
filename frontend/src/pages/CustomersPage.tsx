@@ -14,6 +14,8 @@ import {
   Copy,
   Check,
   UserCheck,
+  Download,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useToast } from '../context/ToastContext';
@@ -36,6 +38,7 @@ import { useTags } from '../hooks/useTags';
 import { useCustomerSources } from '../hooks/useCustomerSources';
 import { useEligibleCaregivers } from '../hooks/useCaretakers';
 import { authService } from '../services/authService';
+import { customerService } from '../services/customerService';
 import { CustomerSummary, CustomerStatus, PriorityLevel, BulkActionResult } from '../types/models';
 import { CreateCustomerModal } from '../features/customers/CreateCustomerModal';
 import { ScheduleFollowUpModal } from '../features/customers/ScheduleFollowUpModal';
@@ -121,6 +124,7 @@ export const CustomersPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const { role } = useAuth();
+  const { toast } = useToast();
 
   // Queries for filter options
   const { data: products } = useProducts();
@@ -170,7 +174,50 @@ export const CustomersPage: React.FC = () => {
   const [isSubmittingCaregiver, setIsSubmittingCaregiver] = useState(false);
   const { data: eligibleCaregivers } = useEligibleCaregivers();
 
+  // Export Excel State
+  const [isExporting, setIsExporting] = useState(false);
+
   const bulkAction = useBulkAction();
+
+  const handleExportExcel = async () => {
+    setIsExporting(true);
+    try {
+      const hasSelection = selectedCustomerIds.length > 0;
+      const blob = await customerService.exportCustomers({
+        selectedIds: hasSelection ? selectedCustomerIds : undefined,
+        search: search.trim() || undefined,
+        status: status || undefined,
+        priority: priority || undefined,
+        sourceId: sourceId || undefined,
+        product: product || undefined,
+        tag: tag || undefined,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        sortBy,
+        sortOrder,
+      });
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const nowStr = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+      a.download = `KTEA_KhachHang_${nowStr}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast.success(
+        hasSelection
+          ? `Đã xuất file Excel cho ${selectedCustomerIds.length} khách hàng được chọn.`
+          : 'Đã xuất file Excel toàn bộ danh sách khách hàng theo bộ lọc.'
+      );
+    } catch (err: any) {
+      toast.error('Lỗi xuất Excel', err.message || 'Không thể tạo file Excel.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   // Sync local search term if URL changes externally
   useEffect(() => {
@@ -844,6 +891,29 @@ export const CustomersPage: React.FC = () => {
             <Button
               variant="outline"
               size="sm"
+              onClick={handleExportExcel}
+              disabled={isExporting}
+              className="text-xs h-8 gap-1.5 border-emerald-700/60 hover:bg-emerald-950/40 text-emerald-400 hover:text-emerald-300 font-medium"
+              title={
+                selectedCustomerIds.length > 0
+                  ? `Xuất Excel ${selectedCustomerIds.length} khách hàng đã chọn`
+                  : 'Xuất Excel toàn bộ khách hàng theo bộ lọc hiện tại'
+              }
+            >
+              {isExporting ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5" />
+              )}
+              <span>
+                {selectedCustomerIds.length > 0
+                  ? `Xuất Excel (${selectedCustomerIds.length})`
+                  : 'Xuất Excel'}
+              </span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => refetch()}
               className="text-xs h-8"
             >
@@ -1096,6 +1166,23 @@ export const CustomersPage: React.FC = () => {
             >
               <Layers className="w-3.5 h-3.5 text-blue-400" />
               <span>Thêm nguồn khách hàng</span>
+            </Button>
+
+            {/* 2b. Xuất Excel khách hàng đã chọn */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportExcel}
+              disabled={isExporting}
+              className="h-7 text-xs px-2.5 gap-1.5 border-emerald-700/80 text-emerald-300 hover:bg-emerald-950/40 font-medium"
+              title={`Xuất file Excel cho ${selectedCustomerIds.length} khách hàng được chọn`}
+            >
+              {isExporting ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+              ) : (
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+              )}
+              <span>Xuất Excel ({selectedCustomerIds.length})</span>
             </Button>
 
             {/* 3. Cập nhật trạng thái */}

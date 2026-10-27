@@ -16,6 +16,7 @@ export interface CustomerQueryFilters {
   sortBy?: 'createdAt' | 'updatedAt' | 'fullName' | 'overallStatus';
   sortOrder?: 'asc' | 'desc';
   scopedCustomerIds?: string[];
+  selectedIds?: string[];
 }
 
 export class CustomerRepository extends BaseRepository {
@@ -148,6 +149,17 @@ export class CustomerRepository extends BaseRepository {
         where.id = { in: intersected.length > 0 ? intersected : ['__none__'] };
       } else {
         where.id = { in: filters.scopedCustomerIds.length > 0 ? filters.scopedCustomerIds : ['__none__'] };
+      }
+    }
+
+    // Filter by selectedIds if provided
+    if (filters.selectedIds && filters.selectedIds.length > 0) {
+      const selectedSet = new Set(filters.selectedIds);
+      if (where.id && typeof where.id === 'object' && 'in' in where.id && Array.isArray((where.id as any).in)) {
+        const intersected = ((where.id as any).in as string[]).filter((id) => selectedSet.has(id));
+        where.id = { in: intersected.length > 0 ? intersected : ['__none__'] };
+      } else {
+        where.id = { in: filters.selectedIds };
       }
     }
 

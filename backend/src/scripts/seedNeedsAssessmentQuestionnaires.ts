@@ -5,6 +5,7 @@ import {
   validateQuestionnaireDependencyGraph,
 } from '../validations/questionnaire.validation.js';
 import { QuestionnaireVersionStatus, Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 
 export interface SeedOptions {
   dryRun?: boolean;
@@ -25,6 +26,7 @@ export interface SeedResultItem {
  * Seed 5 bộ khảo sát nhu cầu khách hàng vào hệ thống theo cơ chế an toàn, lũy tiến (idempotent).
  * - Trạng thái mặc định: DRAFT (Phiên bản khởi tạo v1, chưa xuất bản).
  * - Nhận diện qua `code`: nếu bộ câu hỏi đã tồn tại trong DB, bỏ qua (không ghi đè dữ liệu cũ).
+ * - Sử dụng createMany và transaction options hợp lý để tối ưu hiệu năng và tránh P2028 timeout trên database từ xa.
  * - Kiểm tra Zod schema và chu trình DAG phụ thuộc trước khi tạo.
  */
 export async function seedNeedsAssessmentQuestionnaires(
@@ -34,7 +36,7 @@ export async function seedNeedsAssessmentQuestionnaires(
   const results: SeedResultItem[] = [];
 
   for (const qData of NEEDS_ASSESSMENT_QUESTIONNAIRES) {
-    // 1. Zod schema validation
+    // 1. Zod schema validation (thực hiện hoàn toàn trên memory trước khi mở transaction)
     const parsed = createQuestionnaireSchema.safeParse({
       code: qData.code,
       title: qData.title,
@@ -48,7 +50,7 @@ export async function seedNeedsAssessmentQuestionnaires(
       throw new Error(`Dữ liệu bộ câu hỏi '${qData.code}' không hợp lệ: ${errMsgs}`);
     }
 
-    // 2. DAG cycle check
+    // 2. DAG cycle check (kiểm tra chu trình phụ thuộc trước khi kết nối DB)
     const graphCheck = validateQuestionnaireDependencyGraph(qData.questions);
     if (!graphCheck.isValid) {
       throw new Error(`Lỗi logic phụ thuộc trong bộ câu hỏi '${qData.code}': ${graphCheck.error}`);
@@ -85,69 +87,120 @@ export async function seedNeedsAssessmentQuestionnaires(
 
     if (existing) {
       const latestVer = existing.versions[0];
+      const questionCount = latestVer?._count.questions ?? 0;
+
+      // Nếu bản nháp tồn tại nhưng chưa có câu hỏi (do lần chạy trước bị gián đoạn giữa chừng)
+      if (latestVer && latestVer.status === QuestionnaireVersionStatus.DRAFT && questionCount === 0) {
+        const questionRecords = qData.questions.map((q, i) => ({
+          id: randomUUID(),
+          versionId: latestVer.id,
+          code: q.code,
+          questionText: q.questionText,
+          description: q.description || null,
+          questionType: q.questionType,
+          isRequired: q.isRequired ?? false,
+          displayOrder: q.displayOrder ?? i + 1,
+          options: q.options ? (q.options as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+          validationConfig: q.validationConfig
+            ? (q.validationConfig as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+          conditionalLogic: q.conditionalLogic
+            ? (q.conditionalLogic as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+          active: q.active ?? true,
+        }));
+
+        await prisma.questionDefinition.createMany({
+          data: questionRecords,
+        });
+
+        results.push({
+          code: qData.code,
+          title: qData.title,
+          action: 'CREATED',
+          questionnaireId: existing.id,
+          versionId: latestVer.id,
+          questionCount: qData.questions.length,
+          status: QuestionnaireVersionStatus.DRAFT,
+        });
+        if (verbose) {
+          console.log(
+            `[SEED] ✓ Đã bổ sung ${qData.questions.length} câu hỏi vào bản nháp hiện có: ${qData.code}`
+          );
+        }
+        continue;
+      }
+
       results.push({
         code: qData.code,
         title: qData.title,
         action: 'SKIPPED_EXISTING',
         questionnaireId: existing.id,
         versionId: latestVer?.id,
-        questionCount: latestVer?._count.questions ?? 0,
+        questionCount,
         status: latestVer?.status ?? QuestionnaireVersionStatus.DRAFT,
       });
       if (verbose) {
-        console.log(`[SEED] ↷ Đã tồn tại, bỏ qua: ${qData.code} (ID: ${existing.id})`);
+        console.log(`[SEED] ↷ Đã tồn tại, bỏ qua: ${qData.code} (ID: ${existing.id}, ${questionCount} câu hỏi)`);
       }
       continue;
     }
 
-    // 5. Tạo mới Questionnaire + Bản nháp v1 + Danh sách câu hỏi trong transaction
-    const created = await prisma.$transaction(async (tx) => {
-      const questionnaire = await tx.questionnaire.create({
-        data: {
-          code: qData.code,
-          title: qData.title,
-          description: qData.description,
-          active: true,
-        },
-      });
-
-      const version = await tx.questionnaireVersion.create({
-        data: {
-          questionnaireId: questionnaire.id,
-          versionNumber: 1,
-          status: QuestionnaireVersionStatus.DRAFT,
-          isCurrent: false,
-          title: 'Phiên bản khởi tạo (Bản nháp)',
-          description: qData.description,
-          createdBy: 'Hệ thống (Seed Khảo sát nhu cầu)',
-        },
-      });
-
-      for (let i = 0; i < qData.questions.length; i++) {
-        const q = qData.questions[i];
-        await tx.questionDefinition.create({
+    // 5. Chuẩn bị trước toàn bộ dữ liệu questionDefinition ngoài transaction
+    // để bên trong transaction chỉ thực hiện đúng 3 lệnh: create questionnaire, create version, createMany questions.
+    const created = await prisma.$transaction(
+      async (tx) => {
+        const questionnaire = await tx.questionnaire.create({
           data: {
-            versionId: version.id,
-            code: q.code,
-            questionText: q.questionText,
-            description: q.description || null,
-            questionType: q.questionType,
-            isRequired: q.isRequired ?? false,
-            displayOrder: q.displayOrder ?? i + 1,
-            options: q.options ? (q.options as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
-            validationConfig: q.validationConfig
-              ? (q.validationConfig as unknown as Prisma.InputJsonValue)
-              : Prisma.JsonNull,
-            conditionalLogic: q.conditionalLogic
-              ? (q.conditionalLogic as unknown as Prisma.InputJsonValue)
-              : Prisma.JsonNull,
-            active: q.active ?? true,
+            code: qData.code,
+            title: qData.title,
+            description: qData.description,
+            active: true,
           },
         });
-      }
 
-      return { questionnaire, version };
-    });
+        const version = await tx.questionnaireVersion.create({
+          data: {
+            questionnaireId: questionnaire.id,
+            versionNumber: 1,
+            status: QuestionnaireVersionStatus.DRAFT,
+            isCurrent: false,
+            title: 'Phiên bản khởi tạo (Bản nháp)',
+            description: qData.description,
+            createdBy: 'Hệ thống (Seed Khảo sát nhu cầu)',
+          },
+        });
+
+        const questionRecords = qData.questions.map((q, i) => ({
+          id: randomUUID(),
+          versionId: version.id,
+          code: q.code,
+          questionText: q.questionText,
+          description: q.description || null,
+          questionType: q.questionType,
+          isRequired: q.isRequired ?? false,
+          displayOrder: q.displayOrder ?? i + 1,
+          options: q.options ? (q.options as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+          validationConfig: q.validationConfig
+            ? (q.validationConfig as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+          conditionalLogic: q.conditionalLogic
+            ? (q.conditionalLogic as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+          active: q.active ?? true,
+        }));
+
+        await tx.questionDefinition.createMany({
+          data: questionRecords,
+        });
+
+        return { questionnaire, version };
+      },
+      {
+        maxWait: 15000, // 15 giây chờ kết nối
+        timeout: 60000, // 60 giây thời lượng tối đa cho transaction
+      }
+    );
 
     results.push({
       code: qData.code,

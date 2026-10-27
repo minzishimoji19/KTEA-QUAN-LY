@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { Role, CustomerStatus } from '@prisma/client';
 import { customerService } from '../services/customer.service.js';
 import { customerAccessService } from '../services/customerAccess.service.js';
+import { customerExportService } from '../services/customerExport.service.js';
 import { auditLogService } from '../services/auditLog.service.js';
 import { sendSuccess, sendCreated, sendPaginated } from '../utils/response.js';
 import { ForbiddenError, BadRequestError } from '../utils/errors.js';
@@ -178,6 +179,54 @@ export const removeCustomerTag = async (req: Request, res: Response, next: NextF
     }
     const result = await customerService.removeTag(req.params.id, req.params.tagId);
     sendSuccess(res, result, 'Tag removed from customer');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const exportCustomers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!req.user) {
+      throw new ForbiddenError('Yêu cầu đăng nhập để xuất dữ liệu');
+    }
+
+    const payload = req.method === 'POST' ? req.body : req.query;
+    const selectedIds = Array.isArray(payload.selectedIds)
+      ? payload.selectedIds
+      : typeof payload.selectedIds === 'string' && payload.selectedIds.trim()
+      ? payload.selectedIds.split(',').map((s: string) => s.trim()).filter(Boolean)
+      : undefined;
+
+    const filters: CustomerQueryFilters = {
+      search: payload.search,
+      status: payload.status,
+      priority: payload.priority,
+      sourceId: payload.sourceId,
+      product: payload.product,
+      need: payload.need,
+      tag: payload.tag,
+      startDate: payload.startDate,
+      endDate: payload.endDate,
+      sortBy: payload.sortBy,
+      sortOrder: payload.sortOrder,
+    };
+
+    const excelBuffer = await customerExportService.exportCustomersToExcel({
+      filters,
+      selectedIds,
+      user: {
+        userId: req.user.userId,
+        role: req.user.role,
+      },
+    });
+
+    const nowStr = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+    const filename = `KTEA_KhachHang_${nowStr}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', excelBuffer.length);
+    res.status(200).send(excelBuffer);
   } catch (error) {
     next(error);
   }

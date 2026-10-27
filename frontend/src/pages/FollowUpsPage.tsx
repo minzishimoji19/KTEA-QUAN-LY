@@ -14,6 +14,10 @@ import {
   Square,
   X,
   User,
+  RotateCcw,
+  UserCheck,
+  Search,
+  Loader2,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -36,6 +40,7 @@ import {
   useBulkDeleteFollowUps,
 } from '../hooks/useFollowUps';
 import { useEligibleCaregivers } from '../hooks/useCaretakers';
+import { followUpService } from '../services/followUpService';
 import { FollowUp } from '../types/models';
 import { AuthUser } from '../types/auth';
 import { categorizeFollowUps } from '../utils/followUpUtils';
@@ -64,6 +69,10 @@ export const FollowUpsPage: React.FC = () => {
   // Bulk actions state
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [isBulkCompleteConfirmOpen, setIsBulkCompleteConfirmOpen] = useState(false);
+  const [isBulkReopenConfirmOpen, setIsBulkReopenConfirmOpen] = useState(false);
+  const [isBulkReassignModalOpen, setIsBulkReassignModalOpen] = useState(false);
+  const [selectedBulkCaregiverId, setSelectedBulkCaregiverId] = useState('');
+  const [isSubmittingReassign, setIsSubmittingReassign] = useState(false);
   const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
 
   // Active section tab
@@ -72,6 +81,14 @@ export const FollowUpsPage: React.FC = () => {
     ? filterParam
     : 'all';
   const [sectionView, setSectionView] = useState<'all' | 'today' | 'overdue' | 'upcoming' | 'completed'>(initialView);
+
+  // Status Filter state: 'all' | 'OPEN' | 'COMPLETED'
+  const statusParam = (searchParams.get('status') as 'all' | 'OPEN' | 'COMPLETED') || 'all';
+  const [statusFilter, setStatusFilter] = useState<'all' | 'OPEN' | 'COMPLETED'>(statusParam);
+
+  // Search query state
+  const searchParam = searchParams.get('q') || '';
+  const [searchQuery, setSearchQuery] = useState(searchParam);
 
   // Caretaker filter state (Chăm sóc bởi ai)
   const assignedToParam = searchParams.get('assignedTo') || 'all';
@@ -88,11 +105,40 @@ export const FollowUpsPage: React.FC = () => {
     setCaretakerFilter(currentAssignedTo);
   }, [searchParams]);
 
+  useEffect(() => {
+    const currentStatus = (searchParams.get('status') as 'all' | 'OPEN' | 'COMPLETED') || 'all';
+    setStatusFilter(currentStatus);
+  }, [searchParams]);
+
   const handleSelectSection = (view: 'all' | 'today' | 'overdue' | 'upcoming' | 'completed') => {
     setSectionView(view);
     const newParams = new URLSearchParams(searchParams);
     newParams.set('filter', view);
     setSearchParams(newParams);
+  };
+
+  const handleSelectStatus = (st: 'all' | 'OPEN' | 'COMPLETED') => {
+    setStatusFilter(st);
+    const newParams = new URLSearchParams(searchParams);
+    if (st === 'all') {
+      newParams.delete('status');
+    } else {
+      newParams.set('status', st);
+    }
+    setSearchParams(newParams);
+    setSelectedTaskIds([]);
+  };
+
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+    const newParams = new URLSearchParams(searchParams);
+    if (!query.trim()) {
+      newParams.delete('q');
+    } else {
+      newParams.set('q', query.trim());
+    }
+    setSearchParams(newParams);
+    setSelectedTaskIds([]);
   };
 
   const handleSelectCaretaker = (caretaker: string) => {
@@ -107,19 +153,62 @@ export const FollowUpsPage: React.FC = () => {
     setSelectedTaskIds([]); // Reset selection when filtering changes
   };
 
-  // Filter tasks by caregiver
+  // Filter tasks by caregiver, status, and search query
   const filteredTasks = useMemo(() => {
     const rawList = followUps || [];
     return rawList.filter((task) => {
-      if (caretakerFilter === 'all') return true;
-      if (caretakerFilter === 'unassigned') return !task.assignedTo && !task.assignedToUserId;
-      return (
-        task.assignedToUserId === caretakerFilter ||
-        task.assignedTo?.toLowerCase() === caretakerFilter.toLowerCase() ||
-        task.assignedToUser?.fullName?.toLowerCase() === caretakerFilter.toLowerCase()
-      );
+      // 1. Caretaker Filter
+      if (caretakerFilter !== 'all') {
+        if (caretakerFilter === 'unassigned') {
+          if (task.assignedTo || task.assignedToUserId) return false;
+        } else {
+          const match =
+            task.assignedToUserId === caretakerFilter ||
+            task.assignedTo?.toLowerCase() === caretakerFilter.toLowerCase() ||
+            task.assignedToUser?.fullName?.toLowerCase() === caretakerFilter.toLowerCase();
+          if (!match) return false;
+        }
+      }
+
+      // 2. Status Filter
+      if (statusFilter === 'OPEN') {
+        if (task.status === 'COMPLETED' || task.status === 'CANCELLED') return false;
+      } else if (statusFilter === 'COMPLETED') {
+        if (task.status !== 'COMPLETED') return false;
+      }
+
+      // 3. Search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.trim().toLowerCase();
+        const matchCustomer = task.customer?.fullName?.toLowerCase().includes(q);
+        const matchPhone = task.customer?.phone?.toLowerCase().includes(q);
+        const matchTitle = task.title?.toLowerCase().includes(q);
+        const matchDesc = task.description?.toLowerCase().includes(q);
+        if (!matchCustomer && !matchPhone && !matchTitle && !matchDesc) return false;
+      }
+
+      return true;
     });
-  }, [followUps, caretakerFilter]);
+  }, [followUps, caretakerFilter, statusFilter, searchQuery]);
+
+  // Current caregivers summary for selected tasks
+  const currentCaregiversSummary = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const selectedTasks = (followUps || []).filter((t) => selectedTaskIds.includes(t.id));
+    selectedTasks.forEach((t) => {
+      const name = t.assignedToUser?.fullName || t.assignedTo || 'Chưa phân công';
+      counts[name] = (counts[name] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .map(([name, count]) => `${name} (${count})`)
+      .join(', ');
+  }, [followUps, selectedTaskIds]);
+
+  const completedSelectedCount = useMemo(() => {
+    return (followUps || []).filter(
+      (t) => selectedTaskIds.includes(t.id) && t.status === 'COMPLETED'
+    ).length;
+  }, [followUps, selectedTaskIds]);
 
   const { today, overdue, upcoming, completed } = categorizeFollowUps(filteredTasks);
 
@@ -164,6 +253,10 @@ export const FollowUpsPage: React.FC = () => {
   };
 
   const handleToggleStatus = async (task: FollowUp) => {
+    if (role !== 'ADMIN') {
+      toast.error('Không có quyền', 'Chỉ Quản trị viên (ADMIN) mới có quyền hoàn thành hoặc mở lại lịch chăm sóc.');
+      return;
+    }
     const isCompleted = task.status === 'COMPLETED';
     await updateFollowUp.mutateAsync({
       id: task.id,
@@ -174,7 +267,7 @@ export const FollowUpsPage: React.FC = () => {
     });
   };
 
-  // Bulk Complete execution
+  // Bulk Complete execution (ADMIN only)
   const handleExecuteBulkComplete = async () => {
     if (selectedTaskIds.length === 0 || bulkCompleteMutation.isPending) return;
     setIsBulkCompleteConfirmOpen(false);
@@ -192,9 +285,78 @@ export const FollowUpsPage: React.FC = () => {
         const reason = result.failed[0]?.reason || 'Không thể hoàn thành các lịch đã chọn';
         toast.error('Thao tác không thành công', reason);
       }
+      setSelectedTaskIds([]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Vui lòng thử lại sau.';
       toast.error('Lỗi khi hoàn thành lịch chăm sóc', msg);
+    }
+  };
+
+  // Bulk Reopen execution (ADMIN only)
+  const handleExecuteBulkReopen = async () => {
+    if (selectedTaskIds.length === 0) return;
+    setIsBulkReopenConfirmOpen(false);
+
+    try {
+      const result = await followUpService.reopenBulkFollowUps(selectedTaskIds);
+      if (result.failed.length === 0) {
+        toast.success(`Đã mở lại thành công ${result.succeeded.length} lịch chăm sóc.`);
+      } else if (result.succeeded.length > 0) {
+        const failureDetails = result.failed.map((f) => f.reason).slice(0, 2).join('; ');
+        toast.warning(
+          `Đã mở lại ${result.succeeded.length}/${result.total} lịch. ${result.failed.length} lịch không thể mở lại (${failureDetails}).`
+        );
+      } else {
+        const reason = result.failed[0]?.reason || 'Không thể mở lại các lịch đã chọn';
+        toast.error('Thao tác không thành công', reason);
+      }
+      setSelectedTaskIds([]);
+      refetch();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Vui lòng thử lại sau.';
+      toast.error('Lỗi khi mở lại lịch chăm sóc', msg);
+    }
+  };
+
+  // Bulk Reassign Caregiver execution (ADMIN only)
+  const handleExecuteBulkReassign = async () => {
+    if (selectedTaskIds.length === 0) return;
+    setIsSubmittingReassign(true);
+
+    try {
+      const foundCaregiver = caregivers?.find((u) => u.id === selectedBulkCaregiverId);
+      const targetName = foundCaregiver ? foundCaregiver.fullName : (selectedBulkCaregiverId === 'unassigned' ? null : null);
+      const targetUserId = foundCaregiver ? foundCaregiver.id : null;
+
+      const result = await followUpService.reassignBulkFollowUps({
+        ids: selectedTaskIds,
+        assignedToUserId: targetUserId,
+        assignedTo: targetName,
+      });
+
+      if (result.failed.length === 0) {
+        toast.success(
+          `Đã đổi người chăm sóc cho ${result.succeeded.length} lịch sang "${result.targetCaregiver || 'Chưa phân công'}".`
+        );
+      } else if (result.succeeded.length > 0) {
+        const failureDetails = result.failed.map((f) => f.reason).slice(0, 2).join('; ');
+        toast.warning(
+          `Đã đổi người chăm sóc cho ${result.succeeded.length}/${result.total} lịch. ${result.failed.length} lịch thất bại (${failureDetails}).`
+        );
+      } else {
+        const reason = result.failed[0]?.reason || 'Không thể đổi người chăm sóc';
+        toast.error('Thao tác không thành công', reason);
+      }
+
+      setIsBulkReassignModalOpen(false);
+      setSelectedBulkCaregiverId('');
+      setSelectedTaskIds([]);
+      refetch();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Vui lòng thử lại sau.';
+      toast.error('Lỗi khi đổi người chăm sóc', msg);
+    } finally {
+      setIsSubmittingReassign(false);
     }
   };
 
@@ -216,6 +378,7 @@ export const FollowUpsPage: React.FC = () => {
         const reason = result.failed[0]?.reason || 'Không thể xóa các lịch đã chọn';
         toast.error('Không thể xóa lịch', reason);
       }
+      setSelectedTaskIds([]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Vui lòng thử lại sau.';
       toast.error('Lỗi khi xóa lịch chăm sóc', msg);
@@ -318,16 +481,19 @@ export const FollowUpsPage: React.FC = () => {
 
         {/* Action Controls */}
         <div className="flex items-center gap-1.5 self-end sm:self-center flex-shrink-0">
-          <Button
-            variant={isDone ? 'outline' : 'primary'}
-            size="sm"
-            onClick={() => handleToggleStatus(task)}
-            className={`h-7 px-2.5 text-xs font-medium ${
-              !isDone ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : ''
-            }`}
-          >
-            {isDone ? 'Mở lại' : 'Hoàn thành'}
-          </Button>
+          {/* Phân quyền bắt buộc: Chỉ ADMIN mới được hoàn thành hoặc mở lại lịch */}
+          {role === 'ADMIN' && (
+            <Button
+              variant={isDone ? 'outline' : 'primary'}
+              size="sm"
+              onClick={() => handleToggleStatus(task)}
+              className={`h-7 px-2.5 text-xs font-medium ${
+                !isDone ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : ''
+              }`}
+            >
+              {isDone ? 'Mở lại' : 'Hoàn thành'}
+            </Button>
+          )}
 
           <Button
             variant="outline"
@@ -470,53 +636,93 @@ export const FollowUpsPage: React.FC = () => {
         />
       </div>
 
-      {/* Filter Row: Sections + Caretaker Filter */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 p-2 rounded-lg border border-slate-800">
-        {/* Section Filter Switcher */}
-        <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono">
-          {[
-            { key: 'all', label: `Tất cả (${filteredTasks.length})` },
-            { key: 'today', label: `Hôm nay (${today.length})` },
-            { key: 'overdue', label: `Quá hạn (${overdue.length})` },
-            { key: 'upcoming', label: `Sắp tới (${upcoming.length})` },
-            { key: 'completed', label: `Đã hoàn thành (${completed.length})` },
-          ].map((t) => (
+      {/* Filter Row: Search + Status + Caretaker Filter */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+        {/* Search input */}
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Tìm theo tên khách, SĐT, tiêu đề..."
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="w-full h-8 pl-8 pr-7 bg-slate-950 border border-slate-800 rounded text-slate-200 text-xs focus:outline-none focus:border-blue-500 font-sans"
+          />
+          {searchQuery && (
             <button
-              key={t.key}
-              onClick={() => handleSelectSection(t.key as typeof sectionView)}
-              className={`px-3 py-1.5 rounded transition-colors ${
-                sectionView === t.key
-                  ? 'bg-blue-600 text-white font-medium shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-              }`}
+              type="button"
+              onClick={() => handleSearchChange('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-0.5"
             >
-              {t.label}
+              <X className="w-3 h-3" />
             </button>
-          ))}
+          )}
         </div>
 
-        {/* Chăm sóc bởi ai - Caretaker Filter Dropdown */}
-        <div className="flex items-center gap-2 text-xs">
-          <label className="text-slate-400 font-mono flex items-center gap-1 shrink-0">
-            <Filter className="w-3.5 h-3.5 text-blue-400" />
-            <span>Chăm sóc bởi ai:</span>
-          </label>
-          <select
-            value={caretakerFilter}
-            onChange={(e) => handleSelectCaretaker(e.target.value)}
-            disabled={isCaregiversLoading}
-            className="h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono text-xs focus:outline-none focus:border-blue-500"
-          >
-            <option value="all">Tất cả người chăm sóc</option>
-            <option value="unassigned">Chưa phân công</option>
-            {caregivers &&
-              caregivers.map((u: AuthUser) => (
-                <option key={u.id} value={u.id}>
-                  {u.fullName} ({u.role === 'ADMIN' ? 'Quản trị viên' : 'Nhân viên'})
-                </option>
-              ))}
-          </select>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Status Filter (Yêu cầu 4) */}
+          <div className="flex items-center gap-1.5 text-xs">
+            <label className="text-slate-400 font-mono flex items-center gap-1 shrink-0">
+              <Filter className="w-3.5 h-3.5 text-blue-400" />
+              <span>Trạng thái:</span>
+            </label>
+            <select
+              value={statusFilter}
+              onChange={(e) => handleSelectStatus(e.target.value as any)}
+              className="h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono text-xs focus:outline-none focus:border-blue-500"
+            >
+              <option value="all">Tất cả trạng thái</option>
+              <option value="OPEN">Chưa hoàn thành / Đang mở</option>
+              <option value="COMPLETED">Đã hoàn thành</option>
+            </select>
+          </div>
+
+          {/* Chăm sóc bởi ai - Caretaker Filter Dropdown */}
+          <div className="flex items-center gap-1.5 text-xs">
+            <label className="text-slate-400 font-mono flex items-center gap-1 shrink-0">
+              <User className="w-3.5 h-3.5 text-blue-400" />
+              <span>Người chăm sóc:</span>
+            </label>
+            <select
+              value={caretakerFilter}
+              onChange={(e) => handleSelectCaretaker(e.target.value)}
+              disabled={isCaregiversLoading}
+              className="h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono text-xs focus:outline-none focus:border-blue-500"
+            >
+              <option value="all">Tất cả người chăm sóc</option>
+              <option value="unassigned">Chưa phân công</option>
+              {caregivers &&
+                caregivers.map((u: AuthUser) => (
+                  <option key={u.id} value={u.id}>
+                    {u.fullName} ({u.role === 'ADMIN' ? 'Quản trị viên' : 'Nhân viên'})
+                  </option>
+                ))}
+            </select>
+          </div>
         </div>
+      </div>
+
+      {/* Section Filter Switcher */}
+      <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-950/80 border border-slate-800 rounded-lg text-xs font-mono">
+        {[
+          { key: 'all', label: `Tất cả (${filteredTasks.length})` },
+          { key: 'today', label: `Hôm nay (${today.length})` },
+          { key: 'overdue', label: `Quá hạn (${overdue.length})` },
+          { key: 'upcoming', label: `Sắp tới (${upcoming.length})` },
+          { key: 'completed', label: `Đã hoàn thành (${completed.length})` },
+        ].map((t) => (
+          <button
+            key={t.key}
+            onClick={() => handleSelectSection(t.key as typeof sectionView)}
+            className={`px-3 py-1.5 rounded transition-colors ${
+              sectionView === t.key
+                ? 'bg-blue-600 text-white font-medium shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {/* Bulk Operations Toolbar */}
@@ -549,18 +755,54 @@ export const FollowUpsPage: React.FC = () => {
           </div>
 
           {selectedTaskIds.length > 0 && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => setIsBulkCompleteConfirmOpen(true)}
-                disabled={bulkCompleteMutation.isPending || bulkDeleteMutation.isPending}
-                className="h-7 px-3 text-xs bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5 font-medium"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Hoàn thành đã chọn</span>
-              </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* 1. Hoàn thành đã chọn (Chỉ ADMIN) */}
+              {role === 'ADMIN' && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setIsBulkCompleteConfirmOpen(true)}
+                  disabled={bulkCompleteMutation.isPending || bulkDeleteMutation.isPending}
+                  className="h-7 px-3 text-xs bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5 font-medium"
+                  title="Đánh dấu hoàn thành các lịch đã chọn"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Hoàn thành ({selectedTaskIds.length})</span>
+                </Button>
+              )}
 
+              {/* 2. Mở lại lịch chăm sóc (Yêu cầu 2: Chỉ ADMIN) */}
+              {role === 'ADMIN' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsBulkReopenConfirmOpen(true)}
+                  className="h-7 px-3 text-xs border-amber-600/80 text-amber-300 hover:bg-amber-950/40 gap-1.5 font-medium"
+                  title="Mở lại các lịch chăm sóc đã hoàn thành về trạng thái Chưa hoàn thành"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Mở lại ({completedSelectedCount > 0 ? completedSelectedCount : selectedTaskIds.length})</span>
+                </Button>
+              )}
+
+              {/* 3. Đổi người chăm sóc (Yêu cầu 3: Chỉ ADMIN) */}
+              {role === 'ADMIN' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedBulkCaregiverId('');
+                    setIsBulkReassignModalOpen(true);
+                  }}
+                  className="h-7 px-3 text-xs border-blue-600/80 text-blue-300 hover:bg-blue-950/40 gap-1.5 font-medium"
+                  title="Đổi người chăm sóc hàng loạt cho các lịch đã chọn"
+                >
+                  <UserCheck className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Đổi người chăm sóc ({selectedTaskIds.length})</span>
+                </Button>
+              )}
+
+              {/* 4. Xóa lịch đã chọn */}
               {role !== 'PARTNER' && (
                 <Button
                   variant="destructive"
@@ -570,7 +812,7 @@ export const FollowUpsPage: React.FC = () => {
                   className="h-7 px-3 text-xs gap-1.5"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Xóa lịch đã chọn</span>
+                  <span>Xóa ({selectedTaskIds.length})</span>
                 </Button>
               )}
 
@@ -767,6 +1009,123 @@ export const FollowUpsPage: React.FC = () => {
         onConfirm={handleExecuteBulkDelete}
         onCancel={() => setIsBulkDeleteConfirmOpen(false)}
       />
+
+      {/* Bulk Reopen Confirmation Dialog (Yêu cầu 2) */}
+      <ConfirmDialog
+        isOpen={isBulkReopenConfirmOpen}
+        title="Mở lại lịch chăm sóc hàng loạt"
+        message={`Bạn có chắc chắn muốn mở lại ${
+          completedSelectedCount > 0 ? completedSelectedCount : selectedTaskIds.length
+        } lịch chăm sóc đã hoàn thành trong số ${
+          selectedTaskIds.length
+        } lịch được chọn? Sau khi mở lại, trạng thái sẽ chuyển về Chưa hoàn thành (PENDING) để tiếp tục theo dõi, mọi lịch sử trao đổi và ghi chú vẫn được bảo lưu toàn vẹn.`}
+        confirmLabel="Xác nhận mở lại"
+        onConfirm={handleExecuteBulkReopen}
+        onCancel={() => setIsBulkReopenConfirmOpen(false)}
+      />
+
+      {/* Bulk Reassign Caregiver Modal (Yêu cầu 3) */}
+      {isBulkReassignModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div
+            className="w-full max-w-md rounded-lg border border-slate-800 bg-slate-900 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
+            role="dialog"
+            aria-modal="true"
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-3.5 border-b border-slate-800 bg-slate-950/60">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                  <UserCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-100 font-mono">
+                    Đổi người chăm sóc hàng loạt
+                  </h3>
+                  <p className="text-[10px] text-slate-400">
+                    Phân công lại nhân viên phụ trách cho các lịch chăm sóc đã chọn
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBulkReassignModalOpen(false)}
+                className="text-slate-400 hover:text-slate-200 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 space-y-3.5 text-xs">
+              <div className="p-2.5 rounded bg-slate-950 border border-slate-800 space-y-1.5 font-mono">
+                <div className="flex justify-between items-center text-slate-300">
+                  <span>Số lịch bị ảnh hưởng:</span>
+                  <span className="font-bold text-blue-400 px-1.5 py-0.5 rounded bg-blue-950/80 border border-blue-800/60">
+                    {selectedTaskIds.length} lịch
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-900">
+                  <span className="text-slate-500">Người chăm sóc hiện tại: </span>
+                  <span className="text-slate-200">{currentCaregiversSummary || 'Chưa phân công'}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-slate-300 mb-1.5">
+                  Chọn người chăm sóc mới
+                </label>
+                <select
+                  value={selectedBulkCaregiverId}
+                  onChange={(e) => setSelectedBulkCaregiverId(e.target.value)}
+                  disabled={isCaregiversLoading || isSubmittingReassign}
+                  className="w-full h-9 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-200 font-medium focus:outline-none focus:border-blue-500"
+                >
+                  <option value="">-- Chưa phân công (Bỏ người chăm sóc) --</option>
+                  {caregivers &&
+                    caregivers.map((u: AuthUser) => (
+                      <option key={u.id} value={u.id}>
+                        {u.fullName} ({u.role === 'ADMIN' ? 'Quản trị viên' : 'Nhân viên'})
+                      </option>
+                    ))}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Hệ thống sẽ cập nhật người phụ trách cho toàn bộ các lịch đã chọn và tự động đồng bộ quyền truy cập khách hàng.
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-2 p-3 bg-slate-950/80 border-t border-slate-800">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsBulkReassignModalOpen(false)}
+                disabled={isSubmittingReassign}
+                className="text-xs h-8"
+              >
+                Hủy
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={handleExecuteBulkReassign}
+                disabled={isSubmittingReassign}
+                className="text-xs h-8 bg-blue-600 hover:bg-blue-500 text-white gap-1.5 font-medium"
+              >
+                {isSubmittingReassign ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <UserCheck className="w-3.5 h-3.5" />
+                )}
+                <span>Xác nhận đổi người chăm sóc</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

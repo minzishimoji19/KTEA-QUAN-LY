@@ -48,6 +48,18 @@ export const followUpService = {
     return apiClient.post<BulkOperationResult>('/follow-ups/bulk-complete', { ids });
   },
 
+  reopenBulkFollowUps: async (ids: string[]): Promise<BulkOperationResult> => {
+    return apiClient.post<BulkOperationResult>('/follow-ups/bulk-reopen', { ids });
+  },
+
+  reassignBulkFollowUps: async (data: {
+    ids: string[];
+    assignedTo?: string | null;
+    assignedToUserId?: string | null;
+  }): Promise<BulkOperationResult & { targetCaregiver?: string | null }> => {
+    return apiClient.post<BulkOperationResult & { targetCaregiver?: string | null }>('/follow-ups/bulk-reassign', data);
+  },
+
   deleteBulkFollowUps: async (ids: string[]): Promise<BulkOperationResult> => {
     return apiClient.post<BulkOperationResult>('/follow-ups/bulk-delete', { ids });
   },

@@ -4,6 +4,8 @@ import {
   createFollowUp,
   createBulkFollowUps,
   completeBulkFollowUps,
+  reopenBulkFollowUps,
+  reassignBulkFollowUps,
   deleteBulkFollowUps,
   updateFollowUp,
   deleteFollowUp,
@@ -14,6 +16,7 @@ import {
   createFollowUpSchema,
   createBulkFollowUpSchema,
   bulkFollowUpIdsSchema,
+  bulkReassignFollowUpsSchema,
   updateFollowUpSchema,
   followUpIdParamSchema,
 } from '../validations/followUp.validation.js';
@@ -42,6 +45,18 @@ router.post(
   '/bulk-complete',
   validateRequest({ body: bulkFollowUpIdsSchema }),
   completeBulkFollowUps
+);
+
+router.post(
+  '/bulk-reopen',
+  validateRequest({ body: bulkFollowUpIdsSchema }),
+  reopenBulkFollowUps
+);
+
+router.post(
+  '/bulk-reassign',
+  validateRequest({ body: bulkReassignFollowUpsSchema }),
+  reassignBulkFollowUps
 );
 
 router.post(
