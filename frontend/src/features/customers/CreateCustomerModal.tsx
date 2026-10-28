@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { X, UserPlus, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { VietnameseDatePicker } from '../../components/ui/VietnameseDatePicker';
 import { useCreateCustomer } from '../../hooks/useCustomers';
 import { useCustomerSources } from '../../hooks/useCustomerSources';
 
@@ -35,6 +36,8 @@ export const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({ isOpen
     register,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<CustomerFormData>({
     resolver: zodResolver(createCustomerFormSchema),
@@ -61,7 +64,7 @@ export const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({ isOpen
         phone: data.phone.trim(),
         email: data.email?.trim() || null,
         gender: data.gender || null,
-        dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth).toISOString() : null,
+        dateOfBirth: data.dateOfBirth ? data.dateOfBirth : null,
         note: noteValue,
         address: noteValue, // Retain address in backend payload for full backward compatibility
         sourceId: data.sourceId || null,
@@ -185,12 +188,15 @@ export const CreateCustomerModal: React.FC<CreateCustomerModalProps> = ({ isOpen
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] font-medium text-slate-400 mb-1">
-                  Ngày sinh
+                  Ngày sinh (dd/MM/yyyy)
                 </label>
-                <input
-                  type="date"
-                  {...register('dateOfBirth')}
-                  className="w-full h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
+                <VietnameseDatePicker
+                  variant="dark"
+                  size="sm"
+                  value={watch('dateOfBirth') || ''}
+                  maxDate={new Date().toISOString().slice(0, 10)}
+                  placeholder="dd/mm/yyyy"
+                  onChange={(isoDate) => setValue('dateOfBirth', isoDate, { shouldValidate: true })}
                 />
               </div>
 

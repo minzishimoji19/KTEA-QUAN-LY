@@ -1,4 +1,4 @@
-import { CustomerCase, CaseProgress, CustomerStatus } from '@prisma/client';
+import { CustomerCase, CaseProgress, CaseStatus, CustomerStatus, FollowUpStatus } from '@prisma/client';
 
 export interface CustomerWithCases {
   id?: string;
@@ -12,9 +12,20 @@ export interface CustomerWithCases {
   [key: string]: any;
 }
 
+export const CASE_PROGRESS_STEPS: CaseProgress[] = [
+  CaseProgress.NOT_SELECTED,
+  CaseProgress.REGISTRATION_CREATED,
+  CaseProgress.REGISTRATION_COMPLETED,
+  CaseProgress.UNDER_REVIEW,
+  CaseProgress.APPROVED,
+  CaseProgress.CARD_ISSUED,
+  CaseProgress.CARD_ACTIVATED,
+  CaseProgress.COMPLETED,
+];
+
 /**
  * Determines the latest case for a customer.
- * 
+ *
  * Business Rules:
  * 1. Primary sorting criteria: createdAt DESC (creation time of the case).
  * 2. Strict rule: updatedAt must NEVER be used as primary, as updating an old case
@@ -72,15 +83,6 @@ export interface CustomerCareStats {
   }>;
 }
 
-/**
- * Resolves care statistics for a customer:
- * - careCount: Total actual care tasks (non-cancelled FollowUps).
- *   Does not artificially jump from 0 to 1 only upon completion;
- *   preserves the exact count so updating status does NOT change the count.
- * - latestCareStatus: 'COMPLETED' (green), 'PENDING' (red), 'OVERDUE' (red), 'IN_PROGRESS' (blue), 'CANCELLED' (slate), 'NONE'
- * - lastCareAt: Timestamp of the most recent completed care task (or latest care activity)
- * - careFollowUps: Breakdown of individual care tasks with effective status
- */
 export function resolveCustomerCareStats(customer: Record<string, any>): CustomerCareStats {
   const followUps: any[] = Array.isArray(customer.followUps) ? customer.followUps : [];
   const now = Date.now();
@@ -109,17 +111,16 @@ export function resolveCustomerCareStats(customer: Record<string, any>): Custome
       effectiveStatus,
       dueAt: f.dueAt ? new Date(f.dueAt).toISOString() : '',
       completedAt: f.completedAt ? new Date(f.completedAt).toISOString() : null,
-      assignedTo: f.assignedTo || null,
+      assignedTo: f.assignedToUser?.fullName || f.assignedTo || null,
     };
   });
 
   const activeFollowUps = enrichedFollowUps.filter((f) => f.status !== 'CANCELLED');
   const completedFollowUps = enrichedFollowUps.filter((f) => f.status === 'COMPLETED');
-  const pendingFollowUps = enrichedFollowUps.filter((f) => f.status === 'PENDING' || f.status === 'IN_PROGRESS' || f.effectiveStatus === 'OVERDUE');
+  const pendingFollowUps = enrichedFollowUps.filter(
+    (f) => f.status === 'PENDING' || f.status === 'IN_PROGRESS' || f.effectiveStatus === 'OVERDUE'
+  );
 
-  // Care count:
-  // If followUps are loaded, count non-cancelled care interactions.
-  // Otherwise, fallback to _count.followUps if available.
   let careCount = 0;
   if (followUps.length > 0) {
     careCount = activeFollowUps.length;
@@ -130,12 +131,10 @@ export function resolveCustomerCareStats(customer: Record<string, any>): Custome
   const completedCareCount = completedFollowUps.length;
   const pendingCareCount = pendingFollowUps.length;
 
-  // Determine overall / latest care status
   let latestCareStatus: 'COMPLETED' | 'PENDING' | 'OVERDUE' | 'IN_PROGRESS' | 'CANCELLED' | 'NONE' = 'NONE';
   if (careCount === 0) {
     latestCareStatus = followUps.length > 0 ? 'CANCELLED' : 'NONE';
   } else {
-    // If any pending follow-up is overdue -> OVERDUE (highest priority warning)
     const hasOverdue = pendingFollowUps.some((f) => f.effectiveStatus === 'OVERDUE');
     if (hasOverdue) {
       latestCareStatus = 'OVERDUE';
@@ -148,7 +147,6 @@ export function resolveCustomerCareStats(customer: Record<string, any>): Custome
     }
   }
 
-  // Determine last care timestamp: most recent completedAt, or fallback to most recent updatedAt/dueAt of completed
   let lastCareAt: string | null = null;
   if (completedFollowUps.length > 0) {
     const sortedCompleted = [...completedFollowUps].sort((a, b) => {
@@ -173,8 +171,164 @@ export function resolveCustomerCareStats(customer: Record<string, any>): Custome
   };
 }
 
+export type CustomerSurveyStatus = 'NOT_CREATED' | 'SENT' | 'COMPLETED';
+
+export interface CustomerSurveyStats {
+  surveyStatus: CustomerSurveyStatus;
+  surveyStatusLabel: 'Chưa tạo link khảo sát' | 'Đã gửi khảo sát' | 'Khách đã điền khảo sát';
+  totalAssessments: number;
+  completedCount: number;
+  activeLinkCount: number;
+  expiredLinkCount: number;
+  revokedLinkCount: number;
+  hasDraftProgress: boolean;
+  hasOpenedLink: boolean;
+  hasExpiredOrRevokedLinks: boolean;
+  latestInactiveLinkStatus: 'EXPIRED' | 'REVOKED' | null;
+  latestCompletedAt: string | null;
+  latestLinkCreatedAt: string | null;
+  latestLinkExpiresAt: string | null;
+}
+
 /**
- * Attaches resolved status and care statistics to customer object consistently for all API responses.
+ * Computes the customer's survey status from real database assessment & publicSurveyLink records.
+ * Rules (PHẦN 2):
+ * 1. COMPLETED ("Khách đã điền khảo sát"): Has at least 1 valid completed Assessment (`status === 'COMPLETED'`).
+ *    Takes priority even if a newer survey link was sent afterwards.
+ * 2. SENT ("Đã gửi khảo sát"): No completed assessment yet, and has at least 1 active, non-expired, non-revoked
+ *    public survey link (even if opened or partially answered/draft saved).
+ * 3. NOT_CREATED ("Chưa tạo link khảo sát"): No completed assessment and no currently usable survey link.
+ *    If previous links were all expired or revoked, returns `NOT_CREATED` with `hasExpiredOrRevokedLinks = true`
+ *    and `latestInactiveLinkStatus` for tooltip display without deleting link history.
+ */
+export function computeCustomerSurveyStatus(
+  assessments: any[] | null | undefined,
+  now: Date = new Date()
+): CustomerSurveyStats {
+  const list = Array.isArray(assessments) ? assessments : [];
+  const nowMs = now.getTime();
+
+  let completedCount = 0;
+  let activeLinkCount = 0;
+  let expiredLinkCount = 0;
+  let revokedLinkCount = 0;
+  let hasDraftProgress = false;
+  let hasOpenedLink = false;
+  let latestInactiveLinkStatus: 'EXPIRED' | 'REVOKED' | null = null;
+  let latestCompletedAt: string | null = null;
+  let latestLinkCreatedAt: string | null = null;
+  let latestLinkExpiresAt: string | null = null;
+
+  for (const a of list) {
+    if (!a) continue;
+
+    if (a.status === 'COMPLETED') {
+      completedCount++;
+      const compTime = a.completedAt || a.submittedAt || a.updatedAt || a.startedAt;
+      if (compTime) {
+        const iso = compTime instanceof Date ? compTime.toISOString() : String(compTime);
+        if (!latestCompletedAt || new Date(iso).getTime() > new Date(latestCompletedAt).getTime()) {
+          latestCompletedAt = iso;
+        }
+      }
+    }
+
+    const answerCount =
+      typeof a._count?.answers === 'number'
+        ? a._count.answers
+        : Array.isArray(a.answers)
+        ? a.answers.length
+        : 0;
+
+    const link = a.publicSurveyLink || a.publicLink;
+    if (link) {
+      const linkCreatedIso =
+        link.createdAt instanceof Date
+          ? link.createdAt.toISOString()
+          : link.createdAt
+          ? String(link.createdAt)
+          : null;
+      if (
+        linkCreatedIso &&
+        (!latestLinkCreatedAt || new Date(linkCreatedIso).getTime() > new Date(latestLinkCreatedAt).getTime())
+      ) {
+        latestLinkCreatedAt = linkCreatedIso;
+      }
+
+      if (a.status === 'COMPLETED' || link.status === 'COMPLETED') {
+        continue;
+      }
+
+      const isRevoked =
+        link.status === 'REVOKED' ||
+        Boolean(link.revokedAt) ||
+        link.isActive === false ||
+        a.status === 'CANCELLED';
+      const expiresMs = link.expiresAt ? new Date(link.expiresAt).getTime() : 0;
+      const isExpired = !isRevoked && (link.status === 'EXPIRED' || (expiresMs > 0 && expiresMs <= nowMs));
+
+      if (isRevoked) {
+        revokedLinkCount++;
+        if (!latestInactiveLinkStatus) {
+          latestInactiveLinkStatus = 'REVOKED';
+        }
+      } else if (isExpired) {
+        expiredLinkCount++;
+        if (!latestInactiveLinkStatus) {
+          latestInactiveLinkStatus = 'EXPIRED';
+        }
+      } else if ((link.status === 'ACTIVE' || link.isActive !== false) && a.status !== 'CANCELLED') {
+        activeLinkCount++;
+        if (!latestLinkExpiresAt && link.expiresAt) {
+          latestLinkExpiresAt =
+            link.expiresAt instanceof Date ? link.expiresAt.toISOString() : String(link.expiresAt);
+        }
+        if (link.lastAccessedAt || link.openedAt || a.status === 'IN_PROGRESS') {
+          hasOpenedLink = true;
+        }
+        if (answerCount > 0 || a.status === 'IN_PROGRESS') {
+          hasDraftProgress = true;
+        }
+      }
+    } else if (a.status === 'IN_PROGRESS' && answerCount > 0) {
+      hasDraftProgress = true;
+    }
+  }
+
+  let surveyStatus: CustomerSurveyStatus = 'NOT_CREATED';
+  let surveyStatusLabel: CustomerSurveyStats['surveyStatusLabel'] = 'Chưa tạo link khảo sát';
+
+  if (completedCount > 0) {
+    surveyStatus = 'COMPLETED';
+    surveyStatusLabel = 'Khách đã điền khảo sát';
+  } else if (activeLinkCount > 0) {
+    surveyStatus = 'SENT';
+    surveyStatusLabel = 'Đã gửi khảo sát';
+  } else {
+    surveyStatus = 'NOT_CREATED';
+    surveyStatusLabel = 'Chưa tạo link khảo sát';
+  }
+
+  return {
+    surveyStatus,
+    surveyStatusLabel,
+    totalAssessments: list.length,
+    completedCount,
+    activeLinkCount,
+    expiredLinkCount,
+    revokedLinkCount,
+    hasDraftProgress,
+    hasOpenedLink,
+    hasExpiredOrRevokedLinks: expiredLinkCount + revokedLinkCount > 0,
+    latestInactiveLinkStatus,
+    latestCompletedAt,
+    latestLinkCreatedAt,
+    latestLinkExpiresAt,
+  };
+}
+
+/**
+ * Attaches resolved status, care statistics, and survey statistics to customer object consistently for all API responses.
  */
 export function enrichCustomerWithStatus<T extends CustomerWithCases>(customer: T): T & {
   rawOverallStatus: string;
@@ -206,35 +360,60 @@ export function enrichCustomerWithStatus<T extends CustomerWithCases>(customer: 
   }>;
   assignedCaregiverName: string;
   caregiverName: string;
+  surveyStatus: CustomerSurveyStatus;
+  surveyStatusLabel: string;
+  surveyStats: CustomerSurveyStats;
 } {
+  if (!customer) return customer as any;
+
   const rawStatus = (customer as any).rawOverallStatus || (customer as any).careStatus || customer.overallStatus;
   const latestCase = getLatestCase(customer.cases);
   const resolvedStatus = latestCase && latestCase.progress ? latestCase.progress : customer.overallStatus;
   const careStats = resolveCustomerCareStats(customer);
 
   const rawAssignments = Array.isArray((customer as any).assignments) ? (customer as any).assignments : [];
-  const assignedCaregivers = rawAssignments.length > 0
-    ? rawAssignments
-        .filter((a: any) => a && a.user && a.user.fullName)
-        .map((a: any) => ({
+  const assignedCaregivers: Array<{
+    id: string;
+    fullName: string;
+    email?: string | null;
+    role?: string;
+    status?: string;
+    assignedAt?: string | Date;
+  }> = [];
+
+  for (const a of rawAssignments) {
+    if (a && a.user && a.user.fullName) {
+      if (!assignedCaregivers.some((item) => item.id === a.user.id)) {
+        assignedCaregivers.push({
           id: a.user.id,
           fullName: a.user.fullName,
           email: a.user.email || null,
           role: a.user.role,
           status: a.user.status,
           assignedAt: a.assignedAt,
-        }))
-    : Array.isArray((customer as any).assignedCaregivers)
-    ? (customer as any).assignedCaregivers
-    : [];
+        });
+      }
+    }
+  }
 
-  const caregiverNames = assignedCaregivers.map((c: any) => c.fullName).filter(Boolean);
+  if (assignedCaregivers.length === 0) {
+    const firstAssignedFollowUp = careStats.careFollowUps.find((f) => f.assignedTo && f.status !== 'CANCELLED');
+    if (firstAssignedFollowUp?.assignedTo) {
+      assignedCaregivers.push({
+        id: 'legacy-followup-assignee',
+        fullName: firstAssignedFollowUp.assignedTo,
+      });
+    }
+  }
+
   const assignedCaregiverName =
-    caregiverNames.length > 0
-      ? caregiverNames.join(', ')
-      : ((customer as any).assignedCaregiverName && (customer as any).assignedCaregiverName !== 'Chưa phân công'
-          ? (customer as any).assignedCaregiverName
-          : 'Chưa phân công');
+    assignedCaregivers.length === 0
+      ? 'Chưa phân công'
+      : assignedCaregivers.length === 1
+      ? assignedCaregivers[0].fullName
+      : `${assignedCaregivers[0].fullName} (+${assignedCaregivers.length - 1})`;
+
+  const surveyStats = computeCustomerSurveyStatus((customer as any).assessments, new Date());
 
   return {
     ...customer,
@@ -252,6 +431,9 @@ export function enrichCustomerWithStatus<T extends CustomerWithCases>(customer: 
     assignedCaregivers,
     assignedCaregiverName,
     caregiverName: assignedCaregiverName,
+    surveyStatus: surveyStats.surveyStatus,
+    surveyStatusLabel: surveyStats.surveyStatusLabel,
+    surveyStats,
   };
 }
 
@@ -259,8 +441,8 @@ export const customerStatusService = {
   getLatestCase,
   resolveCustomerStatus,
   resolveCustomerCareStats,
+  computeCustomerSurveyStatus,
   enrichCustomerWithStatus,
 };
 
 export default customerStatusService;
-

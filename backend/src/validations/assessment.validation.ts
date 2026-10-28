@@ -5,6 +5,7 @@ import {
   QuestionValidationConfig,
   QuestionConditionalLogic,
 } from './questionnaire.validation.js';
+import { parseStrictDateOnly } from '../utils/dateUtils.js';
 
 // Input schemas for HTTP endpoints
 export const createAssessmentSchema = z
@@ -199,10 +200,17 @@ export function validateAssessmentAnswers(
       if (valError) {
         errors.push(`Lỗi câu hỏi "${q.questionText}" [${q.code}]: ${valError}`);
       } else {
+        let normalizedVal = rawVal;
+        if (q.questionType === QuestionType.DATE && typeof rawVal === 'string') {
+          const parsedDate = parseStrictDateOnly(rawVal);
+          if (parsedDate) {
+            normalizedVal = parsedDate.isoDate;
+          }
+        }
         cleanAnswers.push({
           questionCode: q.code,
           questionId: idMap.get(q.code) || q.id,
-          answerValue: rawVal,
+          answerValue: normalizedVal,
         });
       }
     }
@@ -304,17 +312,21 @@ function validateSingleAnswerValue(q: QuestionEvalContext, val: any): string | n
       if (typeof val !== 'string') {
         return 'Định dạng ngày không hợp lệ';
       }
-      const d = new Date(val);
-      if (isNaN(d.getTime())) {
-        return 'Ngày tháng không hợp lệ (định dạng chuẩn YYYY-MM-DD)';
+      const parsed = parseStrictDateOnly(val);
+      if (!parsed) {
+        return 'Ngày tháng không hợp lệ (vui lòng nhập ngày thực tế theo định dạng dd/MM/yyyy hoặc YYYY-MM-DD)';
       }
       if (cfg?.minDate) {
-        const minD = new Date(cfg.minDate);
-        if (d < minD) return `Ngày không được trước ${cfg.minDate}`;
+        const minParsed = parseStrictDateOnly(cfg.minDate);
+        if (minParsed && parsed.isoDate < minParsed.isoDate) {
+          return `Ngày không được trước ${minParsed.displayDate} (${cfg.minDate})`;
+        }
       }
       if (cfg?.maxDate) {
-        const maxD = new Date(cfg.maxDate);
-        if (d > maxD) return `Ngày không được sau ${cfg.maxDate}`;
+        const maxParsed = parseStrictDateOnly(cfg.maxDate);
+        if (maxParsed && parsed.isoDate > maxParsed.isoDate) {
+          return `Ngày không được sau ${maxParsed.displayDate} (${cfg.maxDate})`;
+        }
       }
       return null;
     }

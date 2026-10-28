@@ -71,10 +71,20 @@ export const assessmentService = {
       if (!version) {
         throw new NotFoundError(`Phiên bản câu hỏi không tồn tại`);
       }
+      if (version.questionnaire && !version.questionnaire.active) {
+        throw new BadRequestError('Bộ câu hỏi này đã ngừng sử dụng (Đã lưu trữ), không thể tạo bài khảo sát mới');
+      }
       if (version.status !== QuestionnaireVersionStatus.PUBLISHED) {
         throw new BadRequestError('Chỉ có thể bắt đầu khảo sát từ phiên bản câu hỏi đã xuất bản (PUBLISHED)');
       }
     } else if (input.questionnaireId) {
+      const questionnaire = await questionnaireRepository.findById(input.questionnaireId);
+      if (!questionnaire) {
+        throw new NotFoundError('Bộ câu hỏi không tồn tại');
+      }
+      if (!questionnaire.active) {
+        throw new BadRequestError('Bộ câu hỏi này đã ngừng sử dụng (Đã lưu trữ), không thể tạo bài khảo sát mới');
+      }
       const currentPub = await questionnaireRepository.findCurrentPublishedVersion(input.questionnaireId);
       if (!currentPub) {
         throw new BadRequestError('Bộ câu hỏi này chưa có phiên bản nào được xuất bản chính thức');

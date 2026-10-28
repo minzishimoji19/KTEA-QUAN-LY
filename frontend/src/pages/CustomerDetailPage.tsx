@@ -31,6 +31,7 @@ import {
 } from '../components/common';
 import { Skeleton, CardSkeleton } from '../components/ui/Skeleton';
 import { Button } from '../components/ui/Button';
+import { formatDate } from '../utils/formatters';
 import { useAuth } from '../context/AuthContext';
 import {
   useCustomerDetail,
@@ -241,11 +242,15 @@ export const CustomerDetailPage: React.FC = () => {
   };
 
   const handleMarkFollowUpComplete = async (fu: FollowUp) => {
+    if (fu.status === 'COMPLETED' && role !== 'ADMIN') return;
+    const nextStatus = fu.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED';
     await updateFollowUp.mutateAsync({
       id: fu.id,
       data: {
-        status: fu.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED',
-        completedAt: fu.status === 'COMPLETED' ? null : new Date().toISOString(),
+        status: nextStatus,
+        ...(role === 'ADMIN'
+          ? { completedAt: fu.status === 'COMPLETED' ? null : new Date().toISOString() }
+          : {}),
       },
     });
   };
@@ -657,7 +662,7 @@ export const CustomerDetailPage: React.FC = () => {
                 <div className="flex justify-between py-1 border-b border-slate-800/60">
                   <span className="text-slate-400">Giới tính / Ngày sinh</span>
                   <span className="font-mono text-slate-200">
-                    {customer.gender || '--'} {customer.dateOfBirth ? `• ${new Date(customer.dateOfBirth).toLocaleDateString()}` : ''}
+                    {customer.gender || '--'} {customer.dateOfBirth ? `• ${formatDate(customer.dateOfBirth)}` : ''}
                   </span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/60">
@@ -1553,14 +1558,16 @@ export const CustomerDetailPage: React.FC = () => {
                           >
                             <Edit className="w-3 h-3 text-slate-400" />
                           </Button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteFollowUp(fu)}
-                            className="p-1.5 rounded text-slate-500 hover:text-red-400 transition-colors"
-                            title="Xóa lịch chăm sóc"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {role !== 'PARTNER' && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteFollowUp(fu)}
+                              className="p-1.5 rounded text-slate-500 hover:text-red-400 transition-colors"
+                              title="Xóa lịch chăm sóc"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -1626,24 +1633,26 @@ export const CustomerDetailPage: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleMarkFollowUpComplete(fu)}
-                          className="h-6 text-[10px] px-2 text-slate-400 hover:text-slate-200"
-                        >
-                          Mở lại
-                        </Button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteFollowUp(fu)}
-                          className="p-1 rounded text-slate-600 hover:text-red-400 transition-colors"
-                          title="Xóa khỏi lịch sử"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      {role !== 'PARTNER' && (
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleMarkFollowUpComplete(fu)}
+                            className="h-6 text-[10px] px-2 text-slate-400 hover:text-slate-200"
+                          >
+                            Mở lại
+                          </Button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteFollowUp(fu)}
+                            className="p-1 rounded text-slate-600 hover:text-red-400 transition-colors"
+                            title="Xóa khỏi lịch sử"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

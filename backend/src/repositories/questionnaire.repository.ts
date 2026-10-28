@@ -49,7 +49,7 @@ export const questionnaireRepository = {
             createdAt: true,
             updatedAt: true,
             _count: {
-              select: { questions: true },
+              select: { questions: true, assessments: true },
             },
           },
           orderBy: { versionNumber: 'desc' },
@@ -67,6 +67,9 @@ export const questionnaireRepository = {
           include: {
             questions: {
               orderBy: { displayOrder: 'asc' },
+            },
+            _count: {
+              select: { questions: true, assessments: true },
             },
           },
           orderBy: { versionNumber: 'desc' },
@@ -398,5 +401,96 @@ export const questionnaireRepository = {
     return prisma.questionnaireVersion.delete({
       where: { id: versionId },
     });
+  },
+
+  async getDeletionSafetyCounts(questionnaireId: string) {
+    const [
+      nonDraftVersionCount,
+      assessmentCount,
+      answerCount,
+      recommendationRunCount,
+      publicSurveyLinkCount,
+    ] = await Promise.all([
+      prisma.questionnaireVersion.count({
+        where: {
+          questionnaireId,
+          status: { not: QuestionnaireVersionStatus.DRAFT },
+        },
+      }),
+      prisma.assessment.count({
+        where: {
+          questionnaireVersion: { questionnaireId },
+        },
+      }),
+      prisma.assessmentAnswer.count({
+        where: {
+          assessment: { questionnaireVersion: { questionnaireId } },
+        },
+      }),
+      prisma.assessmentRecommendationRun.count({
+        where: {
+          assessment: { questionnaireVersion: { questionnaireId } },
+        },
+      }),
+      prisma.publicSurveyLink.count({
+        where: {
+          assessment: { questionnaireVersion: { questionnaireId } },
+        },
+      }),
+    ]);
+
+    return {
+      nonDraftVersionCount,
+      assessmentCount,
+      answerCount,
+      recommendationRunCount,
+      publicSurveyLinkCount,
+      canHardDelete:
+        nonDraftVersionCount === 0 &&
+        assessmentCount === 0 &&
+        answerCount === 0 &&
+        recommendationRunCount === 0 &&
+        publicSurveyLinkCount === 0,
+    };
+  },
+
+  async getVersionDeletionSafetyCounts(versionId: string) {
+    const [
+      assessmentCount,
+      answerCount,
+      recommendationRunCount,
+      publicSurveyLinkCount,
+    ] = await Promise.all([
+      prisma.assessment.count({
+        where: { questionnaireVersionId: versionId },
+      }),
+      prisma.assessmentAnswer.count({
+        where: {
+          assessment: { questionnaireVersionId: versionId },
+        },
+      }),
+      prisma.assessmentRecommendationRun.count({
+        where: {
+          assessment: { questionnaireVersionId: versionId },
+        },
+      }),
+      prisma.publicSurveyLink.count({
+        where: {
+          assessment: { questionnaireVersionId: versionId },
+        },
+      }),
+    ]);
+
+    return {
+      assessmentCount,
+      answerCount,
+      recommendationRunCount,
+      publicSurveyLinkCount,
+      canHardDelete:
+        assessmentCount === 0 &&
+        answerCount === 0 &&
+        recommendationRunCount === 0 &&
+        publicSurveyLinkCount === 0,
+    };
   },
 };

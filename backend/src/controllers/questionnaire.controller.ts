@@ -36,7 +36,10 @@ export const createQuestionnaire = async (req: Request, res: Response, next: Nex
 
 export const updateQuestionnaire = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const updated = await questionnaireService.updateQuestionnaire(req.params.id, req.body);
+    const updated = await questionnaireService.updateQuestionnaire(req.params.id, req.body, {
+      userId: req.user?.userId,
+      email: req.user?.email,
+    });
     sendSuccess(res, updated, 'Cập nhật thông tin bộ câu hỏi thành công');
   } catch (error) {
     next(error);
@@ -45,8 +48,11 @@ export const updateQuestionnaire = async (req: Request, res: Response, next: Nex
 
 export const deleteQuestionnaire = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    await questionnaireService.deleteQuestionnaire(req.params.id);
-    sendSuccess(res, { id: req.params.id }, 'Xóa hoặc lưu trữ bộ câu hỏi thành công');
+    await questionnaireService.deleteQuestionnaire(req.params.id, {
+      userId: req.user?.userId,
+      email: req.user?.email,
+    });
+    sendSuccess(res, { id: req.params.id }, 'Đã xóa bộ câu hỏi nháp thành công');
   } catch (error) {
     next(error);
   }
@@ -136,7 +142,10 @@ export const publishVersion = async (req: Request, res: Response, next: NextFunc
 
 export const deleteDraftVersion = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    await questionnaireService.deleteDraftVersion(req.params.id, req.params.versionId);
+    await questionnaireService.deleteDraftVersion(req.params.id, req.params.versionId, {
+      userId: req.user?.userId,
+      email: req.user?.email,
+    });
     sendSuccess(res, { versionId: req.params.versionId }, 'Xóa bản nháp thành công');
   } catch (error) {
     next(error);

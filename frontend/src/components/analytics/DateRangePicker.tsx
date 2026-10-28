@@ -1,6 +1,8 @@
 import React from 'react';
 import { Calendar, X } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { VietnameseDatePicker } from '../ui/VietnameseDatePicker';
+import { toIsoDateString } from '../../utils/formatters';
 
 export interface DateRangePickerProps {
   startDate: string;
@@ -13,7 +15,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
   endDate,
   onChange,
 }) => {
-  const formatDate = (d: Date) => d.toISOString().slice(0, 10);
+  const formatDateIso = (d: Date) => toIsoDateString(d);
 
   const handlePreset = (preset: '7d' | '30d' | '90d' | 'year' | 'all') => {
     const now = new Date();
@@ -22,7 +24,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
       return;
     }
 
-    const endStr = formatDate(now);
+    const endStr = formatDateIso(now);
     const start = new Date(now);
 
     if (preset === '7d') {
@@ -35,13 +37,13 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
       start.setFullYear(now.getFullYear(), 0, 1);
     }
 
-    onChange(formatDate(start), endStr);
+    onChange(formatDateIso(start), endStr);
   };
 
   const isPresetActive = (preset: '7d' | '30d' | '90d' | 'year' | 'all') => {
     if (preset === 'all') return !startDate && !endDate;
     const now = new Date();
-    const endStr = formatDate(now);
+    const endStr = formatDateIso(now);
     if (endDate !== endStr) return false;
 
     const start = new Date(now);
@@ -50,7 +52,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
     else if (preset === '90d') start.setDate(now.getDate() - 90);
     else if (preset === 'year') start.setFullYear(now.getFullYear(), 0, 1);
 
-    return startDate === formatDate(start);
+    return startDate === formatDateIso(start);
   };
 
   return (
@@ -116,23 +118,29 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
 
       <div className="h-4 w-[1px] bg-slate-800 hidden sm:block" />
 
-      {/* Custom Date Inputs */}
+      {/* Custom Date Inputs (dd/MM/yyyy) */}
       <div className="flex items-center gap-1.5">
-        <input
-          type="date"
-          value={startDate}
-          onChange={(e) => onChange(e.target.value, endDate)}
-          className="h-7 px-2 bg-slate-950 border border-slate-800 rounded text-[11px] font-mono text-slate-200 focus:outline-none focus:border-blue-500"
-          title="Từ ngày"
-        />
+        <div className="w-36">
+          <VietnameseDatePicker
+            variant="dark"
+            size="sm"
+            value={startDate}
+            placeholder="Từ dd/mm/yyyy"
+            showClear={false}
+            onChange={(iso) => onChange(iso, endDate)}
+          />
+        </div>
         <span className="text-slate-500 font-mono text-[10px]">đến</span>
-        <input
-          type="date"
-          value={endDate}
-          onChange={(e) => onChange(startDate, e.target.value)}
-          className="h-7 px-2 bg-slate-950 border border-slate-800 rounded text-[11px] font-mono text-slate-200 focus:outline-none focus:border-blue-500"
-          title="Đến ngày"
-        />
+        <div className="w-36">
+          <VietnameseDatePicker
+            variant="dark"
+            size="sm"
+            value={endDate}
+            placeholder="Đến dd/mm/yyyy"
+            showClear={false}
+            onChange={(iso) => onChange(startDate, iso)}
+          />
+        </div>
 
         {(startDate || endDate) && (
           <Button

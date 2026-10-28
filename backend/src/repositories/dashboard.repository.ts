@@ -4,11 +4,15 @@ import {
   CaseStatus,
   PushStatus,
   RecommendationStatus,
+  Prisma,
 } from '@prisma/client';
 import BaseRepository from './base.repository.js';
 
 export class DashboardRepository extends BaseRepository {
-  async getDashboardData(scopedCustomerIds?: string[]) {
+  async getDashboardData(
+    scopedCustomerIds?: string[],
+    scopedPartner?: { userId: string; aliases: string[] }
+  ) {
     const now = new Date();
     const startOfDay = new Date(now);
     startOfDay.setHours(0, 0, 0, 0);
@@ -17,6 +21,28 @@ export class DashboardRepository extends BaseRepository {
 
     const customerScope = scopedCustomerIds !== undefined ? { id: { in: scopedCustomerIds } } : {};
     const fkScope = scopedCustomerIds !== undefined ? { customerId: { in: scopedCustomerIds } } : {};
+
+    const followUpPartnerScope: Prisma.FollowUpWhereInput = scopedPartner
+      ? {
+          OR: [
+            { assignedToUserId: scopedPartner.userId },
+            {
+              AND: [
+                { assignedToUserId: null },
+                {
+                  OR: [
+                    ...(scopedPartner.aliases.length > 0
+                      ? [{ assignedTo: { in: scopedPartner.aliases } }]
+                      : []),
+                    { assignedTo: null },
+                    { assignedTo: '' },
+                  ],
+                },
+              ],
+            },
+          ],
+        }
+      : {};
 
     const [
       totalCustomers,
@@ -64,6 +90,7 @@ export class DashboardRepository extends BaseRepository {
           status: { in: [FollowUpStatus.PENDING, FollowUpStatus.IN_PROGRESS] },
           dueAt: { lt: now },
           ...fkScope,
+          ...followUpPartnerScope,
         },
       }),
 
@@ -72,6 +99,7 @@ export class DashboardRepository extends BaseRepository {
           status: { in: [FollowUpStatus.PENDING, FollowUpStatus.IN_PROGRESS] },
           dueAt: { gte: startOfDay, lte: endOfDay },
           ...fkScope,
+          ...followUpPartnerScope,
         },
       }),
 
@@ -88,6 +116,7 @@ export class DashboardRepository extends BaseRepository {
           status: { in: [FollowUpStatus.PENDING, FollowUpStatus.IN_PROGRESS] },
           dueAt: { lt: now },
           ...fkScope,
+          ...followUpPartnerScope,
         },
         include: {
           customer: {
@@ -110,6 +139,7 @@ export class DashboardRepository extends BaseRepository {
           status: { in: [FollowUpStatus.PENDING, FollowUpStatus.IN_PROGRESS] },
           dueAt: { gte: startOfDay, lte: endOfDay },
           ...fkScope,
+          ...followUpPartnerScope,
         },
         include: {
           customer: {

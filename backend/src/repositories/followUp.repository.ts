@@ -1,13 +1,19 @@
 import { Prisma, FollowUpStatus } from '@prisma/client';
 import BaseRepository from './base.repository.js';
 
+export interface ScopedPartnerScheduleFilter {
+  userId: string;
+  aliases: string[];
+}
+
 export class FollowUpRepository extends BaseRepository {
   async findAll(
     filter?: 'today' | 'overdue' | 'upcoming' | 'completed' | 'all',
     status?: FollowUpStatus,
     customerId?: string,
     assignedTo?: string,
-    scopedCustomerIds?: string[]
+    scopedCustomerIds?: string[],
+    scopedPartner?: ScopedPartnerScheduleFilter
   ) {
     const where: Prisma.FollowUpWhereInput = {};
 
@@ -23,6 +29,26 @@ export class FollowUpRepository extends BaseRepository {
       }
     } else if (customerId) {
       where.customerId = customerId;
+    }
+
+    if (scopedPartner) {
+      const partnerOrConditions: Prisma.FollowUpWhereInput[] = [
+        { assignedToUserId: scopedPartner.userId },
+        {
+          assignedToUserId: null,
+          assignedTo: null,
+        },
+      ];
+      if (scopedPartner.aliases.length > 0) {
+        partnerOrConditions.push({
+          assignedToUserId: null,
+          assignedTo: { in: scopedPartner.aliases },
+        });
+      }
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+        { OR: partnerOrConditions },
+      ];
     }
 
     if (status) {

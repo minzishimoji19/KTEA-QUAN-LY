@@ -107,37 +107,36 @@ async function runTests() {
   }
 
   // --------------------------------------------------------------------------
-  // TEST 4: Mandatory RBAC: ONLY ADMIN can mark FollowUps as COMPLETED
+  // TEST 4: Mandatory RBAC: Partner can complete OWN FollowUps, blocked from reopening or changing caregiver
   // --------------------------------------------------------------------------
-  console.log('\n4. Kiểm tra quy tắc phân quyền bắt buộc: CHỈ ADMIN được hoàn thành lịch...');
+  console.log('\n4. Kiểm tra quy tắc phân quyền Partner đối với lịch chăm sóc...');
   const mockPartnerRole: Role = Role.PARTNER;
-  const mockUpdateStatus: FollowUpStatus = FollowUpStatus.COMPLETED;
 
-  // Test bulk complete with PARTNER role
-  let partnerBulkBlocked = false;
+  // Test Partner blocked from reopening COMPLETED -> PENDING
+  let partnerReopenBlocked = false;
   try {
-    if ((mockPartnerRole as string) !== Role.ADMIN) {
-      throw new ForbiddenError('Chỉ Quản trị viên (ADMIN) mới có quyền hoàn thành lịch chăm sóc');
+    if ((mockPartnerRole as string) === Role.PARTNER) {
+      throw new ForbiddenError('Đối tác không có quyền mở lại lịch chăm sóc đã hoàn thành');
     }
   } catch (err) {
     if (err instanceof ForbiddenError) {
-      partnerBulkBlocked = true;
+      partnerReopenBlocked = true;
     }
   }
-  assert(partnerBulkBlocked, 'Thao tác hoàn thành hàng loạt bởi PARTNER phải bị chặn với 403 ForbiddenError');
+  assert(partnerReopenBlocked, 'Thao tác mở lại lịch đã hoàn thành bởi PARTNER phải bị chặn với 403 ForbiddenError');
 
-  // Test single update to COMPLETED with PARTNER role
-  let partnerSingleBlocked = false;
+  // Test Partner blocked from changing caregiver
+  let partnerReassignBlocked = false;
   try {
-    if ((mockPartnerRole as string) !== Role.ADMIN && mockUpdateStatus === FollowUpStatus.COMPLETED) {
-      throw new ForbiddenError('Chỉ Quản trị viên (ADMIN) mới có quyền hoàn thành lịch chăm sóc');
+    if ((mockPartnerRole as string) === Role.PARTNER) {
+      throw new ForbiddenError('Đối tác không có quyền thay đổi người phụ trách lịch chăm sóc');
     }
   } catch (err) {
     if (err instanceof ForbiddenError) {
-      partnerSingleBlocked = true;
+      partnerReassignBlocked = true;
     }
   }
-  assert(partnerSingleBlocked, 'Thao tác cập nhật sang COMPLETED bởi PARTNER phải bị chặn với 403 ForbiddenError');
+  assert(partnerReassignBlocked, 'Thao tác đổi người phụ trách lịch chăm sóc bởi PARTNER phải bị chặn với 403 ForbiddenError');
 
   // --------------------------------------------------------------------------
   // TEST 5: Bulk Reopen follow-up logic

@@ -20,7 +20,7 @@ export const DateDisplay: React.FC<DateDisplayProps> = ({
   const d = typeof date === 'string' ? new Date(date) : date;
   if (isNaN(d.getTime())) return <span className="text-slate-500 font-mono text-[11px]">--</span>;
 
-  const formatted = showTime ? formatDateTime(d.toISOString()) : formatDate(d.toISOString());
+  const formatted = showTime ? formatDateTime(date) : formatDate(date);
 
   let relative = '';
   if (relativeContext) {

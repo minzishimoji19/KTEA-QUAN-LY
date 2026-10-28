@@ -147,6 +147,22 @@ export type RecommendationStatus =
 
 export type PushStatus = 'PENDING' | 'IN_PROGRESS' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
 
+export type SurveyDisplayStatus = 'NOT_CREATED' | 'SENT' | 'COMPLETED';
+
+export interface CustomerSurveyStats {
+  completedCount: number;
+  activeLinkCount: number;
+  expiredLinkCount: number;
+  revokedLinkCount: number;
+  hasDraftProgress: boolean;
+  hasOpenedLink: boolean;
+  hasExpiredOrRevokedLinks: boolean;
+  latestInactiveLinkStatus: 'EXPIRED' | 'REVOKED' | null;
+  latestCompletedAt: string | null;
+  latestLinkCreatedAt: string | null;
+  latestLinkExpiresAt: string | null;
+}
+
 export interface Tag {
   id: string;
   name: string;
@@ -366,6 +382,9 @@ export interface CustomerSummary {
   latestCareStatus?: 'COMPLETED' | 'PENDING' | 'OVERDUE' | 'IN_PROGRESS' | 'CANCELLED' | 'NONE';
   completedCareCount?: number;
   pendingCareCount?: number;
+  surveyStatus?: SurveyDisplayStatus;
+  surveyStatusLabel?: string;
+  surveyStats?: CustomerSurveyStats;
   careFollowUps?: Array<{
     id: string;
     title: string;

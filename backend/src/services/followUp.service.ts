@@ -1,13 +1,22 @@
-import { FollowUpStatus, ActivityType, Prisma } from '@prisma/client';
+import { FollowUpStatus, ActivityType, Prisma, Role } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { followUpRepository } from '../repositories/followUp.repository.js';
+import { followUpRepository, ScopedPartnerScheduleFilter } from '../repositories/followUp.repository.js';
 import { customerRepository } from '../repositories/customer.repository.js';
 import { caretakerRepository } from '../repositories/caretaker.repository.js';
-import { NotFoundError, BadRequestError } from '../utils/errors.js';
+import { NotFoundError, BadRequestError, ForbiddenError } from '../utils/errors.js';
 import BaseService from './base.service.js';
 import prisma from '../config/database.js';
 import { pushNotificationService } from './pushNotification.service.js';
 import { assignmentSyncService } from './assignmentSync.service.js';
+import { auditLogService } from './auditLog.service.js';
+import { customerAccessService } from './customerAccess.service.js';
+
+export interface FollowUpActorContext {
+  userId?: string;
+  email?: string;
+  role?: Role;
+  fullName?: string;
+}
 
 export class FollowUpService extends BaseService {
   /**
@@ -98,7 +107,8 @@ export class FollowUpService extends BaseService {
     status?: FollowUpStatus,
     customerId?: string,
     assignedTo?: string,
-    scopedCustomerIds?: string[]
+    scopedCustomerIds?: string[],
+    scopedPartner?: ScopedPartnerScheduleFilter
   ) {
     if (customerId) {
       const customer = await customerRepository.findById(customerId);
@@ -106,7 +116,7 @@ export class FollowUpService extends BaseService {
         throw new NotFoundError(`Customer with ID '${customerId}' not found`);
       }
     }
-    return followUpRepository.findAll(filter, status, customerId, assignedTo, scopedCustomerIds);
+    return followUpRepository.findAll(filter, status, customerId, assignedTo, scopedCustomerIds, scopedPartner);
   }
 
   async getFollowUpById(id: string) {
@@ -427,26 +437,77 @@ export class FollowUpService extends BaseService {
     return result;
   }
 
-  async updateFollowUp(id: string, data: {
-    title?: string;
-    description?: string | null;
-    dueAt?: string | Date;
-    status?: FollowUpStatus;
-    assignedTo?: string | null;
-    assignedToUserId?: string | null;
-    completedAt?: string | Date | null;
-  }) {
+  async updateFollowUp(
+    id: string,
+    data: {
+      title?: string;
+      description?: string | null;
+      dueAt?: string | Date;
+      status?: FollowUpStatus;
+      assignedTo?: string | null;
+      assignedToUserId?: string | null;
+      completedAt?: string | Date | null;
+    },
+    actor?: FollowUpActorContext
+  ) {
     const current = await this.getFollowUpById(id);
+
+    if (actor?.role === Role.PARTNER && actor.userId) {
+      await customerAccessService.assertFollowUpAccess(
+        { id: actor.userId, role: Role.PARTNER },
+        id
+      );
+
+      const isChangingUserId =
+        data.assignedToUserId !== undefined &&
+        (data.assignedToUserId || null) !== (current.assignedToUserId || null);
+      const isChangingName =
+        data.assignedTo !== undefined &&
+        (data.assignedTo || null) !== (current.assignedTo || null);
+
+      if (isChangingUserId || isChangingName) {
+        throw new ForbiddenError('Đối tác không có quyền thay đổi người chăm sóc');
+      }
+
+      if (current.status === FollowUpStatus.CANCELLED) {
+        throw new BadRequestError('Lịch chăm sóc đã bị hủy, không thể cập nhật tiến độ hoặc hoàn thành');
+      }
+
+      if (
+        current.status === FollowUpStatus.COMPLETED &&
+        data.status &&
+        data.status !== FollowUpStatus.COMPLETED
+      ) {
+        throw new ForbiddenError(
+          'Lịch chăm sóc đã hoàn thành. Chỉ Quản trị viên (ADMIN) mới có quyền mở lại lịch chăm sóc.'
+        );
+      }
+
+      // Partner cannot supply custom completedAt or caregiver fields
+      delete data.assignedTo;
+      delete data.assignedToUserId;
+      delete data.completedAt;
+    }
+
+    if (current.status === FollowUpStatus.CANCELLED && data.status === FollowUpStatus.COMPLETED) {
+      throw new BadRequestError('Lịch chăm sóc đã bị hủy, không thể đánh dấu hoàn thành.');
+    }
 
     const dueDate = data.dueAt ? new Date(data.dueAt) : undefined;
     let completionDate = data.completedAt !== undefined
       ? (data.completedAt ? new Date(data.completedAt) : null)
       : undefined;
 
-    // Automatically assign completedAt if transitioning to COMPLETED and not provided
-    if (data.status === FollowUpStatus.COMPLETED && !current.completedAt && completionDate === undefined) {
-      completionDate = new Date();
-    } else if (data.status && data.status !== FollowUpStatus.COMPLETED) {
+    // Server-authoritative completedAt handling:
+    // When transitioning to COMPLETED, set completedAt on the server if not already set.
+    // If already COMPLETED, preserve original completedAt for idempotency.
+    if (data.status === FollowUpStatus.COMPLETED) {
+      if (current.status === FollowUpStatus.COMPLETED && current.completedAt) {
+        completionDate = current.completedAt;
+      } else if (!current.completedAt && completionDate === undefined) {
+        completionDate = new Date();
+      }
+    } else if (data.status) {
       completionDate = null;
     }
 
@@ -455,8 +516,8 @@ export class FollowUpService extends BaseService {
       ? await this.validateAssignedTo(data.assignedToUserId !== undefined ? data.assignedToUserId : data.assignedTo, current.assignedTo)
       : undefined;
 
-    return prisma.$transaction(async (tx) => {
-      const updated = await tx.followUp.update({
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedRecord = await tx.followUp.update({
         where: { id },
         data: {
           title: data.title,
@@ -502,10 +563,17 @@ export class FollowUpService extends BaseService {
           caregiverUserId: validatedCaregiver?.userId || null,
           caregiverName: validatedCaregiver?.name || null,
           previousCaregiverName: current.assignedTo,
-          assignedById: (data as any).assignedById || null,
+          assignedById: (data as any).assignedById || actor?.userId || null,
         });
         syncNotice = ` ${syncResult.notice}`;
       }
+
+      const actorDisplay = actor?.fullName || actor?.email || actor?.userId || null;
+      const actorSuffix = actorDisplay ? ` (Thực hiện bởi: ${actorDisplay}${actor?.role ? ` [${actor.role}]` : ''})` : '';
+      const noteSuffix =
+        data.description !== undefined && data.description !== current.description && data.description
+          ? ` | Ghi chú kết quả: ${data.description}`
+          : '';
 
       if (data.status && data.status !== current.status) {
         await tx.customerActivity.create({
@@ -513,7 +581,7 @@ export class FollowUpService extends BaseService {
             customerId: current.customerId,
             type: ActivityType.SYSTEM_EVENT,
             title: `Follow-up ${data.status}: ${current.title}`,
-            description: `Status changed from ${current.status} to ${data.status}.${syncNotice}`,
+            description: `Status changed from ${current.status} to ${data.status}${actorSuffix}${noteSuffix}.${syncNotice}`,
           },
         });
       } else if (syncNotice) {
@@ -522,17 +590,50 @@ export class FollowUpService extends BaseService {
             customerId: current.customerId,
             type: ActivityType.SYSTEM_EVENT,
             title: `Đổi người chăm sóc: ${current.title}`,
-            description: `Người chăm sóc đổi từ "${current.assignedTo || 'Chưa phân công'}" sang "${validatedCaregiver?.name || 'Chưa phân công'}".${syncNotice}`,
+            description: `Người chăm sóc đổi từ "${current.assignedTo || 'Chưa phân công'}" sang "${validatedCaregiver?.name || 'Chưa phân công'}"${actorSuffix}.${syncNotice}`,
+          },
+        });
+      } else if (data.description !== undefined && data.description !== current.description) {
+        await tx.customerActivity.create({
+          data: {
+            customerId: current.customerId,
+            type: ActivityType.FOLLOW_UP,
+            title: `Cập nhật ghi chú lịch chăm sóc: ${current.title}`,
+            description: `Nội dung ghi chú: "${data.description || ''}"${actorSuffix}`,
           },
         });
       }
 
-      return updated;
+      return updatedRecord;
     },
     {
       maxWait: 5000,
       timeout: 15000,
     });
+
+    if (actor?.userId && ((data.status && data.status !== current.status) || data.description !== undefined)) {
+      await auditLogService.log({
+        actorId: actor.userId,
+        actorEmail: actor.email || undefined,
+        action:
+          data.status === FollowUpStatus.COMPLETED && current.status !== FollowUpStatus.COMPLETED
+            ? 'COMPLETE_FOLLOW_UP'
+            : 'UPDATE_FOLLOW_UP',
+        entityType: 'FOLLOW_UP',
+        entityId: id,
+        details: {
+          customerId: current.customerId,
+          title: updated.title,
+          previousStatus: current.status,
+          newStatus: updated.status,
+          completedAt: updated.completedAt,
+          description: updated.description,
+          actorRole: actor.role,
+        },
+      });
+    }
+
+    return updated;
   }
 
   async deleteFollowUp(id: string) {
@@ -563,7 +664,10 @@ export class FollowUpService extends BaseService {
    * Only allows valid PENDING / IN_PROGRESS follow-ups to transition to COMPLETED.
    * Strictly avoids modifying CustomerCase financial states.
    */
-  async completeBulkFollowUps(data: { ids: string[] }): Promise<{
+  async completeBulkFollowUps(
+    data: { ids: string[] },
+    actor?: FollowUpActorContext
+  ): Promise<{
     total: number;
     succeeded: string[];
     failed: Array<{ id: string; reason: string }>;
@@ -571,6 +675,9 @@ export class FollowUpService extends BaseService {
     const uniqueIds = Array.from(new Set(data.ids.filter((id) => Boolean(id && id.trim()))));
     const succeeded: string[] = [];
     const failed: Array<{ id: string; reason: string }> = [];
+
+    const actorDisplay = actor?.fullName || actor?.email || actor?.userId || null;
+    const actorSuffix = actorDisplay ? ` (Thực hiện bởi: ${actorDisplay})` : '';
 
     for (const id of uniqueIds) {
       try {
@@ -581,6 +688,13 @@ export class FollowUpService extends BaseService {
         if (!fu) {
           failed.push({ id, reason: 'Không tìm thấy lịch chăm sóc' });
           continue;
+        }
+
+        if (actor?.role === Role.PARTNER && actor.userId) {
+          await customerAccessService.assertFollowUpAccess(
+            { id: actor.userId, role: Role.PARTNER },
+            id
+          );
         }
 
         if (fu.status === FollowUpStatus.CANCELLED) {
@@ -594,13 +708,15 @@ export class FollowUpService extends BaseService {
           continue;
         }
 
+        const completedAtNow = new Date();
+
         // Valid status for completion (PENDING / IN_PROGRESS)
         await prisma.$transaction(async (tx) => {
           await tx.followUp.update({
             where: { id },
             data: {
               status: FollowUpStatus.COMPLETED,
-              completedAt: new Date(),
+              completedAt: completedAtNow,
             },
           });
 
@@ -609,10 +725,28 @@ export class FollowUpService extends BaseService {
               customerId: fu.customerId,
               type: ActivityType.SYSTEM_EVENT,
               title: `Follow-up COMPLETED: ${fu.title}`,
-              description: `Lịch chăm sóc được đánh dấu hoàn thành qua thao tác hàng loạt.`,
+              description: `Lịch chăm sóc được đánh dấu hoàn thành qua thao tác hàng loạt.${actorSuffix}`,
             },
           });
         });
+
+        if (actor?.userId) {
+          await auditLogService.log({
+            actorId: actor.userId,
+            actorEmail: actor.email || undefined,
+            action: 'COMPLETE_FOLLOW_UP',
+            entityType: 'FOLLOW_UP',
+            entityId: id,
+            details: {
+              customerId: fu.customerId,
+              title: fu.title,
+              previousStatus: fu.status,
+              newStatus: FollowUpStatus.COMPLETED,
+              completedAt: completedAtNow,
+              bulk: true,
+            },
+          });
+        }
 
         succeeded.push(id);
       } catch (err: unknown) {

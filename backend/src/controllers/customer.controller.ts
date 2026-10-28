@@ -13,6 +13,7 @@ export const getCustomers = async (req: Request, res: Response, next: NextFuncti
     const filters: CustomerQueryFilters = { ...(req.query as unknown as CustomerQueryFilters) };
     if (req.user && req.user.role === Role.PARTNER) {
       filters.scopedCustomerIds = await customerAccessService.getAssignedCustomerIds(req.user.userId);
+      filters.scopedUserId = req.user.userId;
     }
     const result = await customerService.getCustomers(filters);
     sendPaginated(res, result.items, result.pagination, 'Customers retrieved successfully');
@@ -29,7 +30,8 @@ export const getCustomerById = async (req: Request, res: Response, next: NextFun
         req.params.id
       );
     }
-    const customer = await customerService.getCustomerDetail(req.params.id);
+    const scopedUserId = req.user?.role === Role.PARTNER ? req.user.userId : undefined;
+    const customer = await customerService.getCustomerDetail(req.params.id, scopedUserId);
     sendSuccess(res, customer, 'Customer detail loaded');
   } catch (error) {
     next(error);

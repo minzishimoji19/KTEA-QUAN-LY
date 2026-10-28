@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { X, UserCheck, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { VietnameseDatePicker } from '../../components/ui/VietnameseDatePicker';
+import { toIsoDateString } from '../../utils/formatters';
 import { useUpdateCustomer } from '../../hooks/useCustomers';
 import { useCustomerSources } from '../../hooks/useCustomerSources';
 import { useAuth } from '../../context/AuthContext';
@@ -58,6 +60,8 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
     register,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<CustomerFormData>({
     resolver: zodResolver(isPartner ? partnerCustomerFormSchema : adminCustomerFormSchema),
@@ -65,14 +69,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
 
   useEffect(() => {
     if (customer && isOpen) {
-      let formattedDob = '';
-      if (customer.dateOfBirth) {
-        try {
-          formattedDob = new Date(customer.dateOfBirth).toISOString().slice(0, 10);
-        } catch {
-          formattedDob = '';
-        }
-      }
+      const formattedDob = toIsoDateString(customer.dateOfBirth);
 
       const initialStatus =
         customer.rawOverallStatus ||
@@ -116,7 +113,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
             phone: data.phone.trim(),
             email: data.email?.trim() || null,
             gender: data.gender || null,
-            dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth).toISOString() : null,
+            dateOfBirth: data.dateOfBirth ? data.dateOfBirth : null,
             note: noteValue,
             address: noteValue, // Keep address synced safely
             sourceId: data.sourceId || null,
@@ -243,12 +240,15 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[11px] font-medium text-slate-400 mb-1">Ngày sinh</label>
-                <input
-                  type="date"
-                  {...register('dateOfBirth')}
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">Ngày sinh (dd/MM/yyyy)</label>
+                <VietnameseDatePicker
+                  variant="dark"
+                  size="sm"
                   disabled={isPartner}
-                  className="w-full h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono focus:outline-none focus:border-blue-500 disabled:opacity-60 disabled:bg-slate-950/60 disabled:cursor-not-allowed"
+                  value={watch('dateOfBirth') || ''}
+                  maxDate={new Date().toISOString().slice(0, 10)}
+                  placeholder="dd/mm/yyyy"
+                  onChange={(isoDate) => setValue('dateOfBirth', isoDate, { shouldValidate: true })}
                 />
               </div>
 

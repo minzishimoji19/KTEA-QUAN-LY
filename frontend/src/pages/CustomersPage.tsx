@@ -16,8 +16,12 @@ import {
   UserCheck,
   Download,
   Loader2,
+  Send,
+  FileText,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { formatDate } from '../utils/formatters';
+import { VietnameseDatePicker } from '../components/ui/VietnameseDatePicker';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -134,6 +138,7 @@ export const CustomersPage: React.FC = () => {
   // Direct source of truth from URL query params
   const search = searchParams.get('search') || '';
   const status = searchParams.get('status') || '';
+  const surveyStatus = searchParams.get('surveyStatus') || '';
   const priority = searchParams.get('priority') || '';
   const sourceId = searchParams.get('sourceId') || searchParams.get('source') || '';
   const product = searchParams.get('product') || '';
@@ -243,6 +248,7 @@ export const CustomersPage: React.FC = () => {
     pageSize,
     search: search.trim() || undefined,
     status: status || undefined,
+    surveyStatus: surveyStatus || undefined,
     priority: priority || undefined,
     sourceId: sourceId || undefined,
     product: product || undefined,
@@ -267,6 +273,7 @@ export const CustomersPage: React.FC = () => {
   const activeFilterCount = [
     Boolean(search.trim()),
     Boolean(status),
+    Boolean(surveyStatus),
     Boolean(priority),
     Boolean(sourceId),
     Boolean(product),
@@ -585,6 +592,110 @@ export const CustomersPage: React.FC = () => {
       render: (row) => <StatusBadge status={row.overallStatus} />,
     },
     {
+      key: 'surveyStatus',
+      header: 'Trạng thái khảo sát',
+      width: '175px',
+      render: (row) => {
+        const sStatus = row.surveyStatus || 'NOT_CREATED';
+        const stats = row.surveyStats;
+
+        if (sStatus === 'COMPLETED') {
+          const completedDateStr = stats?.latestCompletedAt
+            ? formatDate(stats.latestCompletedAt)
+            : '';
+          const tooltipParts = [
+            `Khách đã điền khảo sát (${stats?.completedCount || 1} lần hoàn thành)`,
+          ];
+          if (completedDateStr && completedDateStr !== '--') {
+            tooltipParts.push(`Hoàn thành gần nhất: ${completedDateStr}`);
+          }
+          if (stats?.activeLinkCount && stats.activeLinkCount > 0) {
+            tooltipParts.push(`Có ${stats.activeLinkCount} link khảo sát mới đang mở`);
+          }
+
+          return (
+            <div className="flex flex-col items-start gap-0.5 py-0.5" title={tooltipParts.join(' • ')}>
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-950/70 text-emerald-300 border border-emerald-700/60 whitespace-nowrap">
+                <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                <span>Khách đã điền khảo sát</span>
+              </span>
+              {stats?.activeLinkCount && stats.activeLinkCount > 0 ? (
+                <span className="text-[10px] text-sky-400 font-mono pl-1">
+                  +1 link mới đang gửi
+                </span>
+              ) : completedDateStr && completedDateStr !== '--' ? (
+                <span className="text-[10px] text-slate-500 font-mono pl-1">
+                  Hoàn tất: {completedDateStr}
+                </span>
+              ) : null}
+            </div>
+          );
+        }
+
+        if (sStatus === 'SENT') {
+          const expStr = stats?.latestLinkExpiresAt ? formatDate(stats.latestLinkExpiresAt) : '';
+          const subNote = stats?.hasDraftProgress
+            ? 'Khách đang điền dở (đã lưu nháp)'
+            : stats?.hasOpenedLink
+            ? 'Khách đã mở link'
+            : 'Chưa mở link';
+          const tooltip = `Đã gửi khảo sát • ${subNote}${
+            expStr && expStr !== '--' ? ` • Hạn: ${expStr}` : ''
+          }`;
+
+          return (
+            <div className="flex flex-col items-start gap-0.5 py-0.5" title={tooltip}>
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-sky-950/70 text-sky-300 border border-sky-700/60 whitespace-nowrap">
+                <Send className="w-3 h-3 text-sky-400 shrink-0" />
+                <span>Đã gửi khảo sát</span>
+              </span>
+              {stats?.hasDraftProgress ? (
+                <span className="text-[10px] text-amber-400/90 font-sans pl-1">
+                  Đang điền dở (nháp)
+                </span>
+              ) : expStr && expStr !== '--' ? (
+                <span className="text-[10px] text-slate-500 font-mono pl-1">
+                  Hạn: {expStr}
+                </span>
+              ) : null}
+            </div>
+          );
+        }
+
+        // NOT_CREATED (including cases where old links expired or were revoked without completion)
+        const hasInactiveHistory = Boolean(stats?.hasExpiredOrRevokedLinks);
+        const inactiveNote =
+          stats?.latestInactiveLinkStatus === 'REVOKED'
+            ? 'Link cũ đã thu hồi (chưa có link hiệu lực)'
+            : stats?.latestInactiveLinkStatus === 'EXPIRED'
+            ? 'Link cũ đã hết hạn (chưa có link hiệu lực)'
+            : '';
+
+        return (
+          <div
+            className="flex flex-col items-start gap-0.5 py-0.5"
+            title={
+              hasInactiveHistory
+                ? `Chưa tạo link khảo sát hiệu lực • ${inactiveNote}`
+                : 'Khách hàng chưa được tạo link khảo sát công khai và chưa hoàn thành khảo sát nào'
+            }
+          >
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-900 text-slate-400 border border-slate-800 whitespace-nowrap">
+              <FileText className="w-3 h-3 text-slate-500 shrink-0" />
+              <span>Chưa tạo link khảo sát</span>
+            </span>
+            {hasInactiveHistory && (
+              <span className="text-[10px] text-amber-500/80 font-sans pl-1">
+                {stats?.latestInactiveLinkStatus === 'REVOKED'
+                  ? 'Link cũ đã thu hồi'
+                  : 'Link cũ đã hết hạn'}
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
       key: 'priority',
       header: 'Nhu cầu / Ưu tiên',
       width: '130px',
@@ -725,7 +836,7 @@ export const CustomersPage: React.FC = () => {
                     : cf.effectiveStatus === 'CANCELLED'
                     ? 'Đã hủy'
                     : 'Chưa hoàn thành'
-                }] - Hạn: ${cf.dueAt ? cf.dueAt.slice(0, 10) : '—'}`
+                }] - Hạn: ${cf.dueAt ? formatDate(cf.dueAt) : '—'}`
             ).join('\n')
           : undefined;
 
@@ -973,6 +1084,18 @@ export const CustomersPage: React.FC = () => {
           </optgroup>
         </select>
 
+        {/* Survey Status Filter */}
+        <select
+          value={surveyStatus}
+          onChange={(e) => updateFilters({ surveyStatus: e.target.value || undefined, page: 1 })}
+          className="h-8 bg-slate-900 border border-slate-800 rounded px-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500 font-sans"
+        >
+          <option value="">Tất cả trạng thái khảo sát</option>
+          <option value="NOT_CREATED">Chưa tạo link khảo sát</option>
+          <option value="SENT">Đã gửi khảo sát</option>
+          <option value="COMPLETED">Khách đã điền khảo sát</option>
+        </select>
+
         {/* Priority / Need Filter */}
         <select
           value={priority}
@@ -1035,23 +1158,29 @@ export const CustomersPage: React.FC = () => {
           ))}
         </select>
 
-        {/* Date Filter: Start & End Date */}
+        {/* Date Filter: Start & End Date (dd/MM/yyyy) */}
         <div className="flex items-center gap-1">
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => updateFilters({ startDate: e.target.value || undefined, page: 1 })}
-            title="Từ ngày tạo"
-            className="h-8 px-1.5 bg-slate-900 border border-slate-800 rounded text-[11px] text-slate-200 font-mono focus:outline-none focus:border-blue-500"
-          />
+          <div className="w-36" title="Từ ngày tạo (dd/MM/yyyy)">
+            <VietnameseDatePicker
+              variant="dark"
+              size="sm"
+              value={startDate}
+              placeholder="Từ dd/mm/yyyy"
+              showClear={false}
+              onChange={(iso) => updateFilters({ startDate: iso || undefined, page: 1 })}
+            />
+          </div>
           <span className="text-slate-600 text-xs">đến</span>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => updateFilters({ endDate: e.target.value || undefined, page: 1 })}
-            title="Đến ngày tạo"
-            className="h-8 px-1.5 bg-slate-900 border border-slate-800 rounded text-[11px] text-slate-200 font-mono focus:outline-none focus:border-blue-500"
-          />
+          <div className="w-36" title="Đến ngày tạo (dd/MM/yyyy)">
+            <VietnameseDatePicker
+              variant="dark"
+              size="sm"
+              value={endDate}
+              placeholder="Đến dd/mm/yyyy"
+              showClear={false}
+              onChange={(iso) => updateFilters({ endDate: iso || undefined, page: 1 })}
+            />
+          </div>
         </div>
       </FilterBar>
 

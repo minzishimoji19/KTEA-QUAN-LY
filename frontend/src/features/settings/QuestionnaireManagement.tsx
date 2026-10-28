@@ -17,6 +17,9 @@ import {
   Search,
   X,
   Copy,
+  Archive,
+  RotateCcw,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   Questionnaire,
@@ -29,6 +32,7 @@ import {
 import questionnaireService from '../../services/questionnaireService';
 import { useToast } from '../../context/ToastContext';
 import { Skeleton } from '../../components/ui/Skeleton';
+import { VietnameseDatePicker } from '../../components/ui/VietnameseDatePicker';
 
 // Question Type Labels & Badge Colors
 const QUESTION_TYPE_INFO: Record<
@@ -111,6 +115,26 @@ export const QuestionnaireManagement: React.FC = () => {
   const [newQTitle, setNewQTitle] = useState<string>('');
   const [newQDesc, setNewQDesc] = useState<string>('');
   const [isCreatingQ, setIsCreatingQ] = useState<boolean>(false);
+
+  // State: Filter archived questionnaires in sidebar
+  const [showArchived, setShowArchived] = useState<boolean>(false);
+
+  // State: Rename / Edit Questionnaire Metadata Modal
+  const [isRenameModalOpen, setIsRenameModalOpen] = useState<boolean>(false);
+  const [editQTitle, setEditQTitle] = useState<string>('');
+  const [editQDesc, setEditQDesc] = useState<string>('');
+  const [isUpdatingQ, setIsUpdatingQ] = useState<boolean>(false);
+
+  // State: Delete Unused Draft Questionnaire Confirmation Modal
+  const [isDeleteQModalOpen, setIsDeleteQModalOpen] = useState<boolean>(false);
+  const [isDeletingQ, setIsDeletingQ] = useState<boolean>(false);
+
+  // State: Delete Unused Draft Version Confirmation Modal
+  const [isDeleteVersionModalOpen, setIsDeleteVersionModalOpen] = useState<boolean>(false);
+  const [isDeletingVersion, setIsDeletingVersion] = useState<boolean>(false);
+
+  // State: Archive / Restore Questionnaire
+  const [isTogglingArchive, setIsTogglingArchive] = useState<boolean>(false);
 
   // Load Questionnaires list
   const loadQuestionnaires = async () => {
@@ -369,11 +393,138 @@ export const QuestionnaireManagement: React.FC = () => {
     }
   };
 
+  // Open Rename / Edit Metadata Modal
+  const handleOpenRenameModal = () => {
+    if (!activeQuestionnaire) return;
+    setEditQTitle(activeQuestionnaire.title);
+    setEditQDesc(activeQuestionnaire.description || '');
+    setIsRenameModalOpen(true);
+  };
+
+  // Submit Rename / Edit Metadata
+  const handleUpdateQuestionnaireMetadata = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeQuestionnaire) return;
+
+    const trimmedTitle = editQTitle.trim();
+    if (!trimmedTitle) {
+      toast.error('Tên bộ câu hỏi không được để trống.');
+      return;
+    }
+    if (trimmedTitle.length < 3 || trimmedTitle.length > 255) {
+      toast.error('Tên bộ câu hỏi phải có từ 3 đến 255 ký tự.');
+      return;
+    }
+
+    setIsUpdatingQ(true);
+    try {
+      await questionnaireService.updateQuestionnaire(activeQuestionnaire.id, {
+        title: trimmedTitle,
+        description: editQDesc.trim() || null,
+      });
+      toast.success('Đã đổi tên và cập nhật thông tin bộ câu hỏi thành công');
+      setIsRenameModalOpen(false);
+      await loadQuestionnaires();
+    } catch (err: any) {
+      toast.error('Không thể đổi tên bộ câu hỏi: ' + (err.message || ''));
+    } finally {
+      setIsUpdatingQ(false);
+    }
+  };
+
+  // Toggle Archive / Active status for published or used questionnaires
+  const handleToggleArchiveQuestionnaire = async () => {
+    if (!activeQuestionnaire) return;
+    const nextActive = !activeQuestionnaire.active;
+    setIsTogglingArchive(true);
+    try {
+      await questionnaireService.updateQuestionnaire(activeQuestionnaire.id, {
+        active: nextActive,
+      });
+      toast.success(
+        nextActive
+          ? `Đã khôi phục sử dụng bộ câu hỏi "${activeQuestionnaire.title}"`
+          : `Đã ngừng sử dụng (lưu trữ) bộ câu hỏi "${activeQuestionnaire.title}". Lịch sử khảo sát cũ vẫn được giữ nguyên.`
+      );
+      if (!nextActive) {
+        setShowArchived(true);
+      }
+      await loadQuestionnaires();
+    } catch (err: any) {
+      toast.error('Lỗi khi cập nhật trạng thái bộ câu hỏi: ' + (err.message || ''));
+    } finally {
+      setIsTogglingArchive(false);
+    }
+  };
+
+  // Confirm Hard Delete of an unused Draft Questionnaire
+  const handleConfirmDeleteQuestionnaire = async () => {
+    if (!activeQuestionnaire) return;
+    setIsDeletingQ(true);
+    try {
+      const deletedTitle = activeQuestionnaire.title;
+      const deletedId = activeQuestionnaire.id;
+      await questionnaireService.deleteQuestionnaire(deletedId);
+      toast.success(`Đã xóa bộ câu hỏi nháp "${deletedTitle}" thành công`);
+      setIsDeleteQModalOpen(false);
+      const remaining = questionnaires.filter((q) => q.id !== deletedId);
+      setQuestionnaires(remaining);
+      setSelectedQuestionnaireId(remaining.length > 0 ? remaining[0].id : null);
+      await loadQuestionnaires();
+    } catch (err: any) {
+      toast.error('Không thể xóa bộ câu hỏi: ' + (err.message || ''));
+    } finally {
+      setIsDeletingQ(false);
+    }
+  };
+
+  // Confirm Delete of an unused Draft Version (when questionnaire already has other versions)
+  const handleConfirmDeleteDraftVersion = async () => {
+    if (!activeQuestionnaire || !currentVersion || currentVersion.status !== 'DRAFT') return;
+    setIsDeletingVersion(true);
+    try {
+      await questionnaireService.deleteDraftVersion(activeQuestionnaire.id, currentVersion.id);
+      toast.success(
+        `Đã xóa bản nháp v${currentVersion.versionNumber} của "${activeQuestionnaire.title}"`
+      );
+      setIsDeleteVersionModalOpen(false);
+      await loadQuestionnaires();
+      const updatedQ = await questionnaireService.getQuestionnaireById(activeQuestionnaire.id);
+      const fallbackV =
+        updatedQ.versions?.find((v) => v.isCurrent && v.status === 'PUBLISHED') ||
+        updatedQ.versions?.[0];
+      if (fallbackV) {
+        setSelectedVersionId(fallbackV.id);
+        loadVersionDetail(activeQuestionnaire.id, fallbackV.id);
+      }
+    } catch (err: any) {
+      toast.error('Không thể xóa phiên bản nháp: ' + (err.message || ''));
+    } finally {
+      setIsDeletingVersion(false);
+    }
+  };
+
+  // Check if activeQuestionnaire can be hard-deleted (unused draft only)
+  const canHardDeleteActiveQuestionnaire = useMemo(() => {
+    if (!activeQuestionnaire) return false;
+    if (typeof activeQuestionnaire.canHardDelete === 'boolean') {
+      return activeQuestionnaire.canHardDelete;
+    }
+    const hasNonDraft = (activeQuestionnaire.versions || []).some((v) => v.status !== 'DRAFT');
+    const hasAssessments = (activeQuestionnaire.totalAssessments || 0) > 0;
+    return !hasNonDraft && !hasAssessments;
+  }, [activeQuestionnaire]);
+
   // Filtered questionnaires list
-  const filteredQuestionnaires = questionnaires.filter((q) =>
-    q.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    q.code.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredQuestionnaires = questionnaires.filter((q) => {
+    if (!showArchived && !q.active && q.id !== selectedQuestionnaireId) {
+      return false;
+    }
+    return (
+      q.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      q.code.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  });
 
   return (
     <div className="space-y-6">
@@ -413,10 +564,23 @@ export const QuestionnaireManagement: React.FC = () => {
         {/* Left Column: Questionnaire Selector List (col-4) */}
         <div className="lg:col-span-4 space-y-4">
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4 space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                Danh sách bộ câu hỏi ({questionnaires.length})
+                Danh sách bộ câu hỏi ({filteredQuestionnaires.length}/{questionnaires.length})
               </span>
+              {questionnaires.some((q) => !q.active) && (
+                <button
+                  type="button"
+                  onClick={() => setShowArchived((s) => !s)}
+                  className={`text-[11px] px-2 py-0.5 rounded border transition-colors ${
+                    showArchived
+                      ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {showArchived ? 'Ẩn lưu trữ' : 'Hiện đã lưu trữ'}
+                </button>
+              )}
             </div>
 
             <div className="relative">
@@ -464,11 +628,11 @@ export const QuestionnaireManagement: React.FC = () => {
                             </span>
                             {q.active ? (
                               <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 font-mono">
-                                Active
+                                Đang dùng
                               </span>
                             ) : (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-500/10 text-slate-400 font-mono">
-                                Off
+                              <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">
+                                Đã lưu trữ
                               </span>
                             )}
                           </div>
@@ -510,20 +674,36 @@ export const QuestionnaireManagement: React.FC = () => {
               <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
                   <div>
-                    <h2 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
-                      <span>{activeQuestionnaire.title}</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-sm font-semibold text-slate-100">
+                        {activeQuestionnaire.title}
+                      </h2>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-slate-800 text-slate-300">
                         {activeQuestionnaire.code}
                       </span>
-                    </h2>
+                      {!activeQuestionnaire.active && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                          Đã ngừng sử dụng (Lưu trữ)
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleOpenRenameModal}
+                        title="Đổi tên / sửa mô tả bộ câu hỏi"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-[11px] text-blue-300 transition-colors"
+                      >
+                        <Edit className="w-3 h-3" />
+                        <span>Đổi tên</span>
+                      </button>
+                    </div>
                     {activeQuestionnaire.description && (
-                      <p className="text-xs text-slate-400 mt-0.5">
+                      <p className="text-xs text-slate-400 mt-1">
                         {activeQuestionnaire.description}
                       </p>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center flex-wrap gap-2">
                     <button
                       onClick={() => setIsPreviewModalOpen(true)}
                       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs transition-colors"
@@ -548,6 +728,61 @@ export const QuestionnaireManagement: React.FC = () => {
                         <Copy className="w-3.5 h-3.5" />
                         <span>Tạo bản nháp mới</span>
                       </button>
+                    )}
+
+                    {/* Safety-aware Delete vs Archive controls */}
+                    {canHardDeleteActiveQuestionnaire ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsDeleteQModalOpen(true)}
+                        title="Xóa vĩnh viễn bộ câu hỏi nháp chưa từng xuất bản và chưa có khảo sát"
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-medium transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Xóa bản nháp</span>
+                      </button>
+                    ) : (
+                      <>
+                        {currentVersion?.status === 'DRAFT' &&
+                          (activeQuestionnaire.versions?.length || 0) > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setIsDeleteVersionModalOpen(true)}
+                              title={`Hủy phiên bản nháp v${currentVersion.versionNumber} (giữ nguyên các phiên bản đã xuất bản)`}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Hủy nháp v{currentVersion.versionNumber}</span>
+                            </button>
+                          )}
+                        <button
+                          type="button"
+                          disabled={isTogglingArchive}
+                          onClick={handleToggleArchiveQuestionnaire}
+                          title={
+                            activeQuestionnaire.active
+                              ? 'Ngừng sử dụng cho khảo sát mới nhưng giữ nguyên toàn bộ lịch sử khảo sát cũ'
+                              : 'Khôi phục bộ câu hỏi này để tiếp tục tạo khảo sát mới'
+                          }
+                          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors disabled:opacity-50 ${
+                            activeQuestionnaire.active
+                              ? 'border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300'
+                              : 'border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300'
+                          }`}
+                        >
+                          {activeQuestionnaire.active ? (
+                            <>
+                              <Archive className="w-3.5 h-3.5" />
+                              <span>{isTogglingArchive ? 'Đang xử lý...' : 'Ngừng sử dụng'}</span>
+                            </>
+                          ) : (
+                            <>
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>{isTogglingArchive ? 'Đang xử lý...' : 'Khôi phục'}</span>
+                            </>
+                          )}
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -966,6 +1201,201 @@ export const QuestionnaireManagement: React.FC = () => {
           versionNumber={currentVersion?.versionNumber || 1}
           onClose={() => setIsPreviewModalOpen(false)}
         />
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 5: ĐỔI TÊN / SỬA THÔNG TIN BỘ CÂU HỎI                              */}
+      {/* ========================================================================= */}
+      {isRenameModalOpen && activeQuestionnaire && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <h3 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                <Edit className="w-4 h-4 text-blue-400" />
+                <span>Đổi tên bộ câu hỏi</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsRenameModalOpen(false)}
+                className="text-slate-400 hover:text-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateQuestionnaireMetadata} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-400">
+                  Mã định danh (Không đổi để giữ toàn vẹn lịch sử)
+                </label>
+                <input
+                  type="text"
+                  disabled
+                  value={activeQuestionnaire.code}
+                  className="w-full px-3 py-2 bg-slate-950/60 border border-slate-800 rounded-lg text-xs text-slate-400 font-mono cursor-not-allowed"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-300">
+                  Tên hiển thị bộ câu hỏi <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  minLength={3}
+                  maxLength={255}
+                  value={editQTitle}
+                  onChange={(e) => setEditQTitle(e.target.value)}
+                  placeholder="Nhập tên bộ câu hỏi (3 - 255 ký tự)..."
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+                />
+                <p className="text-[10px] text-slate-400">
+                  Thao tác đổi tên không làm thay đổi nội dung câu hỏi hay lịch sử các phiên bản đã xuất bản.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-300">Mô tả mục đích</label>
+                <textarea
+                  rows={3}
+                  value={editQDesc}
+                  onChange={(e) => setEditQDesc(e.target.value)}
+                  placeholder="Mô tả mục tiêu khảo sát..."
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  disabled={isUpdatingQ}
+                  onClick={() => setIsRenameModalOpen(false)}
+                  className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdatingQ}
+                  className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium disabled:opacity-50"
+                >
+                  {isUpdatingQ ? 'Đang lưu...' : 'Lưu tên mới'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 6: XÁC NHẬN XÓA BỘ CÂU HỎI NHÁP CHƯA SỬ DỤNG                        */}
+      {/* ========================================================================= */}
+      {isDeleteQModalOpen && activeQuestionnaire && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl border border-rose-900/60 bg-slate-900 p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <h3 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400" />
+                <span>Xác nhận xóa bộ câu hỏi nháp</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsDeleteQModalOpen(false)}
+                className="text-slate-400 hover:text-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-300">
+              <p>
+                Bạn có chắc chắn muốn xóa vĩnh viễn bộ câu hỏi nháp:
+              </p>
+              <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
+                <div className="font-semibold text-slate-100 text-sm">
+                  {activeQuestionnaire.title}
+                </div>
+                <div className="font-mono text-[11px] text-slate-400">
+                  Mã: {activeQuestionnaire.code}
+                </div>
+              </div>
+              <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-800/40 text-[11px] text-emerald-300">
+                ✔ Kiểm tra an toàn: Bộ câu hỏi này đang ở trạng thái <strong>Bản nháp</strong>, chưa từng xuất bản và chưa có bất kỳ khảo sát hay câu trả lời nào của khách hàng.
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                disabled={isDeletingQ}
+                onClick={() => setIsDeleteQModalOpen(false)}
+                className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingQ}
+                onClick={handleConfirmDeleteQuestionnaire}
+                className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-medium disabled:opacity-50"
+              >
+                {isDeletingQ ? 'Đang xóa...' : 'Xác nhận xóa bản nháp'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 7: XÁC NHẬN HỦY PHIÊN BẢN NHÁP (GIỮ NGUYÊN BẢN ĐÃ XUẤT BẢN)        */}
+      {/* ========================================================================= */}
+      {isDeleteVersionModalOpen && activeQuestionnaire && currentVersion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl border border-rose-900/60 bg-slate-900 p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <h3 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400" />
+                <span>Xác nhận hủy phiên bản nháp v{currentVersion.versionNumber}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsDeleteVersionModalOpen(false)}
+                className="text-slate-400 hover:text-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-300">
+              <p>
+                Bạn có chắc chắn muốn hủy phiên bản nháp <strong>v{currentVersion.versionNumber}</strong> của bộ câu hỏi <strong>&quot;{activeQuestionnaire.title}&quot;</strong> ({activeQuestionnaire.code})?
+              </p>
+              <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-[11px] text-slate-400">
+                Các phiên bản đã xuất bản trước đó và toàn bộ lịch sử khảo sát khách hàng sẽ được giữ nguyên an toàn.
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                disabled={isDeletingVersion}
+                onClick={() => setIsDeleteVersionModalOpen(false)}
+                className="px-3 py-1.5 rounded-lg border border-slate-700 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+              >
+                Giữ lại
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingVersion}
+                onClick={handleConfirmDeleteDraftVersion}
+                className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-medium disabled:opacity-50"
+              >
+                {isDeletingVersion ? 'Đang xóa...' : `Hủy bản nháp v${currentVersion.versionNumber}`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1501,11 +1931,14 @@ const InteractivePreviewModal: React.FC<InteractivePreviewModalProps> = ({
                   )}
 
                   {q.questionType === 'DATE' && (
-                    <input
-                      type="date"
+                    <VietnameseDatePicker
+                      variant="dark"
+                      size="md"
                       value={answers[q.code] || ''}
-                      onChange={(e) => handleAnswerChange(q.code, e.target.value)}
-                      className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+                      minDate={q.validationConfig?.minDate}
+                      maxDate={q.validationConfig?.maxDate}
+                      onChange={(isoDate) => handleAnswerChange(q.code, isoDate)}
+                      className="max-w-xs"
                     />
                   )}
                 </div>

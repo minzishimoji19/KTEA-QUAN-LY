@@ -11,11 +11,13 @@ export interface CustomerQueryFilters {
   product?: string;
   need?: string;
   tag?: string;
+  surveyStatus?: 'NOT_CREATED' | 'SENT' | 'COMPLETED' | 'all' | string;
   startDate?: string;
   endDate?: string;
   sortBy?: 'createdAt' | 'updatedAt' | 'fullName' | 'overallStatus';
   sortOrder?: 'asc' | 'desc';
   scopedCustomerIds?: string[];
+  scopedUserId?: string;
   selectedIds?: string[];
 }
 
@@ -130,6 +132,60 @@ export class CustomerRepository extends BaseRepository {
       };
     }
 
+    // 5b. Survey status filter (computed from real Assessment + PublicSurveyLink records)
+    if (filters.surveyStatus && filters.surveyStatus !== 'all') {
+      const now = new Date();
+      if (filters.surveyStatus === 'COMPLETED') {
+        where.assessments = {
+          some: {
+            status: 'COMPLETED',
+          },
+        };
+      } else if (filters.surveyStatus === 'SENT') {
+        const sentConditions: Prisma.CustomerWhereInput[] = [
+          { assessments: { none: { status: 'COMPLETED' } } },
+          {
+            assessments: {
+              some: {
+                status: { not: 'CANCELLED' },
+                publicSurveyLink: {
+                  status: 'ACTIVE',
+                  revokedAt: null,
+                  expiresAt: { gt: now },
+                },
+              },
+            },
+          },
+        ];
+        where.AND = Array.isArray(where.AND)
+          ? [...where.AND, ...sentConditions]
+          : where.AND
+          ? [where.AND, ...sentConditions]
+          : sentConditions;
+      } else if (filters.surveyStatus === 'NOT_CREATED') {
+        const notCreatedConditions: Prisma.CustomerWhereInput[] = [
+          { assessments: { none: { status: 'COMPLETED' } } },
+          {
+            assessments: {
+              none: {
+                status: { not: 'CANCELLED' },
+                publicSurveyLink: {
+                  status: 'ACTIVE',
+                  revokedAt: null,
+                  expiresAt: { gt: now },
+                },
+              },
+            },
+          },
+        ];
+        where.AND = Array.isArray(where.AND)
+          ? [...where.AND, ...notCreatedConditions]
+          : where.AND
+          ? [where.AND, ...notCreatedConditions]
+          : notCreatedConditions;
+      }
+    }
+
     // 6. Date Range filter on createdAt
     if (startDate || endDate) {
       where.createdAt = {};
@@ -183,6 +239,7 @@ export class CustomerRepository extends BaseRepository {
             include: { tag: true },
           },
           assignments: {
+            ...(filters.scopedUserId ? { where: { userId: filters.scopedUserId } } : {}),
             include: {
               user: {
                 select: {
@@ -213,6 +270,16 @@ export class CustomerRepository extends BaseRepository {
             take: 1,
           },
           followUps: {
+            ...(filters.scopedUserId
+              ? {
+                  where: {
+                    OR: [
+                      { assignedToUserId: filters.scopedUserId },
+                      { assignedToUserId: null },
+                    ],
+                  },
+                }
+              : {}),
             orderBy: [
               { dueAt: 'desc' },
               { createdAt: 'desc' },
@@ -228,6 +295,30 @@ export class CustomerRepository extends BaseRepository {
               updatedAt: true,
               assignedTo: true,
               assignedToUserId: true,
+            },
+          },
+          assessments: {
+            orderBy: { createdAt: 'desc' },
+            select: {
+              id: true,
+              status: true,
+              startedAt: true,
+              completedAt: true,
+              updatedAt: true,
+              _count: {
+                select: { answers: true },
+              },
+              publicSurveyLink: {
+                select: {
+                  id: true,
+                  status: true,
+                  expiresAt: true,
+                  revokedAt: true,
+                  completedAt: true,
+                  lastAccessedAt: true,
+                  createdAt: true,
+                },
+              },
             },
           },
           recommendations: {
@@ -253,7 +344,7 @@ export class CustomerRepository extends BaseRepository {
     return { total, customers };
   }
 
-  async findById(id: string) {
+  async findById(id: string, scopedUserId?: string) {
     return this.db.customer.findUnique({
       where: { id },
       include: {
@@ -262,6 +353,7 @@ export class CustomerRepository extends BaseRepository {
           include: { tag: true },
         },
         assignments: {
+          ...(scopedUserId ? { where: { userId: scopedUserId } } : {}),
           include: {
             user: {
               select: {
@@ -283,6 +375,16 @@ export class CustomerRepository extends BaseRepository {
           ],
         },
         followUps: {
+          ...(scopedUserId
+            ? {
+                where: {
+                  OR: [
+                    { assignedToUserId: scopedUserId },
+                    { assignedToUserId: null },
+                  ],
+                },
+              }
+            : {}),
           orderBy: [
             { dueAt: 'desc' },
             { createdAt: 'desc' },
@@ -300,6 +402,30 @@ export class CustomerRepository extends BaseRepository {
             assignedToUserId: true,
           },
         },
+        assessments: {
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            status: true,
+            startedAt: true,
+            completedAt: true,
+            updatedAt: true,
+            _count: {
+              select: { answers: true },
+            },
+            publicSurveyLink: {
+              select: {
+                id: true,
+                status: true,
+                expiresAt: true,
+                revokedAt: true,
+                completedAt: true,
+                lastAccessedAt: true,
+                createdAt: true,
+              },
+            },
+          },
+        },
         _count: {
           select: {
             cases: true,
@@ -312,12 +438,13 @@ export class CustomerRepository extends BaseRepository {
     });
   }
 
-  async findDetailById(id: string) {
+  async findDetailById(id: string, scopedUserId?: string) {
     return this.db.customer.findUnique({
       where: { id },
       include: {
         customerSource: true,
         assignments: {
+          ...(scopedUserId ? { where: { userId: scopedUserId } } : {}),
           include: {
             user: {
               select: {
@@ -356,7 +483,41 @@ export class CustomerRepository extends BaseRepository {
           include: { tag: true },
         },
         followUps: {
+          ...(scopedUserId
+            ? {
+                where: {
+                  OR: [
+                    { assignedToUserId: scopedUserId },
+                    { assignedToUserId: null },
+                  ],
+                },
+              }
+            : {}),
           orderBy: { dueAt: 'asc' },
+        },
+        assessments: {
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            status: true,
+            startedAt: true,
+            completedAt: true,
+            updatedAt: true,
+            _count: {
+              select: { answers: true },
+            },
+            publicSurveyLink: {
+              select: {
+                id: true,
+                status: true,
+                expiresAt: true,
+                revokedAt: true,
+                completedAt: true,
+                lastAccessedAt: true,
+                createdAt: true,
+              },
+            },
+          },
         },
         recommendations: {
           include: { targetProduct: true },

@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, CalendarCheck, AlertCircle, Search, Users, User, Check, Loader2 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { VietnameseDatePicker } from '../../components/ui/VietnameseDatePicker';
+import { toIsoDateString } from '../../utils/formatters';
 import { useCreateFollowUp, useCreateBulkFollowUp } from '../../hooks/useFollowUps';
 import { customerService } from '../../services/customerService';
 import { useEligibleCaregivers } from '../../hooks/useCaretakers';
+import { useAuth } from '../../context/AuthContext';
 import { AuthUser } from '../../types/auth';
 
 export interface SelectedCustomerItem {
@@ -27,6 +30,8 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
   customerName,
   initialSelectedCustomers,
 }) => {
+  const { user, role } = useAuth();
+  const isPartner = role === 'PARTNER';
   const createFollowUp = useCreateFollowUp();
   const createBulkFollowUp = useCreateBulkFollowUp();
   const { data: caregivers, isLoading: isCaregiversLoading } = useEligibleCaregivers();
@@ -34,7 +39,7 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
   // Tomorrow by default
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(9, 0, 0, 0);
+  const defaultDueDate = toIsoDateString(tomorrow);
 
   const [selectedCustomers, setSelectedCustomers] = useState<SelectedCustomerItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -43,7 +48,8 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   const [title, setTitle] = useState('');
-  const [dueAt, setDueAt] = useState(tomorrow.toISOString().slice(0, 16));
+  const [dueDate, setDueDate] = useState(defaultDueDate);
+  const [dueTime, setDueTime] = useState('09:00');
   const [assignedToUserId, setAssignedToUserId] = useState<string>('');
   const [assignedTo, setAssignedTo] = useState<string>('');
   const [description, setDescription] = useState('');
@@ -67,16 +73,17 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
           ? `Chăm sóc khách hàng ${customerName}`
           : 'Lịch chăm sóc khách hàng định kỳ'
       );
-      setDueAt(tomorrow.toISOString().slice(0, 16));
-      setAssignedToUserId('');
-      setAssignedTo('');
+      setDueDate(defaultDueDate);
+      setDueTime('09:00');
+      setAssignedToUserId(isPartner && user ? user.id : '');
+      setAssignedTo(isPartner && user ? user.fullName : '');
       setDescription('');
       setError('');
       setSuccessMessage('');
       setSearchQuery('');
       setSearchResults([]);
     }
-  }, [isOpen, customerId, customerName, initialSelectedCustomers]);
+  }, [isOpen, customerId, customerName, initialSelectedCustomers, isPartner, user, defaultDueDate]);
 
   // Search customers debounced
   useEffect(() => {
@@ -147,15 +154,16 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
       setError('Vui lòng nhập tiêu đề nhiệm vụ');
       return;
     }
-    if (!dueAt) {
-      setError('Vui lòng chọn ngày giờ hạn');
+    if (!dueDate) {
+      setError('Vui lòng chọn ngày hẹn (dd/MM/yyyy)');
       return;
     }
 
     try {
-      const dueIso = new Date(dueAt).toISOString();
-      const caretakerVal = assignedTo || null;
-      const caretakerUserIdVal = assignedToUserId || null;
+      const timePart = dueTime && /^\d{2}:\d{2}$/.test(dueTime) ? dueTime : '09:00';
+      const dueIso = new Date(`${dueDate}T${timePart}:00`).toISOString();
+      const caretakerVal = isPartner && user ? user.fullName : assignedTo || null;
+      const caretakerUserIdVal = isPartner && user ? user.id : assignedToUserId || null;
       const descVal = description.trim() || null;
 
       if (selectedCustomers.length === 1) {
@@ -349,14 +357,26 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                  Ngày giờ hẹn <span className="text-red-400">*</span>
+                  Ngày giờ hẹn (dd/MM/yyyy) <span className="text-red-400">*</span>
                 </label>
-                <input
-                  type="datetime-local"
-                  value={dueAt}
-                  onChange={(e) => setDueAt(e.target.value)}
-                  className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono focus:outline-none focus:border-blue-500"
-                />
+                <div className="flex items-center gap-1.5">
+                  <div className="flex-1">
+                    <VietnameseDatePicker
+                      variant="dark"
+                      size="sm"
+                      value={dueDate}
+                      showClear={false}
+                      placeholder="dd/mm/yyyy"
+                      onChange={(isoDate) => setDueDate(isoDate)}
+                    />
+                  </div>
+                  <input
+                    type="time"
+                    value={dueTime}
+                    onChange={(e) => setDueTime(e.target.value)}
+                    className="w-24 h-8 px-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono text-xs focus:outline-none focus:border-blue-500"
+                  />
+                </div>
               </div>
 
               {/* Người chăm sóc */}
@@ -364,25 +384,34 @@ export const ScheduleFollowUpModal: React.FC<ScheduleFollowUpModalProps> = ({
                 <label className="block text-[11px] font-medium text-slate-300 mb-1">
                   Người chăm sóc
                 </label>
-                <select
-                  value={assignedToUserId}
-                  onChange={(e) => {
-                    const uId = e.target.value;
-                    setAssignedToUserId(uId);
-                    const found = caregivers?.find((u: AuthUser) => u.id === uId);
-                    setAssignedTo(found ? found.fullName : '');
-                  }}
-                  disabled={isCaregiversLoading}
-                  className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-medium focus:outline-none focus:border-blue-500"
-                >
-                  <option value="">-- Chưa phân công --</option>
-                  {caregivers &&
-                    caregivers.map((u: AuthUser) => (
-                      <option key={u.id} value={u.id}>
-                        {u.fullName} ({u.role === 'ADMIN' ? 'Quản trị viên' : 'Nhân viên'})
-                      </option>
-                    ))}
-                </select>
+                {isPartner ? (
+                  <input
+                    type="text"
+                    disabled
+                    value={user?.fullName || assignedTo || 'Đối tác phụ trách'}
+                    className="w-full h-8 px-2.5 bg-slate-950/60 border border-slate-800 rounded-lg text-slate-400 font-medium cursor-not-allowed"
+                  />
+                ) : (
+                  <select
+                    value={assignedToUserId}
+                    onChange={(e) => {
+                      const uId = e.target.value;
+                      setAssignedToUserId(uId);
+                      const found = caregivers?.find((u: AuthUser) => u.id === uId);
+                      setAssignedTo(found ? found.fullName : '');
+                    }}
+                    disabled={isCaregiversLoading}
+                    className="w-full h-8 px-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-medium focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">-- Chưa phân công --</option>
+                    {caregivers &&
+                      caregivers.map((u: AuthUser) => (
+                        <option key={u.id} value={u.id}>
+                          {u.fullName} ({u.role === 'ADMIN' ? 'Quản trị viên' : 'Nhân viên'})
+                        </option>
+                      ))}
+                  </select>
+                )}
               </div>
             </div>
 

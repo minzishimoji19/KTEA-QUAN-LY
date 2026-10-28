@@ -7,6 +7,7 @@ import { buildPaginationMeta } from '../utils/db.js';
 import BaseService from './base.service.js';
 import prisma from '../config/database.js';
 import { enrichCustomerWithStatus } from './customerStatus.service.js';
+import { parseStrictDateOnly } from '../utils/dateUtils.js';
 
 import { CustomerQueryFilters } from '../repositories/customer.repository.js';
 
@@ -30,16 +31,16 @@ export class CustomerService extends BaseService {
     };
   }
 
-  async getCustomerById(id: string) {
-    const customer = await customerRepository.findById(id);
+  async getCustomerById(id: string, scopedUserId?: string) {
+    const customer = await customerRepository.findById(id, scopedUserId);
     if (!customer) {
       throw new NotFoundError(`Customer with ID '${id}' not found`);
     }
     return enrichCustomerWithStatus(customer);
   }
 
-  async getCustomerDetail(id: string) {
-    const customer = await customerRepository.findDetailById(id);
+  async getCustomerDetail(id: string, scopedUserId?: string) {
+    const customer = await customerRepository.findDetailById(id, scopedUserId);
     if (!customer) {
       throw new NotFoundError(`Customer with ID '${id}' not found`);
     }
@@ -94,7 +95,18 @@ export class CustomerService extends BaseService {
       }
     }
 
-    const birthDate = data.dateOfBirth ? new Date(data.dateOfBirth) : null;
+    let birthDate: Date | null = null;
+    if (data.dateOfBirth) {
+      if (typeof data.dateOfBirth === 'string') {
+        const strict = parseStrictDateOnly(data.dateOfBirth);
+        if (!strict) {
+          throw new BadRequestError('Ngày sinh không hợp lệ (vui lòng nhập ngày thực tế)');
+        }
+        birthDate = strict.utcNoonDate;
+      } else {
+        birthDate = new Date(data.dateOfBirth);
+      }
+    }
     const resolvedNote = data.note !== undefined ? data.note : (data.address || null);
 
     // Execute atomic creation + initial lifecycle activity event
@@ -185,9 +197,20 @@ export class CustomerService extends BaseService {
       }
     }
 
-    const birthDate = data.dateOfBirth !== undefined
-      ? (data.dateOfBirth ? new Date(data.dateOfBirth) : null)
-      : undefined;
+    let birthDate: Date | null | undefined = undefined;
+    if (data.dateOfBirth !== undefined) {
+      if (!data.dateOfBirth) {
+        birthDate = null;
+      } else if (typeof data.dateOfBirth === 'string') {
+        const strict = parseStrictDateOnly(data.dateOfBirth);
+        if (!strict) {
+          throw new BadRequestError('Ngày sinh không hợp lệ (vui lòng nhập ngày thực tế)');
+        }
+        birthDate = strict.utcNoonDate;
+      } else {
+        birthDate = new Date(data.dateOfBirth);
+      }
+    }
 
     const currentStatusValue = current.rawOverallStatus || current.overallStatus;
 

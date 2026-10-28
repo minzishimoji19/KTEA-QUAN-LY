@@ -7,6 +7,7 @@ export interface CustomerQueryParams {
   pageSize?: number;
   search?: string;
   status?: string;
+  surveyStatus?: string;
   priority?: string;
   sourceId?: string;
   product?: string;
@@ -25,6 +26,7 @@ export const customerService = {
     if (params.pageSize) query.append('pageSize', params.pageSize.toString());
     if (params.search) query.append('search', params.search);
     if (params.status) query.append('status', params.status);
+    if (params.surveyStatus) query.append('surveyStatus', params.surveyStatus);
     if (params.priority) query.append('priority', params.priority);
     if (params.sourceId) query.append('sourceId', params.sourceId);
     if (params.product) query.append('product', params.product);

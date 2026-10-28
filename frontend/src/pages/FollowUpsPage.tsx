@@ -253,18 +253,30 @@ export const FollowUpsPage: React.FC = () => {
   };
 
   const handleToggleStatus = async (task: FollowUp) => {
-    if (role !== 'ADMIN') {
-      toast.error('Không có quyền', 'Chỉ Quản trị viên (ADMIN) mới có quyền hoàn thành hoặc mở lại lịch chăm sóc.');
+    const isCompleted = task.status === 'COMPLETED';
+    if (isCompleted && role !== 'ADMIN') {
+      toast.error('Không có quyền', 'Chỉ Quản trị viên (ADMIN) mới có quyền mở lại lịch chăm sóc đã hoàn thành.');
       return;
     }
-    const isCompleted = task.status === 'COMPLETED';
-    await updateFollowUp.mutateAsync({
-      id: task.id,
-      data: {
-        status: isCompleted ? 'PENDING' : 'COMPLETED',
-        completedAt: isCompleted ? null : new Date().toISOString(),
-      },
-    });
+    try {
+      await updateFollowUp.mutateAsync({
+        id: task.id,
+        data: {
+          status: isCompleted ? 'PENDING' : 'COMPLETED',
+          ...(role === 'ADMIN'
+            ? { completedAt: isCompleted ? null : new Date().toISOString() }
+            : {}),
+        },
+      });
+      toast.success(
+        isCompleted
+          ? 'Đã mở lại lịch chăm sóc.'
+          : 'Đã đánh dấu hoàn thành lịch chăm sóc.'
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Không thể cập nhật trạng thái lịch chăm sóc';
+      toast.error('Lỗi cập nhật lịch chăm sóc', msg);
+    }
   };
 
   // Bulk Complete execution (ADMIN only)
@@ -481,17 +493,28 @@ export const FollowUpsPage: React.FC = () => {
 
         {/* Action Controls */}
         <div className="flex items-center gap-1.5 self-end sm:self-center flex-shrink-0">
-          {/* Phân quyền bắt buộc: Chỉ ADMIN mới được hoàn thành hoặc mở lại lịch */}
-          {role === 'ADMIN' && (
+          {/* Cả ADMIN và PARTNER được giao lịch đều có quyền đánh dấu Hoàn thành; chỉ ADMIN được Mở lại */}
+          {!isDone && task.status !== 'CANCELLED' && (
             <Button
-              variant={isDone ? 'outline' : 'primary'}
+              variant="primary"
               size="sm"
+              disabled={updateFollowUp.isPending}
               onClick={() => handleToggleStatus(task)}
-              className={`h-7 px-2.5 text-xs font-medium ${
-                !isDone ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : ''
-              }`}
+              className="h-7 px-2.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white gap-1"
             >
-              {isDone ? 'Mở lại' : 'Hoàn thành'}
+              <CheckCircle2 className="w-3 h-3" />
+              <span>Hoàn thành</span>
+            </Button>
+          )}
+          {isDone && role === 'ADMIN' && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={updateFollowUp.isPending}
+              onClick={() => handleToggleStatus(task)}
+              className="h-7 px-2.5 text-xs font-medium"
+            >
+              Mở lại
             </Button>
           )}
 
@@ -677,28 +700,30 @@ export const FollowUpsPage: React.FC = () => {
             </select>
           </div>
 
-          {/* Chăm sóc bởi ai - Caretaker Filter Dropdown */}
-          <div className="flex items-center gap-1.5 text-xs">
-            <label className="text-slate-400 font-mono flex items-center gap-1 shrink-0">
-              <User className="w-3.5 h-3.5 text-blue-400" />
-              <span>Người chăm sóc:</span>
-            </label>
-            <select
-              value={caretakerFilter}
-              onChange={(e) => handleSelectCaretaker(e.target.value)}
-              disabled={isCaregiversLoading}
-              className="h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono text-xs focus:outline-none focus:border-blue-500"
-            >
-              <option value="all">Tất cả người chăm sóc</option>
-              <option value="unassigned">Chưa phân công</option>
-              {caregivers &&
-                caregivers.map((u: AuthUser) => (
-                  <option key={u.id} value={u.id}>
-                    {u.fullName} ({u.role === 'ADMIN' ? 'Quản trị viên' : 'Nhân viên'})
-                  </option>
-                ))}
-            </select>
-          </div>
+          {/* Chăm sóc bởi ai - Caretaker Filter Dropdown (ADMIN only) */}
+          {role !== 'PARTNER' && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <label className="text-slate-400 font-mono flex items-center gap-1 shrink-0">
+                <User className="w-3.5 h-3.5 text-blue-400" />
+                <span>Người chăm sóc:</span>
+              </label>
+              <select
+                value={caretakerFilter}
+                onChange={(e) => handleSelectCaretaker(e.target.value)}
+                disabled={isCaregiversLoading}
+                className="h-8 px-2.5 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono text-xs focus:outline-none focus:border-blue-500"
+              >
+                <option value="all">Tất cả người chăm sóc</option>
+                <option value="unassigned">Chưa phân công</option>
+                {caregivers &&
+                  caregivers.map((u: AuthUser) => (
+                    <option key={u.id} value={u.id}>
+                      {u.fullName} ({u.role === 'ADMIN' ? 'Quản trị viên' : 'Nhân viên'})
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
@@ -756,20 +781,18 @@ export const FollowUpsPage: React.FC = () => {
 
           {selectedTaskIds.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
-              {/* 1. Hoàn thành đã chọn (Chỉ ADMIN) */}
-              {role === 'ADMIN' && (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => setIsBulkCompleteConfirmOpen(true)}
-                  disabled={bulkCompleteMutation.isPending || bulkDeleteMutation.isPending}
-                  className="h-7 px-3 text-xs bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5 font-medium"
-                  title="Đánh dấu hoàn thành các lịch đã chọn"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Hoàn thành ({selectedTaskIds.length})</span>
-                </Button>
-              )}
+              {/* 1. Hoàn thành đã chọn (Cho phép cả ADMIN và PARTNER đối với lịch của mình) */}
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setIsBulkCompleteConfirmOpen(true)}
+                disabled={bulkCompleteMutation.isPending || bulkDeleteMutation.isPending}
+                className="h-7 px-3 text-xs bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5 font-medium"
+                title="Đánh dấu hoàn thành các lịch đã chọn"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Hoàn thành ({selectedTaskIds.length})</span>
+              </Button>
 
               {/* 2. Mở lại lịch chăm sóc (Yêu cầu 2: Chỉ ADMIN) */}
               {role === 'ADMIN' && (

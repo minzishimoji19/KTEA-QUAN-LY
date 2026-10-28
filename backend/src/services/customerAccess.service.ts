@@ -70,19 +70,77 @@ export class CustomerAccessService {
   }
 
   /**
-   * Asserts access to a follow-up by looking up its customer.
+   * Retrieves the Partner user's identity and any linked Caretaker names for schedule-level RBAC scoping.
+   */
+  async getPartnerCaregiverScope(userId: string): Promise<{
+    userId: string;
+    fullName: string;
+    email: string;
+    aliases: string[];
+  }> {
+    const [user, linkedCaretakers] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, fullName: true, email: true },
+      }),
+      prisma.caretaker.findMany({
+        where: { userId },
+        select: { name: true },
+      }),
+    ]);
+
+    const aliasSet = new Set<string>();
+    if (user?.fullName?.trim()) aliasSet.add(user.fullName.trim());
+    if (user?.email?.trim()) aliasSet.add(user.email.trim());
+    for (const ct of linkedCaretakers) {
+      if (ct.name?.trim()) aliasSet.add(ct.name.trim());
+    }
+
+    return {
+      userId,
+      fullName: user?.fullName || '',
+      email: user?.email || '',
+      aliases: Array.from(aliasSet),
+    };
+  }
+
+  /**
+   * Asserts access to a follow-up by looking up its customer AND verifying schedule-level ownership for Partners.
    */
   async assertFollowUpAccess(user: { id: string; role: Role }, followUpId: string): Promise<string> {
     const followUp = await prisma.followUp.findUnique({
       where: { id: followUpId },
-      select: { customerId: true },
+      select: {
+        id: true,
+        customerId: true,
+        assignedToUserId: true,
+        assignedTo: true,
+      },
     });
 
     if (!followUp) {
       throw new NotFoundError(`Lịch chăm sóc không tồn tại hoặc bạn không có quyền truy cập.`);
     }
 
+    // 1. Check customer-level access first (throws 404 if Partner is not assigned to the customer)
     await this.assertCustomerAccess(user, followUp.customerId);
+
+    // 2. For PARTNER, enforce schedule-level ownership so Partner A cannot access/mutate Partner B's schedule on a shared customer
+    if (user.role === Role.PARTNER) {
+      if (followUp.assignedToUserId && followUp.assignedToUserId !== user.id) {
+        throw new ForbiddenError('Bạn không có quyền truy cập hoặc cập nhật lịch chăm sóc được giao cho nhân viên khác.');
+      }
+
+      if (!followUp.assignedToUserId && followUp.assignedTo && followUp.assignedTo.trim()) {
+        const scope = await this.getPartnerCaregiverScope(user.id);
+        const targetLower = followUp.assignedTo.trim().toLowerCase();
+        const isMatchedAlias = scope.aliases.some((alias) => alias.toLowerCase() === targetLower);
+        if (!isMatchedAlias) {
+          throw new ForbiddenError('Bạn không có quyền truy cập hoặc cập nhật lịch chăm sóc được giao cho nhân viên khác.');
+        }
+      }
+    }
+
     return followUp.customerId;
   }
 

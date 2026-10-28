@@ -14,6 +14,7 @@ import {
   ForbiddenError,
 } from '../utils/errors.js';
 import { QuestionnaireVersionStatus, QuestionType } from '@prisma/client';
+import { auditLogService } from './auditLog.service.js';
 
 export interface VersionValidationResult {
   isValid: boolean;
@@ -21,9 +22,33 @@ export interface VersionValidationResult {
   warnings: string[];
 }
 
+export interface ActorContext {
+  userId?: string | null;
+  email?: string | null;
+}
+
+function enrichQuestionnaireDeletionMeta(q: any) {
+  if (!q) return q;
+  const versions = Array.isArray(q.versions) ? q.versions : [];
+  const hasPublishedOrArchivedVersion = versions.some(
+    (v: any) => v.status !== QuestionnaireVersionStatus.DRAFT
+  );
+  const totalAssessments = versions.reduce(
+    (sum: number, v: any) => sum + (v._count?.assessments || 0),
+    0
+  );
+  return {
+    ...q,
+    hasPublishedOrArchivedVersion,
+    totalAssessments,
+    canHardDelete: !hasPublishedOrArchivedVersion && totalAssessments === 0,
+  };
+}
+
 export const questionnaireService = {
   async getAllQuestionnaires(activeOnly = false) {
-    return questionnaireRepository.findAll(activeOnly);
+    const list = await questionnaireRepository.findAll(activeOnly);
+    return list.map((q) => enrichQuestionnaireDeletionMeta(q));
   },
 
   async getQuestionnaireById(id: string) {
@@ -31,7 +56,7 @@ export const questionnaireService = {
     if (!questionnaire) {
       throw new NotFoundError(`Không tìm thấy bộ câu hỏi với ID: ${id}`);
     }
-    return questionnaire;
+    return enrichQuestionnaireDeletionMeta(questionnaire);
   },
 
   async getQuestionnaireByCode(code: string) {
@@ -39,7 +64,7 @@ export const questionnaireService = {
     if (!questionnaire) {
       throw new NotFoundError(`Không tìm thấy bộ câu hỏi với mã: ${code}`);
     }
-    return questionnaire;
+    return enrichQuestionnaireDeletionMeta(questionnaire);
   },
 
   async createQuestionnaire(data: CreateQuestionnaireRepoInput) {
@@ -55,25 +80,95 @@ export const questionnaireService = {
       }
     }
 
-    return questionnaireRepository.create(data);
+    const created = await questionnaireRepository.create(data);
+    return enrichQuestionnaireDeletionMeta(created);
   },
 
-  async updateQuestionnaire(id: string, data: UpdateQuestionnaireRepoInput) {
-    await this.getQuestionnaireById(id);
-    return questionnaireRepository.update(id, data);
-  },
+  async updateQuestionnaire(id: string, data: UpdateQuestionnaireRepoInput, actor?: ActorContext) {
+    const existing = await this.getQuestionnaireById(id);
 
-  async deleteQuestionnaire(id: string) {
-    const questionnaire = await this.getQuestionnaireById(id);
-    // Check if any version is published and has active dependencies
-    const hasPublished = questionnaire.versions.some(
-      (v) => v.status === QuestionnaireVersionStatus.PUBLISHED
-    );
-    if (hasPublished) {
-      // Soft-archive by setting active = false rather than hard delete to preserve history
-      return questionnaireRepository.update(id, { active: false });
+    const cleanData: UpdateQuestionnaireRepoInput = {};
+    if (data.title !== undefined) {
+      const trimmedTitle = data.title.trim();
+      if (trimmedTitle.length < 3 || trimmedTitle.length > 255) {
+        throw new BadRequestError('Tiêu đề bộ câu hỏi phải từ 3 đến 255 ký tự');
+      }
+      cleanData.title = trimmedTitle;
     }
-    return questionnaireRepository.delete(id);
+    if (data.description !== undefined) {
+      cleanData.description = data.description === null ? null : data.description.trim();
+    }
+    if (data.active !== undefined) {
+      cleanData.active = Boolean(data.active);
+    }
+
+    const updated = await questionnaireRepository.update(id, cleanData);
+
+    await auditLogService.log({
+      actorId: actor?.userId || undefined,
+      actorEmail: actor?.email || undefined,
+      action:
+        cleanData.active !== undefined && cleanData.active !== existing.active
+          ? cleanData.active
+            ? 'RESTORE_QUESTIONNAIRE'
+            : 'ARCHIVE_QUESTIONNAIRE'
+          : 'UPDATE_QUESTIONNAIRE',
+      entityType: 'QUESTIONNAIRE',
+      entityId: id,
+      details: {
+        code: existing.code,
+        previousTitle: existing.title,
+        newTitle: updated.title,
+        previousActive: existing.active,
+        newActive: updated.active,
+      },
+    });
+
+    return enrichQuestionnaireDeletionMeta(updated);
+  },
+
+  async deleteQuestionnaire(id: string, actor?: ActorContext) {
+    const questionnaire = await this.getQuestionnaireById(id);
+    const safety = await questionnaireRepository.getDeletionSafetyCounts(id);
+
+    if (!safety.canHardDelete) {
+      const reasons: string[] = [];
+      if (safety.nonDraftVersionCount > 0) {
+        reasons.push(`${safety.nonDraftVersionCount} phiên bản đã xuất bản/lưu trữ`);
+      }
+      if (safety.assessmentCount > 0) {
+        reasons.push(`${safety.assessmentCount} bài khảo sát khách hàng`);
+      }
+      if (safety.answerCount > 0) {
+        reasons.push(`${safety.answerCount} câu trả lời khảo sát`);
+      }
+      if (safety.recommendationRunCount > 0) {
+        reasons.push(`${safety.recommendationRunCount} lượt chạy gợi ý sản phẩm`);
+      }
+      if (safety.publicSurveyLinkCount > 0) {
+        reasons.push(`${safety.publicSurveyLinkCount} đường link khảo sát`);
+      }
+
+      throw new BadRequestError(
+        `Không thể xóa vĩnh viễn bộ câu hỏi "${questionnaire.title}" [${questionnaire.code}] vì đang có dữ liệu lịch sử cần bảo toàn (${reasons.join(', ')}). Vui lòng sử dụng chức năng "Ngừng sử dụng (Lưu trữ)" để ẩn khỏi danh sách tạo mới mà vẫn giữ nguyên toàn bộ lịch sử khảo sát khách hàng.`
+      );
+    }
+
+    await questionnaireRepository.delete(id);
+
+    await auditLogService.log({
+      actorId: actor?.userId || undefined,
+      actorEmail: actor?.email || undefined,
+      action: 'DELETE_DRAFT_QUESTIONNAIRE',
+      entityType: 'QUESTIONNAIRE',
+      entityId: id,
+      details: {
+        code: questionnaire.code,
+        title: questionnaire.title,
+      },
+    });
+
+    return { id, deleted: true };
   },
 
   async getVersionById(questionnaireId: string, versionId: string) {
@@ -115,7 +210,9 @@ export const questionnaireService = {
     // Determine source version to clone: either explicitly passed, or current published, or latest
     let sourceId = options.sourceVersionId;
     if (!sourceId) {
-      const current = questionnaire.versions.find((v) => v.isCurrent && v.status === QuestionnaireVersionStatus.PUBLISHED);
+      const current = questionnaire.versions.find(
+        (v: any) => v.isCurrent && v.status === QuestionnaireVersionStatus.PUBLISHED
+      );
       sourceId = current?.id || questionnaire.versions[0]?.id;
     }
 
@@ -257,7 +354,8 @@ export const questionnaireService = {
     return questionnaireRepository.publishVersion(questionnaireId, versionId, publishedBy, changeLog);
   },
 
-  async deleteDraftVersion(questionnaireId: string, versionId: string) {
+  async deleteDraftVersion(questionnaireId: string, versionId: string, actor?: ActorContext) {
+    const questionnaire = await this.getQuestionnaireById(questionnaireId);
     const version = await this.getVersionById(questionnaireId, versionId);
 
     if (version.status !== QuestionnaireVersionStatus.DRAFT) {
@@ -266,6 +364,34 @@ export const questionnaireService = {
       );
     }
 
-    return questionnaireRepository.deleteVersion(versionId);
+    const versionSafety = await questionnaireRepository.getVersionDeletionSafetyCounts(versionId);
+    if (!versionSafety.canHardDelete) {
+      throw new BadRequestError(
+        `Không thể xóa phiên bản nháp v${version.versionNumber} vì đã có dữ liệu khảo sát hoặc câu trả lời tham chiếu đến phiên bản này.`
+      );
+    }
+
+    if (questionnaire.versions.length <= 1) {
+      throw new BadRequestError(
+        'Đây là phiên bản duy nhất của bộ câu hỏi nháp. Vui lòng chọn "Xóa bộ câu hỏi nháp" nếu muốn xóa toàn bộ bộ câu hỏi này.'
+      );
+    }
+
+    const res = await questionnaireRepository.deleteVersion(versionId);
+
+    await auditLogService.log({
+      actorId: actor?.userId || undefined,
+      actorEmail: actor?.email || undefined,
+      action: 'DELETE_DRAFT_QUESTIONNAIRE_VERSION',
+      entityType: 'QUESTIONNAIRE_VERSION',
+      entityId: versionId,
+      details: {
+        questionnaireId,
+        code: questionnaire.code,
+        versionNumber: version.versionNumber,
+      },
+    });
+
+    return res;
   },
 };

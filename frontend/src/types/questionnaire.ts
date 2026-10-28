@@ -88,6 +88,7 @@ export interface QuestionnaireVersion {
   };
   _count?: {
     questions: number;
+    assessments?: number;
   };
 }
 
@@ -100,6 +101,9 @@ export interface Questionnaire {
   createdAt: string;
   updatedAt: string;
   versions?: QuestionnaireVersion[];
+  hasPublishedOrArchivedVersion?: boolean;
+  totalAssessments?: number;
+  canHardDelete?: boolean;
 }
 
 export interface CreateQuestionnaireInput {

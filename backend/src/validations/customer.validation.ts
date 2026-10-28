@@ -11,6 +11,7 @@ export const listCustomersQuerySchema = z.object({
   product: z.string().optional(),
   need: z.string().optional(),
   tag: z.string().optional(),
+  surveyStatus: z.enum(['NOT_CREATED', 'SENT', 'COMPLETED', 'all']).optional(),
   startDate: z.string().datetime({ offset: true }).optional().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()),
   endDate: z.string().datetime({ offset: true }).optional().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()),
   sortBy: z.enum(['createdAt', 'updatedAt', 'fullName', 'overallStatus']).optional().default('createdAt'),
@@ -22,7 +23,13 @@ export const createCustomerSchema = z.object({
   phone: z.string().min(8, 'Phone number must be at least 8 digits').max(20),
   email: z.string().email('Invalid email address').optional().nullable(),
   gender: z.nativeEnum(Gender).optional().nullable(),
-  dateOfBirth: z.string().datetime().optional().nullable().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable()),
+  dateOfBirth: z
+    .string()
+    .datetime()
+    .optional()
+    .nullable()
+    .or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable())
+    .or(z.string().regex(/^\d{1,2}\/\d{1,2}\/\d{4}$/).optional().nullable()),
   address: z.string().max(500).optional().nullable(),
   note: z.string().max(2000).optional().nullable(),
   source: z.string().max(100).optional().nullable(),

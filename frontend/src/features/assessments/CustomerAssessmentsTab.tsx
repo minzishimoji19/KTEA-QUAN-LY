@@ -30,6 +30,7 @@ import {
 import { useToast } from '../../context/ToastContext';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { DateDisplay } from '../../components/common';
+import { VietnameseDatePicker } from '../../components/ui/VietnameseDatePicker';
 
 interface CustomerAssessmentsTabProps {
   customerId: string;
@@ -103,8 +104,8 @@ export const CustomerAssessmentsTab: React.FC<CustomerAssessmentsTabProps> = ({
     setIsCreateLinkModalOpen(true);
     try {
       const qList = await questionnaireService.getQuestionnaires(true);
-      const withPub = qList.filter((q) =>
-        q.versions?.some((v) => v.status === 'PUBLISHED')
+      const withPub = qList.filter(
+        (q) => q.active !== false && q.versions?.some((v) => v.status === 'PUBLISHED')
       );
       setAvailableQuestionnaires(withPub);
       if (withPub.length > 0) {
@@ -1119,12 +1120,15 @@ const AssessmentRunnerModal: React.FC<AssessmentRunnerModalProps> = ({
                   )}
 
                   {q.questionType === 'DATE' && (
-                    <input
-                      type="date"
+                    <VietnameseDatePicker
+                      variant="dark"
+                      size="md"
                       disabled={isReadOnly}
                       value={currentAnswer ?? ''}
-                      onChange={(e) => handleAnswerChange(q.code, e.target.value)}
-                      className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-100 focus:outline-none focus:border-indigo-500 disabled:opacity-60"
+                      minDate={q.validationConfig?.minDate}
+                      maxDate={q.validationConfig?.maxDate}
+                      onChange={(isoDate) => handleAnswerChange(q.code, isoDate || null)}
+                      className="max-w-xs"
                     />
                   )}
                 </div>

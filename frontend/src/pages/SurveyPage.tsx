@@ -30,6 +30,8 @@ import {
   PublicSurveyData,
   SurveyQuestion,
 } from '../services/publicSurveyService';
+import { VietnameseDatePicker } from '../components/ui/VietnameseDatePicker';
+import { formatDate } from '../utils/formatters';
 
 // ============================================================
 // Types
@@ -514,27 +516,36 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({
     }
 
     // --------------------------------------------------------
-    // 8. DATE: Date Picker Input
+    // 8. DATE: Date Picker Input (Standardized dd/MM/yyyy)
     // --------------------------------------------------------
     case 'DATE': {
       const dateVal = typeof value === 'string' ? value : '';
 
       return (
         <div className="space-y-1.5">
-          <input
-            type="date"
+          <VietnameseDatePicker
+            variant="light"
+            size="lg"
             value={dateVal}
-            min={cfg.minDate}
-            max={cfg.maxDate}
-            onChange={(e) => onChange(question.code, e.target.value)}
-            className={`w-full h-12 sm:h-13 px-4 bg-white border rounded-xl text-sm sm:text-base text-slate-900 focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all ${
-              hasError ? 'border-rose-400 bg-rose-50/20 ring-2 ring-rose-100' : 'border-slate-200'
-            }`}
+            minDate={cfg.minDate}
+            maxDate={cfg.maxDate}
+            hasError={hasError}
+            placeholder="dd/mm/yyyy (VD: 28/10/2026)"
+            onChange={(isoDate) => onChange(question.code, isoDate || null)}
           />
+          {(cfg.minDate || cfg.maxDate) && (
+            <p className="text-[11px] text-slate-400">
+              {cfg.minDate && cfg.maxDate
+                ? `Từ ngày ${formatDate(cfg.minDate)} đến ${formatDate(cfg.maxDate)}`
+                : cfg.minDate
+                ? `Từ ngày ${formatDate(cfg.minDate)} trở đi`
+                : `Trước ngày ${formatDate(cfg.maxDate)}`}
+            </p>
+          )}
           {hasError && (
             <p className="text-xs font-medium text-rose-600 flex items-center gap-1">
               <AlertCircle className="w-3.5 h-3.5" />
-              <span>Vui lòng chọn ngày hợp lệ</span>
+              <span>Vui lòng chọn ngày hợp lệ (dd/MM/yyyy)</span>
             </p>
           )}
         </div>
