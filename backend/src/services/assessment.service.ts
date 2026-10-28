@@ -54,7 +54,7 @@ export const assessmentService = {
       notes?: string | null;
     }
   ) {
-    await customerAccessService.assertCustomerAccess(user, customerId);
+    await customerAccessService.assertCustomerWriteAccess(user, customerId);
 
     const customer = await prisma.customer.findUnique({
       where: { id: customerId },
@@ -109,6 +109,7 @@ export const assessmentService = {
     notes?: string | null
   ) {
     const assessment = await this.getAssessmentById(assessmentId, user);
+    await customerAccessService.assertCustomerWriteAccess(user, assessment.customerId);
 
     // IMMUTABILITY GUARD: Completed assessments cannot be modified!
     if (assessment.status === AssessmentStatus.COMPLETED) {
@@ -153,6 +154,7 @@ export const assessmentService = {
     notes?: string | null
   ) {
     const assessment = await this.getAssessmentById(assessmentId, user);
+    await customerAccessService.assertCustomerWriteAccess(user, assessment.customerId);
 
     if (assessment.status === AssessmentStatus.COMPLETED) {
       return assessment; // Idempotent
@@ -212,6 +214,7 @@ export const assessmentService = {
 
   async cancelAssessment(assessmentId: string, user: UserContext) {
     const assessment = await this.getAssessmentById(assessmentId, user);
+    await customerAccessService.assertCustomerWriteAccess(user, assessment.customerId);
 
     if (assessment.status === AssessmentStatus.COMPLETED) {
       throw new BadRequestError('Không thể hủy bài khảo sát đã hoàn thành.');

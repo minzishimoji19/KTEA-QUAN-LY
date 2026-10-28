@@ -184,6 +184,22 @@ export const CustomerDetailPage: React.FC = () => {
   const assignedTagIds = new Set((customer.customerTags || []).map((ct) => ct.tagId));
   const availableTagsToAdd = (allTags || []).filter((t) => !assignedTagIds.has(t.id));
 
+  const isHistoricalCustomer =
+    role === 'PARTNER' &&
+    Boolean(
+      customer.isHistoricalForMe ||
+        customer.assignmentStatus === 'HISTORICAL' ||
+        customer.canEditCustomer === false
+    );
+  const canEditCustomer = role !== 'PARTNER' || !isHistoricalCustomer;
+  const isFollowUpHistorical = (fu: FollowUp) =>
+    role === 'PARTNER' &&
+    Boolean(
+      fu.isHistoricalForMe ||
+        fu.assignmentStatus === 'HISTORICAL' ||
+        fu.canEdit === false
+    );
+
   // Destructive Actions Handlers
   const handleDeleteCustomer = () => {
     setConfirmDialog({
@@ -278,6 +294,20 @@ export const CustomerDetailPage: React.FC = () => {
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto">
+      {/* Historical Read-only Banner for Partner */}
+      {isHistoricalCustomer && (
+        <div className="rounded-lg border border-amber-800/70 bg-amber-950/35 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 text-amber-200 font-medium">
+            <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono text-[10px] uppercase font-semibold">
+              Lịch sử phân công · Chỉ xem
+            </span>
+            <span>
+              Khách hàng này đã được chuyển giao hoặc kết thúc phân công hiện tại. Bạn có quyền xem lại dữ liệu và lịch sử chăm sóc đã từng phụ trách (không thể chỉnh sửa).
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* 1. Header Section */}
       <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 space-y-3">
         {/* Navigation Breadcrumb & Back */}
@@ -300,15 +330,17 @@ export const CustomerDetailPage: React.FC = () => {
 
           {/* Quick Actions Bar */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsEditOpen(true)}
-              className="h-7 px-2.5 text-xs gap-1.5 border-slate-700 hover:border-slate-500 text-slate-200"
-            >
-              <Edit className="w-3 h-3 text-blue-400" />
-              <span>{role === 'PARTNER' ? 'Đổi trạng thái' : 'Sửa thông tin'}</span>
-            </Button>
+            {canEditCustomer && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsEditOpen(true)}
+                className="h-7 px-2.5 text-xs gap-1.5 border-slate-700 hover:border-slate-500 text-slate-200"
+              >
+                <Edit className="w-3 h-3 text-blue-400" />
+                <span>{role === 'PARTNER' ? 'Đổi trạng thái' : 'Sửa thông tin'}</span>
+              </Button>
+            )}
 
             <Button
               variant="outline"
@@ -336,42 +368,46 @@ export const CustomerDetailPage: React.FC = () => {
               </>
             )}
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsAddActivityOpen(true)}
-              className="h-7 px-2 text-xs gap-1"
-            >
-              <Clock className="w-3 h-3 text-amber-400" />
-              <span>+ Hoạt động</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsAddNoteOpen(true)}
-              className="h-7 px-2 text-xs gap-1"
-            >
-              <FileText className="w-3 h-3 text-blue-400" />
-              <span>+ Ghi chú</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsAddNeedOpen(true)}
-              className="h-7 px-2 text-xs gap-1"
-            >
-              <Layers className="w-3 h-3 text-emerald-400" />
-              <span>+ Nhu cầu</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsScheduleFollowUpOpen(true)}
-              className="h-7 px-2 text-xs gap-1 border-amber-800/80 hover:bg-amber-950/40 text-amber-300"
-            >
-              <CalendarCheck className="w-3 h-3 text-amber-400" />
-              <span>Lên lịch chăm sóc</span>
-            </Button>
+            {canEditCustomer && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsAddActivityOpen(true)}
+                  className="h-7 px-2 text-xs gap-1"
+                >
+                  <Clock className="w-3 h-3 text-amber-400" />
+                  <span>+ Hoạt động</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsAddNoteOpen(true)}
+                  className="h-7 px-2 text-xs gap-1"
+                >
+                  <FileText className="w-3 h-3 text-blue-400" />
+                  <span>+ Ghi chú</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsAddNeedOpen(true)}
+                  className="h-7 px-2 text-xs gap-1"
+                >
+                  <Layers className="w-3 h-3 text-emerald-400" />
+                  <span>+ Nhu cầu</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsScheduleFollowUpOpen(true)}
+                  className="h-7 px-2 text-xs gap-1 border-amber-800/80 hover:bg-amber-950/40 text-amber-300"
+                >
+                  <CalendarCheck className="w-3 h-3 text-amber-400" />
+                  <span>Lên lịch chăm sóc</span>
+                </Button>
+              </>
+            )}
             {role !== 'PARTNER' && (
               <>
                 <Button
@@ -406,6 +442,17 @@ export const CustomerDetailPage: React.FC = () => {
               </h1>
               <StatusBadge status={customer.overallStatus} />
               {customer.priority && <StatusBadge status={customer.priority} />}
+              {role === 'PARTNER' && (
+                isHistoricalCustomer ? (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono bg-amber-950/60 text-amber-300 border border-amber-800/60">
+                    Lịch sử phân công · Đã chuyển giao
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono bg-emerald-950/60 text-emerald-300 border border-emerald-800/60">
+                    Đang phụ trách
+                  </span>
+                )
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-slate-400 pt-0.5">
@@ -480,7 +527,10 @@ export const CustomerDetailPage: React.FC = () => {
 
               {/* Next Follow-up Display */}
               {(() => {
-                const nextFollowUp = getNextPendingFollowUp(customer.followUps || []);
+                const actionableFollowUps = (customer.followUps || []).filter(
+                  (f) => !isFollowUpHistorical(f)
+                );
+                const nextFollowUp = getNextPendingFollowUp(actionableFollowUps);
                 if (nextFollowUp) {
                   return (
                     <div
@@ -495,6 +545,9 @@ export const CustomerDetailPage: React.FC = () => {
                       <DateDisplay date={nextFollowUp.dueAt} showTime relativeContext className="text-amber-400 font-mono text-[11px]" />
                     </div>
                   );
+                }
+                if (!canEditCustomer) {
+                  return null;
                 }
                 return (
                   <button
@@ -517,50 +570,52 @@ export const CustomerDetailPage: React.FC = () => {
                 key={ct.tag.id}
                 name={ct.tag.name}
                 color={ct.tag.color}
-                onRemove={() => removeCustomerTag.mutate(ct.tag.id)}
+                onRemove={canEditCustomer ? () => removeCustomerTag.mutate(ct.tag.id) : undefined}
               />
             ))}
 
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setIsTagDropdownOpen(!isTagDropdownOpen)}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono border border-slate-800 bg-slate-950 text-slate-400 hover:text-slate-200 hover:border-slate-700"
-              >
-                <Plus className="w-2.5 h-2.5" />
-                <span>Gắn nhãn</span>
-              </button>
+            {canEditCustomer && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsTagDropdownOpen(!isTagDropdownOpen)}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono border border-slate-800 bg-slate-950 text-slate-400 hover:text-slate-200 hover:border-slate-700"
+                >
+                  <Plus className="w-2.5 h-2.5" />
+                  <span>Gắn nhãn</span>
+                </button>
 
-              {isTagDropdownOpen && (
-                <div className="absolute right-0 top-full mt-1 w-44 rounded-md border border-slate-800 bg-slate-900 shadow-xl z-30 p-1 text-xs">
-                  <div className="px-2 py-1 text-[10px] font-mono text-slate-500 uppercase border-b border-slate-800 mb-1">
-                    Gắn nhãn khách hàng
-                  </div>
-                  {availableTagsToAdd.length === 0 ? (
-                    <div className="px-2 py-1 text-[11px] text-slate-500">
-                      Đã gắn tất cả nhãn
+                {isTagDropdownOpen && (
+                  <div className="absolute right-0 top-full mt-1 w-44 rounded-md border border-slate-800 bg-slate-900 shadow-xl z-30 p-1 text-xs">
+                    <div className="px-2 py-1 text-[10px] font-mono text-slate-500 uppercase border-b border-slate-800 mb-1">
+                      Gắn nhãn khách hàng
                     </div>
-                  ) : (
-                    availableTagsToAdd.map((t) => (
-                      <div
-                        key={t.id}
-                        onClick={() => {
-                          addCustomerTag.mutate(t.id);
-                          setIsTagDropdownOpen(false);
-                        }}
-                        className="px-2 py-1.5 rounded hover:bg-slate-800 cursor-pointer flex items-center gap-2"
-                      >
-                        <span
-                          className="w-2 h-2 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: t.color || '#3b82f6' }}
-                        />
-                        <span className="truncate">{t.name}</span>
+                    {availableTagsToAdd.length === 0 ? (
+                      <div className="px-2 py-1 text-[11px] text-slate-500">
+                        Đã gắn tất cả nhãn
                       </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
+                    ) : (
+                      availableTagsToAdd.map((t) => (
+                        <div
+                          key={t.id}
+                          onClick={() => {
+                            addCustomerTag.mutate(t.id);
+                            setIsTagDropdownOpen(false);
+                          }}
+                          className="px-2 py-1.5 rounded hover:bg-slate-800 cursor-pointer flex items-center gap-2"
+                        >
+                          <span
+                            className="w-2 h-2 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: t.color || '#3b82f6' }}
+                          />
+                          <span className="truncate">{t.name}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -636,14 +691,16 @@ export const CustomerDetailPage: React.FC = () => {
                   <User className="w-3.5 h-3.5 text-blue-400" />
                   Hồ sơ khách hàng
                 </h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsEditOpen(true)}
-                  className="h-6 px-1.5 text-[11px] text-blue-400"
-                >
-                  {role === 'PARTNER' ? 'Đổi trạng thái' : 'Chỉnh sửa'}
-                </Button>
+                {canEditCustomer && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsEditOpen(true)}
+                    className="h-6 px-1.5 text-[11px] text-blue-400"
+                  >
+                    {role === 'PARTNER' ? 'Đổi trạng thái' : 'Chỉnh sửa'}
+                  </Button>
+                )}
               </div>
 
               <div className="space-y-2 text-xs">
@@ -833,22 +890,24 @@ export const CustomerDetailPage: React.FC = () => {
                   <Layers className="w-3.5 h-3.5 text-amber-400" />
                   Nhu cầu hiện tại ({customer.needs?.length || 0})
                 </h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsAddNeedOpen(true)}
-                  className="h-6 px-1.5 text-[11px] text-amber-400"
-                >
-                  + Thêm
-                </Button>
+                {canEditCustomer && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsAddNeedOpen(true)}
+                    className="h-6 px-1.5 text-[11px] text-amber-400"
+                  >
+                    + Thêm
+                  </Button>
+                )}
               </div>
 
               {(!customer.needs || customer.needs.length === 0) ? (
                 <EmptyState
                   title="Chưa xác định nhu cầu"
                   description="Chưa có nhu cầu cụ thể hoặc tự động nhận diện nào được gắn cho khách hàng này."
-                  actionLabel="+ Thêm nhu cầu"
-                  onAction={() => setIsAddNeedOpen(true)}
+                  actionLabel={canEditCustomer ? '+ Thêm nhu cầu' : undefined}
+                  onAction={canEditCustomer ? () => setIsAddNeedOpen(true) : undefined}
                 />
               ) : (
                 <div className="space-y-2 max-h-[260px] overflow-y-auto pr-0.5">
@@ -872,34 +931,36 @@ export const CustomerDetailPage: React.FC = () => {
                         <DateDisplay date={n.detectedAt} className="text-[10px] text-slate-500" />
                       </div>
 
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        {n.status === 'OPEN' && (
+                      {canEditCustomer && (
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {n.status === 'OPEN' && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateNeed.mutate({
+                                  id: n.id,
+                                  data: {
+                                    status: 'RESOLVED',
+                                    resolvedAt: new Date().toISOString(),
+                                  },
+                                })
+                              }
+                              className="p-1 rounded text-slate-500 hover:text-emerald-400"
+                              title="Đánh dấu đã giải quyết"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() =>
-                              updateNeed.mutate({
-                                id: n.id,
-                                data: {
-                                  status: 'RESOLVED',
-                                  resolvedAt: new Date().toISOString(),
-                                },
-                              })
-                            }
-                            className="p-1 rounded text-slate-500 hover:text-emerald-400"
-                            title="Đánh dấu đã giải quyết"
+                            onClick={() => handleDeleteNeed(n)}
+                            className="p-1 rounded text-slate-500 hover:text-red-400"
+                            title="Xóa nhu cầu"
                           >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteNeed(n)}
-                          className="p-1 rounded text-slate-500 hover:text-red-400"
-                          title="Xóa nhu cầu"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -955,17 +1016,19 @@ export const CustomerDetailPage: React.FC = () => {
                       <p className="text-[11px] text-slate-300 bg-slate-900/40 p-2 rounded border border-slate-850 line-clamp-2">
                         {rec.reason}
                       </p>
-                      <div className="flex justify-end pt-0.5">
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => setIsCreatePushOpen(true)}
-                          className="h-6 text-[10px] gap-1 bg-purple-600 hover:bg-purple-500 text-white"
-                        >
-                          <Send className="w-2.5 h-2.5" />
-                          <span>Chuyển khách</span>
-                        </Button>
-                      </div>
+                      {role !== 'PARTNER' && (
+                        <div className="flex justify-end pt-0.5">
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => setIsCreatePushOpen(true)}
+                            className="h-6 text-[10px] gap-1 bg-purple-600 hover:bg-purple-500 text-white"
+                          >
+                            <Send className="w-2.5 h-2.5" />
+                            <span>Chuyển khách</span>
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -988,14 +1051,16 @@ export const CustomerDetailPage: React.FC = () => {
                   >
                     Xem tất cả
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsCreatePushOpen(true)}
-                    className="h-6 px-1.5 text-[11px] text-emerald-400"
-                  >
-                    + Chuyển
-                  </Button>
+                  {role !== 'PARTNER' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsCreatePushOpen(true)}
+                      className="h-6 px-1.5 text-[11px] text-emerald-400"
+                    >
+                      + Chuyển
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -1003,8 +1068,8 @@ export const CustomerDetailPage: React.FC = () => {
                 <EmptyState
                   title="Chưa có lượt chuyển khách nào"
                   description="Chưa có đề xuất nào được chuyển giao cho chuyên viên hoặc đối tác."
-                  actionLabel="+ Chuyển khách"
-                  onAction={() => setIsCreatePushOpen(true)}
+                  actionLabel={role !== 'PARTNER' ? '+ Chuyển khách' : undefined}
+                  onAction={role !== 'PARTNER' ? () => setIsCreatePushOpen(true) : undefined}
                 />
               ) : (
                 <div className="space-y-2 max-h-[260px] overflow-y-auto pr-0.5">
@@ -1040,22 +1105,26 @@ export const CustomerDetailPage: React.FC = () => {
                 Tóm tắt hoạt động gần đây
               </h3>
               <div className="flex items-center gap-1.5">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsAddActivityOpen(true)}
-                  className="h-6 px-1.5 text-[11px] text-amber-400"
-                >
-                  + Hoạt động
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsAddNoteOpen(true)}
-                  className="h-6 px-1.5 text-[11px] text-blue-400"
-                >
-                  + Ghi chú
-                </Button>
+                {canEditCustomer && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsAddActivityOpen(true)}
+                      className="h-6 px-1.5 text-[11px] text-amber-400"
+                    >
+                      + Hoạt động
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsAddNoteOpen(true)}
+                      className="h-6 px-1.5 text-[11px] text-blue-400"
+                    >
+                      + Ghi chú
+                    </Button>
+                  </>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -1071,8 +1140,8 @@ export const CustomerDetailPage: React.FC = () => {
               <EmptyState
                 title="Chưa có sự kiện hoạt động nào"
                 description="Ghi nhận cuộc gọi, cuộc họp, tin nhắn hoặc ghi chú để xây dựng dòng thời gian khách hàng."
-                actionLabel="+ Ghi nhận hoạt động"
-                onAction={() => setIsAddActivityOpen(true)}
+                actionLabel={canEditCustomer ? '+ Ghi nhận hoạt động' : undefined}
+                onAction={canEditCustomer ? () => setIsAddActivityOpen(true) : undefined}
               />
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1155,15 +1224,17 @@ export const CustomerDetailPage: React.FC = () => {
                   Mỗi hồ sơ đại diện cho một lần nộp và thẩm định độc lập. Nhấn vào hồ sơ để xem tiến trình chi tiết.
                 </p>
               </div>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => setIsAddCaseOpen(true)}
-                className="h-7 text-xs gap-1.5 bg-purple-600 hover:bg-purple-500 text-white font-medium"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>+ Tạo hồ sơ mới</span>
-              </Button>
+              {role !== 'PARTNER' && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setIsAddCaseOpen(true)}
+                  className="h-7 text-xs gap-1.5 bg-purple-600 hover:bg-purple-500 text-white font-medium"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Tạo hồ sơ mới</span>
+                </Button>
+              )}
             </div>
 
             <DataTable
@@ -1293,7 +1364,7 @@ export const CustomerDetailPage: React.FC = () => {
           <ActivityTimeline
             activities={customer.activities || []}
             customerId={customer.id}
-            onAddActivity={() => setIsAddActivityOpen(true)}
+            onAddActivity={canEditCustomer ? () => setIsAddActivityOpen(true) : undefined}
           />
         </div>
       )}
@@ -1310,23 +1381,25 @@ export const CustomerDetailPage: React.FC = () => {
                 Quan sát của chuyên viên, ghi chú thẩm định và nhắc nhở riêng
               </p>
             </div>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setIsAddNoteOpen(true)}
-              className="h-7 text-xs gap-1 bg-blue-600 hover:bg-blue-500 text-white"
-            >
-              <Plus className="w-3 h-3" />
-              <span>Thêm ghi chú</span>
-            </Button>
+            {canEditCustomer && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setIsAddNoteOpen(true)}
+                className="h-7 text-xs gap-1 bg-blue-600 hover:bg-blue-500 text-white"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Thêm ghi chú</span>
+              </Button>
+            )}
           </div>
 
           {(!customer.notes || customer.notes.length === 0) ? (
             <EmptyState
               title="Chưa có ghi chú nào"
               description="Lưu giữ nhắc nhở hoặc kết quả thẩm tra nội bộ liên quan đến khách hàng này."
-              actionLabel="+ Thêm ghi chú"
-              onAction={() => setIsAddNoteOpen(true)}
+              actionLabel={canEditCustomer ? '+ Thêm ghi chú' : undefined}
+              onAction={canEditCustomer ? () => setIsAddNoteOpen(true) : undefined}
             />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1340,14 +1413,16 @@ export const CustomerDetailPage: React.FC = () => {
                   </p>
                   <div className="flex items-center justify-between pt-2 border-t border-slate-850 text-[11px] text-slate-500 font-mono">
                     <DateDisplay date={n.createdAt} showTime />
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteNote(n)}
-                      className="text-slate-500 hover:text-red-400 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Xóa ghi chú"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {canEditCustomer && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteNote(n)}
+                        className="text-slate-500 hover:text-red-400 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Xóa ghi chú"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1359,7 +1434,8 @@ export const CustomerDetailPage: React.FC = () => {
       {/* 6. Follow-ups Tab */}
       {activeTab === 'followups' && (() => {
         const allFollowUps = customer.followUps || [];
-        const nextPending = getNextPendingFollowUp(allFollowUps);
+        const actionableFollowUps = allFollowUps.filter((f) => !isFollowUpHistorical(f));
+        const nextPending = getNextPendingFollowUp(actionableFollowUps);
         const pendingList = allFollowUps
           .filter((f) => f.status === 'PENDING' || f.status === 'IN_PROGRESS')
           .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
@@ -1384,15 +1460,17 @@ export const CustomerDetailPage: React.FC = () => {
                     Công việc đang xử lý, lịch hẹn tiếp theo và lịch sử tương tác được bảo lưu
                   </p>
                 </div>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => setIsScheduleFollowUpOpen(true)}
-                  className="h-7 text-xs gap-1 bg-amber-600 hover:bg-amber-500 text-white"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>Lên lịch chăm sóc</span>
-                </Button>
+                {canEditCustomer && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => setIsScheduleFollowUpOpen(true)}
+                    className="h-7 text-xs gap-1 bg-amber-600 hover:bg-amber-500 text-white"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Lên lịch chăm sóc</span>
+                  </Button>
+                )}
               </div>
 
               {/* Next Follow-up Highlight Banner */}
@@ -1431,48 +1509,56 @@ export const CustomerDetailPage: React.FC = () => {
                   )}
 
                   <div className="flex items-center justify-end gap-2 pt-1">
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => handleMarkFollowUpComplete(nextPending)}
-                      className="h-7 text-xs px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
-                    >
-                      <CheckCircle2 className="w-3 h-3" />
-                      <span>Đánh dấu hoàn thành</span>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setEditingFollowUp(nextPending)}
-                      className="h-7 text-xs px-2"
-                    >
-                      <Edit className="w-3 h-3 text-slate-400" />
-                      <span>Sửa</span>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsScheduleFollowUpOpen(true)}
-                      className="h-7 text-xs px-2 text-amber-300 hover:text-white"
-                    >
-                      <span>Lên lịch tiếp</span>
-                    </Button>
+                    {!isFollowUpHistorical(nextPending) && (
+                      <>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => handleMarkFollowUpComplete(nextPending)}
+                          className="h-7 text-xs px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>Đánh dấu hoàn thành</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setEditingFollowUp(nextPending)}
+                          className="h-7 text-xs px-2"
+                        >
+                          <Edit className="w-3 h-3 text-slate-400" />
+                          <span>Sửa</span>
+                        </Button>
+                      </>
+                    )}
+                    {canEditCustomer && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsScheduleFollowUpOpen(true)}
+                        className="h-7 text-xs px-2 text-amber-300 hover:text-white"
+                      >
+                        <span>Lên lịch tiếp</span>
+                      </Button>
+                    )}
                   </div>
                 </div>
               ) : (
                 <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/40 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
                     <Clock className="w-4 h-4 text-slate-500" />
-                    <span>Hiện tại chưa có lịch chăm sóc sắp tới nào cho khách hàng này.</span>
+                    <span>Hiện tại chưa có lịch chăm sóc sắp tới nào đang giao cho bạn trên khách hàng này.</span>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsScheduleFollowUpOpen(true)}
-                    className="h-6 text-xs text-amber-400 hover:text-amber-300 border-amber-900/60"
-                  >
-                    + Lên lịch chăm sóc
-                  </Button>
+                  {canEditCustomer && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsScheduleFollowUpOpen(true)}
+                      className="h-6 text-xs text-amber-400 hover:text-amber-300 border-amber-900/60"
+                    >
+                      + Lên lịch chăm sóc
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -1487,13 +1573,14 @@ export const CustomerDetailPage: React.FC = () => {
                 <EmptyState
                   title="Không có lịch chăm sóc chờ"
                   description="Tất cả các công việc liên hệ đang hoạt động đã được hoàn tất."
-                  actionLabel="+ Lên lịch chăm sóc"
-                  onAction={() => setIsScheduleFollowUpOpen(true)}
+                  actionLabel={canEditCustomer ? '+ Lên lịch chăm sóc' : undefined}
+                  onAction={canEditCustomer ? () => setIsScheduleFollowUpOpen(true) : undefined}
                 />
               ) : (
                 <div className="space-y-2">
                   {pendingList.map((fu) => {
                     const isOverdue = new Date(fu.dueAt).getTime() < Date.now();
+                    const isFuHistorical = isFollowUpHistorical(fu);
                     return (
                       <div
                         key={fu.id}
@@ -1504,7 +1591,7 @@ export const CustomerDetailPage: React.FC = () => {
                         }`}
                       >
                         <div className="space-y-1 min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span className="text-xs font-semibold text-slate-100">
                               {fu.title}
                             </span>
@@ -1517,6 +1604,17 @@ export const CustomerDetailPage: React.FC = () => {
                               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800" title="Chưa phân công">
                                 Chưa phân công
                               </span>
+                            )}
+                            {role === 'PARTNER' && (
+                              isFuHistorical ? (
+                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-950/70 text-amber-300 border border-amber-800/60">
+                                  Lịch sử phân công · Chỉ xem
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-800/60">
+                                  Đang phụ trách
+                                </span>
+                              )
                             )}
                             {isOverdue && (
                               <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-red-950 text-red-400 border border-red-800/60">
@@ -1541,23 +1639,31 @@ export const CustomerDetailPage: React.FC = () => {
                         </div>
 
                         <div className="flex items-center gap-1.5 flex-shrink-0">
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            onClick={() => handleMarkFollowUpComplete(fu)}
-                            className="h-7 text-xs px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
-                          >
-                            <span>Xong</span>
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setEditingFollowUp(fu)}
-                            className="h-7 w-7 p-0"
-                            title="Sửa lịch chăm sóc"
-                          >
-                            <Edit className="w-3 h-3 text-slate-400" />
-                          </Button>
+                          {!isFuHistorical ? (
+                            <>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => handleMarkFollowUpComplete(fu)}
+                                className="h-7 text-xs px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
+                              >
+                                <span>Xong</span>
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setEditingFollowUp(fu)}
+                                className="h-7 w-7 p-0"
+                                title="Sửa lịch chăm sóc"
+                              >
+                                <Edit className="w-3 h-3 text-slate-400" />
+                              </Button>
+                            </>
+                          ) : (
+                            <span className="text-[10px] font-mono text-amber-400/90 px-2 py-1 rounded bg-amber-950/40 border border-amber-800/50">
+                              Chỉ xem
+                            </span>
+                          )}
                           {role !== 'PARTNER' && (
                             <button
                               type="button"

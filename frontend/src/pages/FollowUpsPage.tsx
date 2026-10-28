@@ -18,6 +18,7 @@ import {
   UserCheck,
   Search,
   Loader2,
+  History,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -55,7 +56,13 @@ export const FollowUpsPage: React.FC = () => {
   const { data: caregivers, isLoading: isCaregiversLoading } = useEligibleCaregivers();
   const { toast } = useToast();
 
-  const { data: followUps, isLoading, isError, refetch } = useFollowUps({ filter: 'all' });
+  const assignmentScopeParam = (searchParams.get('assignmentScope') as 'all' | 'current' | 'historical') || 'all';
+  const [assignmentScope, setAssignmentScope] = useState<'all' | 'current' | 'historical'>(assignmentScopeParam);
+
+  const { data: followUps, isLoading, isError, refetch } = useFollowUps({
+    filter: 'all',
+    assignmentScope: role === 'PARTNER' ? assignmentScope : undefined,
+  });
   const updateFollowUp = useUpdateFollowUp();
   const deleteFollowUp = useDeleteFollowUp();
   const bulkCompleteMutation = useBulkCompleteFollowUps();
@@ -108,7 +115,21 @@ export const FollowUpsPage: React.FC = () => {
   useEffect(() => {
     const currentStatus = (searchParams.get('status') as 'all' | 'OPEN' | 'COMPLETED') || 'all';
     setStatusFilter(currentStatus);
+    const currentScope = (searchParams.get('assignmentScope') as 'all' | 'current' | 'historical') || 'all';
+    setAssignmentScope(currentScope);
   }, [searchParams]);
+
+  const handleSelectAssignmentScope = (scope: 'all' | 'current' | 'historical') => {
+    setAssignmentScope(scope);
+    const newParams = new URLSearchParams(searchParams);
+    if (scope === 'all') {
+      newParams.delete('assignmentScope');
+    } else {
+      newParams.set('assignmentScope', scope);
+    }
+    setSearchParams(newParams);
+    setSelectedTaskIds([]);
+  };
 
   const handleSelectSection = (view: 'all' | 'today' | 'overdue' | 'upcoming' | 'completed') => {
     setSectionView(view);
@@ -229,8 +250,14 @@ export const FollowUpsPage: React.FC = () => {
     }
   }, [sectionView, today, overdue, upcoming, completed]);
 
-  // Bulk selection handlers
-  const visibleTaskIds = useMemo(() => visibleTasks.map((t) => t.id), [visibleTasks]);
+  // Bulk selection handlers (Partner can only bulk-select currently assigned editable tasks)
+  const visibleTaskIds = useMemo(
+    () =>
+      visibleTasks
+        .filter((t) => role === 'ADMIN' || (!t.isHistoricalForMe && t.canEdit !== false))
+        .map((t) => t.id),
+    [visibleTasks, role]
+  );
   const isAllVisibleSelected =
     visibleTaskIds.length > 0 && visibleTaskIds.every((id) => selectedTaskIds.includes(id));
 
@@ -400,6 +427,9 @@ export const FollowUpsPage: React.FC = () => {
   const renderFollowUpCard = (task: FollowUp, isUrgent = false) => {
     const isDone = task.status === 'COMPLETED';
     const isSelected = selectedTaskIds.includes(task.id);
+    const isHistorical =
+      role === 'PARTNER' && Boolean(task.isHistoricalForMe || task.assignmentStatus === 'HISTORICAL');
+    const canEditTask = role === 'ADMIN' || (!isHistorical && task.canEdit !== false);
 
     return (
       <div
@@ -407,8 +437,8 @@ export const FollowUpsPage: React.FC = () => {
         className={`p-3 rounded-lg border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
           isSelected
             ? 'border-blue-600/80 bg-blue-950/20'
-            : isDone
-            ? 'border-slate-800/80 bg-slate-950/40 opacity-75'
+            : isDone || isHistorical
+            ? 'border-slate-800/80 bg-slate-950/40 opacity-85'
             : isUrgent
             ? 'border-red-900/60 bg-red-950/20 hover:border-red-800/80'
             : 'border-slate-800 bg-slate-950/70 hover:border-slate-700'
@@ -417,13 +447,17 @@ export const FollowUpsPage: React.FC = () => {
         <div className="flex items-start gap-3 min-w-0 flex-1">
           {/* Checkbox for bulk actions */}
           <div className="pt-0.5">
-            <input
-              type="checkbox"
-              checked={isSelected}
-              onChange={() => handleToggleSelectTask(task.id)}
-              className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
-              title="Chọn lịch này"
-            />
+            {canEditTask ? (
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => handleToggleSelectTask(task.id)}
+                className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                title="Chọn lịch này"
+              />
+            ) : (
+              <div className="w-4 h-4" />
+            )}
           </div>
 
           <div className="space-y-1 min-w-0 flex-1">
@@ -441,11 +475,30 @@ export const FollowUpsPage: React.FC = () => {
               )}
               <StatusBadge status={task.status} />
 
+              {role === 'PARTNER' && (
+                isHistorical ? (
+                  <span
+                    className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-700/60 font-semibold flex items-center gap-1"
+                    title="Lịch chăm sóc thuộc lịch sử từng được giao cho bạn (đã chuyển giao hoặc kết thúc phân công). Chỉ có quyền xem."
+                  >
+                    <History className="w-2.5 h-2.5 text-amber-400" />
+                    <span>Lịch sử phân công · Chỉ xem</span>
+                  </span>
+                ) : (
+                  <span
+                    className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 font-semibold"
+                    title="Lịch chăm sóc hiện đang giao cho bạn phụ trách."
+                  >
+                    Đang phụ trách
+                  </span>
+                )
+              )}
+
               {/* Caregiver Indicator: 👤 Name or Chưa phân công */}
               {(task.assignedToUser?.fullName || task.assignedTo) ? (
                 <span
                   className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-800/60 font-semibold flex items-center gap-1"
-                  title={`Người chăm sóc: ${task.assignedToUser?.fullName || task.assignedTo}`}
+                  title={`Người chăm sóc hiện tại: ${task.assignedToUser?.fullName || task.assignedTo}`}
                 >
                   <User className="w-2.5 h-2.5 text-blue-400" />
                   <span>{task.assignedToUser?.fullName || task.assignedTo}</span>
@@ -480,7 +533,7 @@ export const FollowUpsPage: React.FC = () => {
                 date={task.dueAt}
                 showTime
                 relativeContext
-                className={isUrgent ? 'text-red-400 font-semibold' : 'text-slate-300'}
+                className={isUrgent && !isHistorical ? 'text-red-400 font-semibold' : 'text-slate-300'}
               />
               {task.completedAt && (
                 <span className="text-emerald-400 text-[10px]">
@@ -493,8 +546,8 @@ export const FollowUpsPage: React.FC = () => {
 
         {/* Action Controls */}
         <div className="flex items-center gap-1.5 self-end sm:self-center flex-shrink-0">
-          {/* Cả ADMIN và PARTNER được giao lịch đều có quyền đánh dấu Hoàn thành; chỉ ADMIN được Mở lại */}
-          {!isDone && task.status !== 'CANCELLED' && (
+          {/* Cả ADMIN và PARTNER đang được giao lịch đều có quyền đánh dấu Hoàn thành; lịch lịch sử/chuyển giao bị ẩn */}
+          {!isDone && task.status !== 'CANCELLED' && canEditTask && (
             <Button
               variant="primary"
               size="sm"
@@ -518,15 +571,17 @@ export const FollowUpsPage: React.FC = () => {
             </Button>
           )}
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setEditingTask(task)}
-            className="h-7 w-7 p-0"
-            title="Chỉnh sửa lịch chăm sóc"
-          >
-            <Edit className="w-3 h-3 text-slate-400" />
-          </Button>
+          {canEditTask && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditingTask(task)}
+              className="h-7 w-7 p-0"
+              title="Chỉnh sửa lịch chăm sóc"
+            >
+              <Edit className="w-3 h-3 text-slate-400" />
+            </Button>
+          )}
 
           <Button
             variant="outline"
@@ -658,6 +713,44 @@ export const FollowUpsPage: React.FC = () => {
           onClick={() => handleSelectSection('completed')}
         />
       </div>
+
+      {/* Partner Assignment Scope Tabs (Đang phụ trách vs Lịch sử phân công) */}
+      {role === 'PARTNER' && (
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 border border-slate-800 rounded-lg p-2">
+          <div className="flex items-center gap-1.5">
+            {(
+              [
+                { key: 'all', label: 'Tất cả phạm vi' },
+                { key: 'current', label: 'Đang phụ trách' },
+                { key: 'historical', label: 'Lịch sử phân công (Chỉ xem)' },
+              ] as const
+            ).map((tab) => {
+              const isActive = assignmentScope === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => handleSelectAssignmentScope(tab.key)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-mono transition-all flex items-center gap-1.5 ${
+                    isActive
+                      ? tab.key === 'historical'
+                        ? 'bg-amber-600/20 text-amber-300 border border-amber-500/40 font-semibold'
+                        : 'bg-blue-600 text-white font-semibold shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
+                >
+                  {tab.key === 'historical' && <History className="w-3.5 h-3.5" />}
+                  {tab.key === 'current' && <UserCheck className="w-3.5 h-3.5" />}
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <span className="text-[11px] text-slate-400 font-sans pr-2">
+            Lịch chăm sóc đã chuyển giao hoặc thuộc lịch sử phân công chỉ được phép xem, không thể chỉnh sửa hoặc hoàn thành.
+          </span>
+        </div>
+      )}
 
       {/* Filter Row: Search + Status + Caretaker Filter */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">

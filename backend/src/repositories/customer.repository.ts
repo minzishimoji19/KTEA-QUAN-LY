@@ -12,16 +12,49 @@ export interface CustomerQueryFilters {
   need?: string;
   tag?: string;
   surveyStatus?: 'NOT_CREATED' | 'SENT' | 'COMPLETED' | 'all' | string;
+  assignmentScope?: 'all' | 'current' | 'historical';
   startDate?: string;
   endDate?: string;
   sortBy?: 'createdAt' | 'updatedAt' | 'fullName' | 'overallStatus';
   sortOrder?: 'asc' | 'desc';
   scopedCustomerIds?: string[];
   scopedUserId?: string;
+  scopedPartner?: {
+    userId: string;
+    aliases: string[];
+    currentIds: string[];
+    historicalIds: string[];
+    allIds: string[];
+    grantedFollowUpIds: string[];
+    activeGrantedFollowUpIds: string[];
+    historicalGrantedFollowUpIds: string[];
+  };
   selectedIds?: string[];
 }
 
 export class CustomerRepository extends BaseRepository {
+  private buildPartnerFollowUpWhere(
+    scopedUserId?: string,
+    scopedPartner?: CustomerQueryFilters['scopedPartner']
+  ): Prisma.FollowUpWhereInput | undefined {
+    const userId = scopedPartner?.userId || scopedUserId;
+    if (!userId) return undefined;
+
+    const orConditions: Prisma.FollowUpWhereInput[] = [{ assignedToUserId: userId }];
+    if (scopedPartner?.aliases && scopedPartner.aliases.length > 0) {
+      orConditions.push({
+        assignedToUserId: null,
+        assignedTo: { in: scopedPartner.aliases },
+      });
+    }
+    if (scopedPartner?.grantedFollowUpIds && scopedPartner.grantedFollowUpIds.length > 0) {
+      orConditions.push({
+        id: { in: scopedPartner.grantedFollowUpIds },
+      });
+    }
+    return { OR: orConditions };
+  }
+
   async findMany(filters: CustomerQueryFilters) {
     const {
       page,
@@ -226,6 +259,12 @@ export class CustomerRepository extends BaseRepository {
     const sortField = sortBy || 'createdAt';
     const sortDirection = sortOrder || 'desc';
 
+    const partnerFollowUpWhere = this.buildPartnerFollowUpWhere(
+      filters.scopedUserId,
+      filters.scopedPartner
+    );
+    const activeScopedUserId = filters.scopedPartner?.userId || filters.scopedUserId;
+
     const [total, customers] = await Promise.all([
       this.db.customer.count({ where }),
       this.db.customer.findMany({
@@ -239,7 +278,6 @@ export class CustomerRepository extends BaseRepository {
             include: { tag: true },
           },
           assignments: {
-            ...(filters.scopedUserId ? { where: { userId: filters.scopedUserId } } : {}),
             include: {
               user: {
                 select: {
@@ -253,6 +291,14 @@ export class CustomerRepository extends BaseRepository {
             },
             orderBy: { assignedAt: 'asc' },
           },
+          ...(activeScopedUserId
+            ? {
+                assignmentGrants: {
+                  where: { userId: activeScopedUserId },
+                  orderBy: { updatedAt: 'desc' },
+                },
+              }
+            : {}),
           cases: {
             include: { product: true },
             orderBy: [
@@ -270,22 +316,13 @@ export class CustomerRepository extends BaseRepository {
             take: 1,
           },
           followUps: {
-            ...(filters.scopedUserId
-              ? {
-                  where: {
-                    OR: [
-                      { assignedToUserId: filters.scopedUserId },
-                      { assignedToUserId: null },
-                    ],
-                  },
-                }
-              : {}),
+            ...(partnerFollowUpWhere ? { where: partnerFollowUpWhere } : {}),
             orderBy: [
               { dueAt: 'desc' },
               { createdAt: 'desc' },
               { id: 'desc' },
             ],
-            take: 10,
+            take: 25,
             select: {
               id: true,
               title: true,
@@ -334,7 +371,11 @@ export class CustomerRepository extends BaseRepository {
               cases: true,
               needs: true,
               activities: true,
-              followUps: { where: { status: { not: 'CANCELLED' } } },
+              followUps: {
+                where: partnerFollowUpWhere
+                  ? { AND: [{ status: { not: 'CANCELLED' } }, partnerFollowUpWhere] }
+                  : { status: { not: 'CANCELLED' } },
+              },
             },
           },
         },
@@ -344,7 +385,14 @@ export class CustomerRepository extends BaseRepository {
     return { total, customers };
   }
 
-  async findById(id: string, scopedUserId?: string) {
+  async findById(
+    id: string,
+    scopedUserId?: string,
+    scopedPartner?: CustomerQueryFilters['scopedPartner']
+  ) {
+    const partnerFollowUpWhere = this.buildPartnerFollowUpWhere(scopedUserId, scopedPartner);
+    const activeScopedUserId = scopedPartner?.userId || scopedUserId;
+
     return this.db.customer.findUnique({
       where: { id },
       include: {
@@ -353,7 +401,6 @@ export class CustomerRepository extends BaseRepository {
           include: { tag: true },
         },
         assignments: {
-          ...(scopedUserId ? { where: { userId: scopedUserId } } : {}),
           include: {
             user: {
               select: {
@@ -367,6 +414,14 @@ export class CustomerRepository extends BaseRepository {
           },
           orderBy: { assignedAt: 'asc' },
         },
+        ...(activeScopedUserId
+          ? {
+              assignmentGrants: {
+                where: { userId: activeScopedUserId },
+                orderBy: { updatedAt: 'desc' },
+              },
+            }
+          : {}),
         cases: {
           include: { product: true },
           orderBy: [
@@ -375,22 +430,13 @@ export class CustomerRepository extends BaseRepository {
           ],
         },
         followUps: {
-          ...(scopedUserId
-            ? {
-                where: {
-                  OR: [
-                    { assignedToUserId: scopedUserId },
-                    { assignedToUserId: null },
-                  ],
-                },
-              }
-            : {}),
+          ...(partnerFollowUpWhere ? { where: partnerFollowUpWhere } : {}),
           orderBy: [
             { dueAt: 'desc' },
             { createdAt: 'desc' },
             { id: 'desc' },
           ],
-          take: 10,
+          take: 25,
           select: {
             id: true,
             title: true,
@@ -431,20 +477,30 @@ export class CustomerRepository extends BaseRepository {
             cases: true,
             needs: true,
             activities: true,
-            followUps: { where: { status: { not: 'CANCELLED' } } },
+            followUps: {
+              where: partnerFollowUpWhere
+                ? { AND: [{ status: { not: 'CANCELLED' } }, partnerFollowUpWhere] }
+                : { status: { not: 'CANCELLED' } },
+            },
           },
         },
       },
     });
   }
 
-  async findDetailById(id: string, scopedUserId?: string) {
+  async findDetailById(
+    id: string,
+    scopedUserId?: string,
+    scopedPartner?: CustomerQueryFilters['scopedPartner']
+  ) {
+    const partnerFollowUpWhere = this.buildPartnerFollowUpWhere(scopedUserId, scopedPartner);
+    const activeScopedUserId = scopedPartner?.userId || scopedUserId;
+
     return this.db.customer.findUnique({
       where: { id },
       include: {
         customerSource: true,
         assignments: {
-          ...(scopedUserId ? { where: { userId: scopedUserId } } : {}),
           include: {
             user: {
               select: {
@@ -458,6 +514,14 @@ export class CustomerRepository extends BaseRepository {
           },
           orderBy: { assignedAt: 'asc' },
         },
+        ...(activeScopedUserId
+          ? {
+              assignmentGrants: {
+                where: { userId: activeScopedUserId },
+                orderBy: { updatedAt: 'desc' },
+              },
+            }
+          : {}),
         cases: {
           include: {
             product: true,
@@ -483,16 +547,7 @@ export class CustomerRepository extends BaseRepository {
           include: { tag: true },
         },
         followUps: {
-          ...(scopedUserId
-            ? {
-                where: {
-                  OR: [
-                    { assignedToUserId: scopedUserId },
-                    { assignedToUserId: null },
-                  ],
-                },
-              }
-            : {}),
+          ...(partnerFollowUpWhere ? { where: partnerFollowUpWhere } : {}),
           orderBy: { dueAt: 'asc' },
         },
         assessments: {

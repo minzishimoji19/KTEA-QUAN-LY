@@ -12,8 +12,17 @@ export const getCustomers = async (req: Request, res: Response, next: NextFuncti
   try {
     const filters: CustomerQueryFilters = { ...(req.query as unknown as CustomerQueryFilters) };
     if (req.user && req.user.role === Role.PARTNER) {
-      filters.scopedCustomerIds = await customerAccessService.getAssignedCustomerIds(req.user.userId);
+      const partnerScope = await customerAccessService.getPartnerCustomerScope(req.user.userId);
+      const scopeFilter = filters.assignmentScope || 'all';
+      if (scopeFilter === 'current') {
+        filters.scopedCustomerIds = partnerScope.currentIds;
+      } else if (scopeFilter === 'historical') {
+        filters.scopedCustomerIds = partnerScope.historicalIds;
+      } else {
+        filters.scopedCustomerIds = partnerScope.allIds;
+      }
       filters.scopedUserId = req.user.userId;
+      filters.scopedPartner = partnerScope;
     }
     const result = await customerService.getCustomers(filters);
     sendPaginated(res, result.items, result.pagination, 'Customers retrieved successfully');
@@ -30,8 +39,16 @@ export const getCustomerById = async (req: Request, res: Response, next: NextFun
         req.params.id
       );
     }
-    const scopedUserId = req.user?.role === Role.PARTNER ? req.user.userId : undefined;
-    const customer = await customerService.getCustomerDetail(req.params.id, scopedUserId);
+    const isPartner = req.user?.role === Role.PARTNER;
+    const scopedUserId = isPartner ? req.user!.userId : undefined;
+    const partnerScope = isPartner
+      ? await customerAccessService.getPartnerCustomerScope(req.user!.userId)
+      : undefined;
+    const customer = await customerService.getCustomerDetail(
+      req.params.id,
+      scopedUserId,
+      partnerScope
+    );
     sendSuccess(res, customer, 'Customer detail loaded');
   } catch (error) {
     next(error);
@@ -52,9 +69,9 @@ export const createCustomer = async (req: Request, res: Response, next: NextFunc
 
 export const updateCustomer = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    // 1. Enforce Customer Access Scope (Partners only access assigned customers; Admins have universal access)
+    // 1. Enforce Customer Write Access Scope (Partners can only edit currently assigned customers, NOT historical ones)
     if (req.user) {
-      await customerAccessService.assertCustomerAccess(
+      await customerAccessService.assertCustomerWriteAccess(
         { id: req.user.userId, role: req.user.role },
         req.params.id
       );
@@ -159,7 +176,7 @@ export const deleteCustomer = async (req: Request, res: Response, next: NextFunc
 export const addCustomerTag = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (req.user) {
-      await customerAccessService.assertCustomerAccess(
+      await customerAccessService.assertCustomerWriteAccess(
         { id: req.user.userId, role: req.user.role },
         req.params.id
       );
@@ -174,7 +191,7 @@ export const addCustomerTag = async (req: Request, res: Response, next: NextFunc
 export const removeCustomerTag = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (req.user) {
-      await customerAccessService.assertCustomerAccess(
+      await customerAccessService.assertCustomerWriteAccess(
         { id: req.user.userId, role: req.user.role },
         req.params.id
       );

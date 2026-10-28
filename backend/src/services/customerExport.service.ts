@@ -89,20 +89,31 @@ export class CustomerExportService {
 
     // RBAC: Partner chỉ xuất được khách hàng trong phạm vi được phân công
     if (user.role === Role.PARTNER) {
-      const assignedIds = await customerAccessService.getAssignedCustomerIds(user.userId);
-      queryFilters.scopedCustomerIds = assignedIds;
+      const partnerScope = await customerAccessService.getPartnerCustomerScope(user.userId);
+      const scopeFilter = queryFilters.assignmentScope || 'all';
+      const allowedIds =
+        scopeFilter === 'current'
+          ? partnerScope.currentIds
+          : scopeFilter === 'historical'
+          ? partnerScope.historicalIds
+          : partnerScope.allIds;
+      queryFilters.scopedCustomerIds = allowedIds;
+      queryFilters.scopedUserId = user.userId;
+      queryFilters.scopedPartner = partnerScope;
 
       if (selectedIds && selectedIds.length > 0) {
-        // Chỉ giữ các id thuộc phạm vi được phân công
-        const assignedSet = new Set(assignedIds);
-        queryFilters.selectedIds = selectedIds.filter((id) => assignedSet.has(id));
+        // Chỉ giữ các id thuộc phạm vi được phép xem
+        const allowedSet = new Set(allowedIds);
+        queryFilters.selectedIds = selectedIds.filter((id) => allowedSet.has(id));
       }
     } else if (selectedIds && selectedIds.length > 0) {
       queryFilters.selectedIds = selectedIds;
     }
 
     const { customers } = await customerRepository.findMany(queryFilters);
-    const enrichedCustomers = customers.map((c) => enrichCustomerWithStatus(c));
+    const enrichedCustomers = customers.map((c) =>
+      enrichCustomerWithStatus(c, queryFilters.scopedPartner)
+    );
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'KTEA CRM System';

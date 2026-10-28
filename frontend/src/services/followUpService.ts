@@ -3,6 +3,7 @@ import { FollowUp, FollowUpStatus } from '../types/models';
 
 export interface FollowUpQueryParams {
   filter?: 'today' | 'overdue' | 'upcoming' | 'completed' | 'all';
+  assignmentScope?: 'all' | 'current' | 'historical';
   status?: FollowUpStatus;
   customerId?: string;
   assignedTo?: string;
@@ -19,6 +20,9 @@ export const followUpService = {
   getFollowUps: async (params: FollowUpQueryParams = {}): Promise<FollowUp[]> => {
     const query = new URLSearchParams();
     if (params.filter) query.append('filter', params.filter);
+    if (params.assignmentScope && params.assignmentScope !== 'all') {
+      query.append('assignmentScope', params.assignmentScope);
+    }
     if (params.status) query.append('status', params.status);
     if (params.customerId) query.append('customerId', params.customerId);
     if (params.assignedTo) query.append('assignedTo', params.assignedTo);

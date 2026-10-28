@@ -63,7 +63,11 @@ export const EditFollowUpModal: React.FC<EditFollowUpModalProps> = ({
   if (!isOpen || !followUp) return null;
 
   const isLockedForPartner =
-    isPartner && (followUp.status === 'COMPLETED' || followUp.status === 'CANCELLED');
+    isPartner &&
+    (followUp.status === 'COMPLETED' ||
+      followUp.status === 'CANCELLED' ||
+      Boolean(followUp.isHistoricalForMe) ||
+      followUp.canEdit === false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

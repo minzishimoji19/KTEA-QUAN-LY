@@ -299,6 +299,10 @@ export interface FollowUp {
     email: string;
     role: string;
   } | null;
+  isCurrentlyAssignedToMe?: boolean;
+  isHistoricalForMe?: boolean;
+  assignmentStatus?: 'CURRENT' | 'HISTORICAL';
+  canEdit?: boolean;
   createdAt: string;
   updatedAt: string;
   customer?: {
@@ -393,6 +397,10 @@ export interface CustomerSummary {
     dueAt: string;
     completedAt: string | null;
     assignedTo: string | null;
+    isCurrentlyAssignedToMe?: boolean;
+    isHistoricalForMe?: boolean;
+    assignmentStatus?: 'CURRENT' | 'HISTORICAL';
+    canEdit?: boolean;
   }>;
   assignedCaregivers?: Array<{
     id: string;
@@ -404,6 +412,10 @@ export interface CustomerSummary {
   }>;
   assignedCaregiverName?: string;
   caregiverName?: string;
+  isCurrentlyAssignedToMe?: boolean;
+  isHistoricalForMe?: boolean;
+  assignmentStatus?: 'CURRENT' | 'HISTORICAL';
+  canEditCustomer?: boolean;
   assignments?: Array<{
     id: string;
     userId: string;

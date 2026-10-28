@@ -9,7 +9,8 @@ export const getAllPushRecords = async (req: Request, res: Response, next: NextF
     const status = req.query.status as PushStatus | undefined;
     let scopedCustomerIds: string[] | undefined;
     if (req.user && req.user.role === Role.PARTNER) {
-      scopedCustomerIds = await customerAccessService.getAssignedCustomerIds(req.user.userId);
+      const partnerScope = await customerAccessService.getPartnerCustomerScope(req.user.userId);
+      scopedCustomerIds = partnerScope.allIds;
     }
     const pushes = await pushRecordService.getAllPushRecords(status, scopedCustomerIds);
     sendSuccess(res, pushes, 'Push records retrieved');
@@ -36,7 +37,7 @@ export const getPushRecordsByCustomer = async (req: Request, res: Response, next
 export const createPushRecord = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (req.user) {
-      await customerAccessService.assertCustomerAccess(
+      await customerAccessService.assertCustomerWriteAccess(
         { id: req.user.userId, role: req.user.role },
         req.params.id
       );

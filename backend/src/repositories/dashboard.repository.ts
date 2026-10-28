@@ -26,20 +26,14 @@ export class DashboardRepository extends BaseRepository {
       ? {
           OR: [
             { assignedToUserId: scopedPartner.userId },
-            {
-              AND: [
-                { assignedToUserId: null },
-                {
-                  OR: [
-                    ...(scopedPartner.aliases.length > 0
-                      ? [{ assignedTo: { in: scopedPartner.aliases } }]
-                      : []),
-                    { assignedTo: null },
-                    { assignedTo: '' },
-                  ],
-                },
-              ],
-            },
+            ...(scopedPartner.aliases.length > 0
+              ? [
+                  {
+                    assignedToUserId: null,
+                    assignedTo: { in: scopedPartner.aliases },
+                  },
+                ]
+              : []),
           ],
         }
       : {};

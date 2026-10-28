@@ -4,6 +4,13 @@ import BaseRepository from './base.repository.js';
 export interface ScopedPartnerScheduleFilter {
   userId: string;
   aliases: string[];
+  assignmentScope?: 'all' | 'current' | 'historical';
+  currentCustomerIds?: string[];
+  historicalCustomerIds?: string[];
+  allCustomerIds?: string[];
+  grantedFollowUpIds?: string[];
+  activeGrantedFollowUpIds?: string[];
+  historicalGrantedFollowUpIds?: string[];
 }
 
 export class FollowUpRepository extends BaseRepository {
@@ -16,39 +23,88 @@ export class FollowUpRepository extends BaseRepository {
     scopedPartner?: ScopedPartnerScheduleFilter
   ) {
     const where: Prisma.FollowUpWhereInput = {};
+    const andConditions: Prisma.FollowUpWhereInput[] = [];
 
-    if (scopedCustomerIds !== undefined) {
+    const effectiveCustomerPool = scopedPartner?.allCustomerIds ?? scopedCustomerIds;
+
+    if (effectiveCustomerPool !== undefined) {
       if (customerId) {
-        if (!scopedCustomerIds.includes(customerId)) {
+        if (!effectiveCustomerPool.includes(customerId)) {
           where.customerId = '__NO_MATCH__';
         } else {
           where.customerId = customerId;
         }
       } else {
-        where.customerId = { in: scopedCustomerIds };
+        where.customerId = {
+          in: effectiveCustomerPool.length > 0 ? effectiveCustomerPool : ['__NO_MATCH__'],
+        };
       }
     } else if (customerId) {
       where.customerId = customerId;
     }
 
     if (scopedPartner) {
-      const partnerOrConditions: Prisma.FollowUpWhereInput[] = [
+      const directOwnerOr: Prisma.FollowUpWhereInput[] = [
         { assignedToUserId: scopedPartner.userId },
-        {
-          assignedToUserId: null,
-          assignedTo: null,
-        },
       ];
       if (scopedPartner.aliases.length > 0) {
-        partnerOrConditions.push({
+        directOwnerOr.push({
           assignedToUserId: null,
           assignedTo: { in: scopedPartner.aliases },
         });
       }
-      where.AND = [
-        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
-        { OR: partnerOrConditions },
-      ];
+      const directOwnerCondition: Prisma.FollowUpWhereInput = { OR: directOwnerOr };
+
+      const currentCustIds = scopedPartner.currentCustomerIds || [];
+      const activeGrantFuIds = scopedPartner.activeGrantedFollowUpIds || [];
+      const currentCondition: Prisma.FollowUpWhereInput = {
+        AND: [
+          directOwnerCondition,
+          {
+            OR: [
+              { customerId: { in: currentCustIds.length > 0 ? currentCustIds : ['__NO_MATCH__'] } },
+              ...(activeGrantFuIds.length > 0 ? [{ id: { in: activeGrantFuIds } }] : []),
+            ],
+          },
+        ],
+      };
+
+      const scopeMode = scopedPartner.assignmentScope || 'all';
+      if (scopeMode === 'current') {
+        andConditions.push(currentCondition);
+      } else if (scopeMode === 'historical') {
+        const histGrantFuIds = scopedPartner.historicalGrantedFollowUpIds || [];
+        const histCustIds = scopedPartner.historicalCustomerIds || [];
+        const allGrantFuIds = scopedPartner.grantedFollowUpIds || [];
+
+        const historicalOr: Prisma.FollowUpWhereInput[] = [];
+        if (histGrantFuIds.length > 0) {
+          historicalOr.push({ id: { in: histGrantFuIds } });
+        }
+        if (allGrantFuIds.length > 0) {
+          historicalOr.push({ id: { in: allGrantFuIds } });
+        }
+        if (histCustIds.length > 0) {
+          historicalOr.push({
+            AND: [directOwnerCondition, { customerId: { in: histCustIds } }],
+          });
+        }
+
+        if (historicalOr.length === 0) {
+          andConditions.push({ id: '__NO_MATCH__' });
+        } else {
+          andConditions.push({
+            AND: [{ OR: historicalOr }, { NOT: currentCondition }],
+          });
+        }
+      } else {
+        // 'all' = current OR historical schedules belonging to this partner
+        const allAllowedOr: Prisma.FollowUpWhereInput[] = [directOwnerCondition];
+        if (scopedPartner.grantedFollowUpIds && scopedPartner.grantedFollowUpIds.length > 0) {
+          allAllowedOr.push({ id: { in: scopedPartner.grantedFollowUpIds } });
+        }
+        andConditions.push({ OR: allAllowedOr });
+      }
     }
 
     if (status) {
@@ -58,16 +114,22 @@ export class FollowUpRepository extends BaseRepository {
     if (assignedTo && assignedTo.trim()) {
       const trimmed = assignedTo.trim();
       if (trimmed === 'unassigned' || trimmed === 'CHUA_PHAN_CONG') {
-        where.AND = [
-          { assignedTo: null },
-          { assignedToUserId: null },
-        ];
+        andConditions.push({
+          assignedTo: null,
+          assignedToUserId: null,
+        });
       } else if (trimmed !== 'all') {
-        where.OR = [
-          { assignedTo: trimmed },
-          { assignedToUserId: trimmed },
-        ];
+        andConditions.push({
+          OR: [{ assignedTo: trimmed }, { assignedToUserId: trimmed }],
+        });
       }
+    }
+
+    if (andConditions.length > 0) {
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+        ...andConditions,
+      ];
     }
 
     const now = new Date();

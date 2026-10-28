@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   getFollowUps,
+  getFollowUpById,
   createFollowUp,
   createBulkFollowUps,
   completeBulkFollowUps,
@@ -27,6 +28,12 @@ router.get(
   '/',
   validateRequest({ query: listFollowUpsQuerySchema }),
   getFollowUps
+);
+
+router.get(
+  '/:id',
+  validateRequest({ params: followUpIdParamSchema }),
+  getFollowUpById
 );
 
 router.post(

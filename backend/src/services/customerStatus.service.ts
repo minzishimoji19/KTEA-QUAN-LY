@@ -330,7 +330,14 @@ export function computeCustomerSurveyStatus(
 /**
  * Attaches resolved status, care statistics, and survey statistics to customer object consistently for all API responses.
  */
-export function enrichCustomerWithStatus<T extends CustomerWithCases>(customer: T): T & {
+export function enrichCustomerWithStatus<T extends CustomerWithCases>(
+  customer: T,
+  scopedPartner?: {
+    userId: string;
+    aliases?: string[];
+    currentIds?: string[];
+  }
+): T & {
   rawOverallStatus: string;
   careStatus: string;
   overallStatus: string;
@@ -349,6 +356,10 @@ export function enrichCustomerWithStatus<T extends CustomerWithCases>(customer: 
     dueAt: string;
     completedAt: string | null;
     assignedTo: string | null;
+    isCurrentlyAssignedToMe?: boolean;
+    isHistoricalForMe?: boolean;
+    assignmentStatus?: 'CURRENT' | 'HISTORICAL';
+    canEdit?: boolean;
   }>;
   assignedCaregivers: Array<{
     id: string;
@@ -360,6 +371,10 @@ export function enrichCustomerWithStatus<T extends CustomerWithCases>(customer: 
   }>;
   assignedCaregiverName: string;
   caregiverName: string;
+  isCurrentlyAssignedToMe: boolean;
+  isHistoricalForMe: boolean;
+  assignmentStatus: 'CURRENT' | 'HISTORICAL';
+  canEditCustomer: boolean;
   surveyStatus: CustomerSurveyStatus;
   surveyStatusLabel: string;
   surveyStats: CustomerSurveyStats;
@@ -372,6 +387,7 @@ export function enrichCustomerWithStatus<T extends CustomerWithCases>(customer: 
   const careStats = resolveCustomerCareStats(customer);
 
   const rawAssignments = Array.isArray((customer as any).assignments) ? (customer as any).assignments : [];
+  const rawGrants = Array.isArray((customer as any).assignmentGrants) ? (customer as any).assignmentGrants : [];
   const assignedCaregivers: Array<{
     id: string;
     fullName: string;
@@ -396,7 +412,21 @@ export function enrichCustomerWithStatus<T extends CustomerWithCases>(customer: 
     }
   }
 
-  if (assignedCaregivers.length === 0) {
+  let isCurrentlyAssignedToMe = true;
+  let isHistoricalForMe = false;
+
+  if (scopedPartner?.userId) {
+    const partnerUserId = scopedPartner.userId;
+    const hasActiveAssignment =
+      rawAssignments.some((a: any) => (a.userId || a.user?.id) === partnerUserId) ||
+      rawGrants.some((g: any) => g.userId === partnerUserId && g.active === true) ||
+      Boolean(scopedPartner.currentIds && customer.id && scopedPartner.currentIds.includes(customer.id));
+
+    isCurrentlyAssignedToMe = hasActiveAssignment;
+    isHistoricalForMe = !hasActiveAssignment;
+  }
+
+  if (assignedCaregivers.length === 0 && !isHistoricalForMe) {
     const firstAssignedFollowUp = careStats.careFollowUps.find((f) => f.assignedTo && f.status !== 'CANCELLED');
     if (firstAssignedFollowUp?.assignedTo) {
       assignedCaregivers.push({
@@ -413,10 +443,70 @@ export function enrichCustomerWithStatus<T extends CustomerWithCases>(customer: 
       ? assignedCaregivers[0].fullName
       : `${assignedCaregivers[0].fullName} (+${assignedCaregivers.length - 1})`;
 
+  const aliasSetLower = new Set(
+    (scopedPartner?.aliases || []).map((a) => a.trim().toLowerCase()).filter(Boolean)
+  );
+
+  const enrichFollowUpItem = (f: any) => {
+    if (!scopedPartner?.userId) {
+      return {
+        ...f,
+        isCurrentlyAssignedToMe: true,
+        isHistoricalForMe: false,
+        assignmentStatus: 'CURRENT' as const,
+        canEdit: f.status !== 'COMPLETED' && f.status !== 'CANCELLED',
+      };
+    }
+
+    const isDirectById = f.assignedToUserId === scopedPartner.userId;
+    const isDirectByAlias =
+      !f.assignedToUserId &&
+      Boolean(f.assignedTo) &&
+      aliasSetLower.has(String(f.assignedTo).trim().toLowerCase());
+    const hasActiveScheduleGrant = rawGrants.some(
+      (g: any) => g.sourceType === 'CARE_SCHEDULE' && g.sourceId === f.id && g.active === true
+    );
+
+    const isFuCurrent =
+      (isDirectById || isDirectByAlias) && (isCurrentlyAssignedToMe || hasActiveScheduleGrant);
+    const canEdit = isFuCurrent && f.status !== 'COMPLETED' && f.status !== 'CANCELLED';
+
+    return {
+      ...f,
+      isCurrentlyAssignedToMe: isFuCurrent,
+      isHistoricalForMe: !isFuCurrent,
+      assignmentStatus: (isFuCurrent ? 'CURRENT' : 'HISTORICAL') as 'CURRENT' | 'HISTORICAL',
+      canEdit,
+    };
+  };
+
+  const enrichedRawFollowUps = Array.isArray((customer as any).followUps)
+    ? (customer as any).followUps.map(enrichFollowUpItem)
+    : (customer as any).followUps;
+
+  const rawById = new Map<string, any>(
+    Array.isArray(enrichedRawFollowUps) ? enrichedRawFollowUps.map((f: any) => [f.id, f]) : []
+  );
+
+  const enrichedCareFollowUps = careStats.careFollowUps.map((cf) => {
+    const matched = rawById.get(cf.id);
+    if (matched) {
+      return {
+        ...cf,
+        isCurrentlyAssignedToMe: matched.isCurrentlyAssignedToMe,
+        isHistoricalForMe: matched.isHistoricalForMe,
+        assignmentStatus: matched.assignmentStatus,
+        canEdit: matched.canEdit,
+      };
+    }
+    return enrichFollowUpItem(cf);
+  });
+
   const surveyStats = computeCustomerSurveyStatus((customer as any).assessments, new Date());
 
   return {
     ...customer,
+    ...(enrichedRawFollowUps ? { followUps: enrichedRawFollowUps } : {}),
     rawOverallStatus: rawStatus,
     careStatus: rawStatus,
     overallStatus: resolvedStatus,
@@ -427,10 +517,14 @@ export function enrichCustomerWithStatus<T extends CustomerWithCases>(customer: 
     latestCareStatus: careStats.latestCareStatus,
     completedCareCount: careStats.completedCareCount,
     pendingCareCount: careStats.pendingCareCount,
-    careFollowUps: careStats.careFollowUps,
+    careFollowUps: enrichedCareFollowUps,
     assignedCaregivers,
     assignedCaregiverName,
     caregiverName: assignedCaregiverName,
+    isCurrentlyAssignedToMe,
+    isHistoricalForMe,
+    assignmentStatus: isCurrentlyAssignedToMe ? 'CURRENT' : 'HISTORICAL',
+    canEditCustomer: isCurrentlyAssignedToMe,
     surveyStatus: surveyStats.surveyStatus,
     surveyStatusLabel: surveyStats.surveyStatusLabel,
     surveyStats,

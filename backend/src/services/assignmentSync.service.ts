@@ -35,10 +35,19 @@ export class AssignmentSyncService {
       caregiverUserId?: string | null;
       caregiverName?: string | null;
       assignedById?: string | null;
+      previousCaregiverUserId?: string | null;
       previousCaregiverName?: string | null;
     }
   ): Promise<SyncFollowUpResult> {
-    const { followUpId, customerId, caregiverUserId, caregiverName, assignedById, previousCaregiverName } = params;
+    const {
+      followUpId,
+      customerId,
+      caregiverUserId,
+      caregiverName,
+      assignedById,
+      previousCaregiverUserId,
+      previousCaregiverName,
+    } = params;
 
     // 1. Resolve new caregiver and linked partner user
     let newPartnerUserId: string | null = null;
@@ -77,16 +86,44 @@ export class AssignmentSyncService {
       }
 
       if (caretaker?.userId && caretaker.user && caretaker.user.status === 'ACTIVE') {
-        newPartnerUserId = caretaker.userId;
-        newPartnerName = caretaker.user.fullName;
-        newPartnerEmail = caretaker.user.email;
+        if (caretaker.user.role === 'PARTNER') {
+          newPartnerUserId = caretaker.userId;
+          newPartnerName = caretaker.user.fullName;
+          newPartnerEmail = caretaker.user.email;
+        } else {
+          newPartnerUserId = null;
+          newPartnerName = caretaker.user.fullName;
+          newPartnerEmail = caretaker.user.email;
+        }
+      }
+    }
+
+    // Resolve previous partner user if provided (for legacy schedules that lacked a grant row)
+    let resolvedPrevPartnerUserId: string | null = null;
+    if (previousCaregiverUserId && previousCaregiverUserId.trim()) {
+      const prevUser = await tx.user.findUnique({
+        where: { id: previousCaregiverUserId.trim() },
+        select: { id: true, role: true },
+      });
+      if (prevUser && prevUser.role === 'PARTNER') {
+        resolvedPrevPartnerUserId = prevUser.id;
+      }
+    } else if (previousCaregiverName && previousCaregiverName.trim()) {
+      const prevCaretaker = await tx.caretaker.findFirst({
+        where: {
+          OR: [{ id: previousCaregiverName.trim() }, { name: previousCaregiverName.trim() }],
+        },
+        include: { user: { select: { id: true, role: true } } },
+      });
+      if (prevCaretaker?.user && prevCaretaker.user.role === 'PARTNER') {
+        resolvedPrevPartnerUserId = prevCaretaker.user.id;
       }
     }
 
     let unassignedPreviousUserId: string | null = null;
     let retainedAccessForPrevious = false;
 
-    // 2. Handle previous partner grant cleanup directly from existing grants for this schedule
+    // 2. Deactivate (do NOT hard-delete) previous partner grants for this schedule to preserve history
     const existingGrants = await tx.customerAssignmentGrant.findMany({
       where: {
         customerId,
@@ -95,11 +132,33 @@ export class AssignmentSyncService {
       },
     });
 
+    if (
+      resolvedPrevPartnerUserId &&
+      resolvedPrevPartnerUserId !== newPartnerUserId &&
+      !existingGrants.some((eg) => eg.userId === resolvedPrevPartnerUserId)
+    ) {
+      const createdHistoricalGrant = await tx.customerAssignmentGrant.create({
+        data: {
+          customerId,
+          userId: resolvedPrevPartnerUserId,
+          sourceType: AssignmentSourceType.CARE_SCHEDULE,
+          sourceId: followUpId,
+          active: false,
+          assignedById: assignedById || null,
+          notes: `Lịch sử phân công từ lịch chăm sóc #${followUpId}`,
+        },
+      });
+      existingGrants.push(createdHistoricalGrant);
+    }
+
     for (const eg of existingGrants) {
       if (eg.userId !== newPartnerUserId) {
-        await tx.customerAssignmentGrant.delete({
-          where: { id: eg.id },
-        });
+        if (eg.active) {
+          await tx.customerAssignmentGrant.update({
+            where: { id: eg.id },
+            data: { active: false },
+          });
+        }
 
         const remainingGrantsCount = await tx.customerAssignmentGrant.count({
           where: {
@@ -310,6 +369,15 @@ export class AssignmentSyncService {
         data: batch,
         skipDuplicates: true,
       });
+      await tx.customerAssignmentGrant.updateMany({
+        where: {
+          userId: newPartnerUserId!,
+          sourceType: AssignmentSourceType.CARE_SCHEDULE,
+          sourceId: { in: batch.map((b) => b.sourceId) },
+          active: false,
+        },
+        data: { active: true },
+      });
     }
 
     // 2. Bulk insert materialized customer assignments for distinct customers
@@ -343,6 +411,7 @@ export class AssignmentSyncService {
 
   /**
    * Revokes assignment grants when a follow-up is cancelled or deleted.
+   * Deactivates the grant (`active: false`) to preserve historical assignment visibility.
    * Only revokes customer_assignments if NO remaining valid source grants exist.
    */
   async revokeFollowUpAssignment(
@@ -350,9 +419,10 @@ export class AssignmentSyncService {
     params: {
       followUpId: string;
       customerId: string;
+      hardDelete?: boolean;
     }
   ): Promise<{ revokedUserIds: string[]; retainedUserIds: string[] }> {
-    const { followUpId, customerId } = params;
+    const { followUpId, customerId, hardDelete = false } = params;
 
     // Find all grants generated by this care schedule
     const grants = await tx.customerAssignmentGrant.findMany({
@@ -367,10 +437,16 @@ export class AssignmentSyncService {
     const retainedUserIds: string[] = [];
 
     for (const grant of grants) {
-      // Delete the grant
-      await tx.customerAssignmentGrant.delete({
-        where: { id: grant.id },
-      });
+      if (hardDelete) {
+        await tx.customerAssignmentGrant.delete({
+          where: { id: grant.id },
+        });
+      } else if (grant.active) {
+        await tx.customerAssignmentGrant.update({
+          where: { id: grant.id },
+          data: { active: false },
+        });
+      }
 
       // Check remaining valid grants for this partner on this customer
       const remainingCount = await tx.customerAssignmentGrant.count({
@@ -458,7 +534,7 @@ export class AssignmentSyncService {
   }
 
   /**
-   * Revokes direct assignment grant from Admin.
+   * Revokes direct assignment grant from Admin by deactivating (`active: false`) to preserve history.
    * If partner still has other valid sources (e.g. active care schedules), customer_assignments is retained!
    */
   async revokeDirectAssignment(
@@ -470,14 +546,43 @@ export class AssignmentSyncService {
   ): Promise<{ completelyRevoked: boolean; remainingSourcesCount: number }> {
     const { customerId, userId } = params;
 
-    await tx.customerAssignmentGrant.deleteMany({
+    const existingDirectGrant = await tx.customerAssignmentGrant.findUnique({
       where: {
-        customerId,
-        userId,
-        sourceType: AssignmentSourceType.DIRECT,
-        sourceId: 'DIRECT',
+        customer_user_source_unique: {
+          customerId,
+          userId,
+          sourceType: AssignmentSourceType.DIRECT,
+          sourceId: 'DIRECT',
+        },
       },
     });
+
+    if (existingDirectGrant) {
+      if (existingDirectGrant.active) {
+        await tx.customerAssignmentGrant.update({
+          where: { id: existingDirectGrant.id },
+          data: { active: false },
+        });
+      }
+    } else {
+      // Legacy assignment without a grant row: preserve historical evidence before revoking
+      const legacyAssignment = await tx.customerAssignment.findUnique({
+        where: { customerId_userId: { customerId, userId } },
+      });
+      if (legacyAssignment) {
+        await tx.customerAssignmentGrant.create({
+          data: {
+            customerId,
+            userId,
+            sourceType: AssignmentSourceType.DIRECT,
+            sourceId: 'DIRECT',
+            active: false,
+            assignedById: legacyAssignment.assignedById || null,
+            notes: legacyAssignment.notes || 'Lịch sử phân công trực tiếp',
+          },
+        });
+      }
+    }
 
     const remainingSourcesCount = await tx.customerAssignmentGrant.count({
       where: {
@@ -499,7 +604,8 @@ export class AssignmentSyncService {
 
   /**
    * Revokes care schedule assignment grant(s) for a partner and customer.
-   * Safely unassigns the follow-up task(s) without deleting the schedule history or record.
+   * Safely unassigns open (PENDING/IN_PROGRESS) follow-up task(s) without wiping COMPLETED schedule history.
+   * Deactivates (`active: false`) the CARE_SCHEDULE grant(s) to preserve historical visibility.
    * If partner still has other valid sources (e.g. direct assignment), customer_assignments is retained.
    */
   async revokeCareScheduleAssignment(
@@ -512,24 +618,70 @@ export class AssignmentSyncService {
   ): Promise<{ completelyRevoked: boolean; remainingSourcesCount: number }> {
     const { customerId, userId, followUpId } = params;
 
-    // 1. Fetch user to match by either user.id or user.fullName
-    const user = await tx.user.findUnique({
-      where: { id: userId },
-      select: { fullName: true },
-    });
+    // 1. Fetch user and linked caretakers to match by either user.id or caretaker/user name
+    const [user, linkedCaretakers] = await Promise.all([
+      tx.user.findUnique({
+        where: { id: userId },
+        select: { fullName: true },
+      }),
+      tx.caretaker.findMany({
+        where: { userId },
+        select: { name: true },
+      }),
+    ]);
 
-    // 2. Unassign matching follow-ups without deleting the record
-    const whereConditions: Prisma.FollowUpWhereInput[] = [
-      { assignedToUserId: userId },
-    ];
-    if (user?.fullName) {
-      whereConditions.push({ assignedTo: user.fullName });
+    const nameAliases = Array.from(
+      new Set([user?.fullName, ...linkedCaretakers.map((c) => c.name)].filter(Boolean) as string[])
+    );
+
+    const whereConditions: Prisma.FollowUpWhereInput[] = [{ assignedToUserId: userId }];
+    if (nameAliases.length > 0) {
+      whereConditions.push({
+        assignedToUserId: null,
+        assignedTo: { in: nameAliases },
+      });
     }
 
+    // Ensure historical CARE_SCHEDULE grants exist for any matched follow-ups before unassigning
+    const matchedFollowUps = await tx.followUp.findMany({
+      where: {
+        customerId,
+        ...(followUpId ? { id: followUpId } : {}),
+        OR: whereConditions,
+      },
+      select: { id: true, status: true },
+    });
+
+    for (const fu of matchedFollowUps) {
+      await tx.customerAssignmentGrant.upsert({
+        where: {
+          customer_user_source_unique: {
+            customerId,
+            userId,
+            sourceType: AssignmentSourceType.CARE_SCHEDULE,
+            sourceId: fu.id,
+          },
+        },
+        create: {
+          customerId,
+          userId,
+          sourceType: AssignmentSourceType.CARE_SCHEDULE,
+          sourceId: fu.id,
+          active: false,
+          notes: `Lịch sử phân công từ lịch chăm sóc #${fu.id}`,
+        },
+        update: {
+          active: false,
+        },
+      });
+    }
+
+    // 2. Unassign ONLY non-completed follow-ups; NEVER wipe caregiver on COMPLETED schedules
     await tx.followUp.updateMany({
       where: {
         customerId,
         ...(followUpId ? { id: followUpId } : {}),
+        status: { in: ['PENDING', 'IN_PROGRESS'] },
         OR: whereConditions,
       },
       data: {
@@ -538,13 +690,16 @@ export class AssignmentSyncService {
       },
     });
 
-    // 3. Delete the CARE_SCHEDULE grant(s)
-    await tx.customerAssignmentGrant.deleteMany({
+    // 3. Deactivate the CARE_SCHEDULE grant(s) (do NOT hard-delete so historical access works)
+    await tx.customerAssignmentGrant.updateMany({
       where: {
         customerId,
         userId,
         sourceType: AssignmentSourceType.CARE_SCHEDULE,
         ...(followUpId ? { sourceId: followUpId } : {}),
+      },
+      data: {
+        active: false,
       },
     });
 
@@ -568,9 +723,9 @@ export class AssignmentSyncService {
   }
 
   /**
-   * Completely revokes ALL assignment grants (both DIRECT and CARE_SCHEDULE) for a partner and customer.
-   * Safely unassigns any linked care schedules without deleting them.
-   * Completely removes the customer from the partner's assigned scope.
+   * Completely revokes ALL active assignment grants (both DIRECT and CARE_SCHEDULE) for a partner and customer.
+   * Safely unassigns open (PENDING/IN_PROGRESS) care schedules while preserving COMPLETED schedules and historical grants (`active: false`).
+   * Removes the customer from the partner's active assigned scope (`customer_assignments`).
    */
   async revokeAllAssignments(
     tx: Prisma.TransactionClient,
@@ -581,23 +736,91 @@ export class AssignmentSyncService {
   ): Promise<{ completelyRevoked: boolean; remainingSourcesCount: number }> {
     const { customerId, userId } = params;
 
-    // 1. Fetch user to match follow-ups by either user.id or user.fullName
-    const user = await tx.user.findUnique({
-      where: { id: userId },
-      select: { fullName: true },
-    });
+    // 1. Fetch user and linked caretakers to match follow-ups by either user.id or name alias
+    const [user, linkedCaretakers] = await Promise.all([
+      tx.user.findUnique({
+        where: { id: userId },
+        select: { fullName: true },
+      }),
+      tx.caretaker.findMany({
+        where: { userId },
+        select: { name: true },
+      }),
+    ]);
 
-    const whereConditions: Prisma.FollowUpWhereInput[] = [
-      { assignedToUserId: userId },
-    ];
-    if (user?.fullName) {
-      whereConditions.push({ assignedTo: user.fullName });
+    const nameAliases = Array.from(
+      new Set([user?.fullName, ...linkedCaretakers.map((c) => c.name)].filter(Boolean) as string[])
+    );
+
+    const whereConditions: Prisma.FollowUpWhereInput[] = [{ assignedToUserId: userId }];
+    if (nameAliases.length > 0) {
+      whereConditions.push({
+        assignedToUserId: null,
+        assignedTo: { in: nameAliases },
+      });
     }
 
-    // Unassign all follow-ups for this customer and partner
+    // Ensure historical grants exist for any follow-ups of this partner on this customer
+    const partnerFollowUps = await tx.followUp.findMany({
+      where: {
+        customerId,
+        OR: whereConditions,
+      },
+      select: { id: true, status: true },
+    });
+
+    for (const fu of partnerFollowUps) {
+      await tx.customerAssignmentGrant.upsert({
+        where: {
+          customer_user_source_unique: {
+            customerId,
+            userId,
+            sourceType: AssignmentSourceType.CARE_SCHEDULE,
+            sourceId: fu.id,
+          },
+        },
+        create: {
+          customerId,
+          userId,
+          sourceType: AssignmentSourceType.CARE_SCHEDULE,
+          sourceId: fu.id,
+          active: false,
+          notes: `Lịch sử phân công từ lịch chăm sóc #${fu.id}`,
+        },
+        update: {
+          active: false,
+        },
+      });
+    }
+
+    // Ensure historical grant exists if customer had a legacy direct assignment without grants
+    const existingGrantsCount = await tx.customerAssignmentGrant.count({
+      where: { customerId, userId },
+    });
+    if (existingGrantsCount === 0) {
+      const existingAssign = await tx.customerAssignment.findUnique({
+        where: { customerId_userId: { customerId, userId } },
+      });
+      if (existingAssign) {
+        await tx.customerAssignmentGrant.create({
+          data: {
+            customerId,
+            userId,
+            sourceType: AssignmentSourceType.DIRECT,
+            sourceId: 'DIRECT',
+            active: false,
+            assignedById: existingAssign.assignedById || null,
+            notes: existingAssign.notes || 'Lịch sử phân công trực tiếp',
+          },
+        });
+      }
+    }
+
+    // Unassign ONLY open (PENDING/IN_PROGRESS) follow-ups; preserve COMPLETED/CANCELLED caregiver history!
     await tx.followUp.updateMany({
       where: {
         customerId,
+        status: { in: ['PENDING', 'IN_PROGRESS'] },
         OR: whereConditions,
       },
       data: {
@@ -606,15 +829,18 @@ export class AssignmentSyncService {
       },
     });
 
-    // 2. Delete all grants for this customer and partner
-    await tx.customerAssignmentGrant.deleteMany({
+    // 2. Deactivate all grants for this customer and partner (preserving historical records)
+    await tx.customerAssignmentGrant.updateMany({
       where: {
         customerId,
         userId,
       },
+      data: {
+        active: false,
+      },
     });
 
-    // 3. Delete customer_assignment row
+    // 3. Delete active customer_assignment row
     await tx.customerAssignment.deleteMany({
       where: {
         customerId,
@@ -774,12 +1000,16 @@ export class AssignmentSyncService {
       };
     }
 
-    // 2. Delete grants originating from these schedules for this user
-    const deleteResult = await db.customerAssignmentGrant.deleteMany({
+    // 2. Deactivate grants originating from these schedules for this user (preserving history)
+    const updateResult = await db.customerAssignmentGrant.updateMany({
       where: {
         userId,
         sourceType: AssignmentSourceType.CARE_SCHEDULE,
         sourceId: { in: scheduleIds },
+        active: true,
+      },
+      data: {
+        active: false,
       },
     });
 
@@ -809,7 +1039,7 @@ export class AssignmentSyncService {
     return {
       caretakerName: trimmedName,
       userId,
-      grantsRevoked: deleteResult.count,
+      grantsRevoked: updateResult.count,
       assignmentsCompletelyRemoved,
       assignmentsRetained,
     };

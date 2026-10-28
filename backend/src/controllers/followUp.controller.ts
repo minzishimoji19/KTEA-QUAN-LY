@@ -10,6 +10,7 @@ import { ScopedPartnerScheduleFilter } from '../repositories/followUp.repository
 export const getFollowUps = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const filter = req.query.filter as 'today' | 'overdue' | 'upcoming' | 'completed' | 'all' | undefined;
+    const assignmentScope = (req.query.assignmentScope as 'all' | 'current' | 'historical' | undefined) || 'all';
     const status = req.query.status as FollowUpStatus | undefined;
     const customerId = req.query.customerId as string | undefined;
     const assignedTo = (req.query.assignedToUserId || req.query.assignedTo) as string | undefined;
@@ -18,16 +19,20 @@ export const getFollowUps = async (req: Request, res: Response, next: NextFuncti
     let scopedPartner: ScopedPartnerScheduleFilter | undefined;
 
     if (req.user && req.user.role === Role.PARTNER) {
-      const [assignedIds, partnerScope] = await Promise.all([
-        customerAccessService.getAssignedCustomerIds(req.user.userId),
-        customerAccessService.getPartnerCaregiverScope(req.user.userId),
-      ]);
-      scopedCustomerIds = assignedIds;
+      const partnerScope = await customerAccessService.getPartnerCustomerScope(req.user.userId);
+      scopedCustomerIds = partnerScope.allIds;
       scopedPartner = {
         userId: req.user.userId,
         aliases: partnerScope.aliases,
+        assignmentScope,
+        currentCustomerIds: partnerScope.currentIds,
+        historicalCustomerIds: partnerScope.historicalIds,
+        allCustomerIds: partnerScope.allIds,
+        grantedFollowUpIds: partnerScope.grantedFollowUpIds,
+        activeGrantedFollowUpIds: partnerScope.activeGrantedFollowUpIds,
+        historicalGrantedFollowUpIds: partnerScope.historicalGrantedFollowUpIds,
       };
-      if (customerId && !scopedCustomerIds.includes(customerId)) {
+      if (customerId && !partnerScope.allIds.includes(customerId)) {
         throw new NotFoundError(`Customer with ID '${customerId}' not found`);
       }
     }
@@ -46,12 +51,43 @@ export const getFollowUps = async (req: Request, res: Response, next: NextFuncti
   }
 };
 
+export const getFollowUpById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    let scopedPartner: ScopedPartnerScheduleFilter | undefined;
+    if (req.user) {
+      await customerAccessService.assertFollowUpReadAccess(
+        { id: req.user.userId, role: req.user.role },
+        req.params.id
+      );
+
+      if (req.user.role === Role.PARTNER) {
+        const partnerScope = await customerAccessService.getPartnerCustomerScope(req.user.userId);
+        scopedPartner = {
+          userId: req.user.userId,
+          aliases: partnerScope.aliases,
+          currentCustomerIds: partnerScope.currentIds,
+          historicalCustomerIds: partnerScope.historicalIds,
+          allCustomerIds: partnerScope.allIds,
+          grantedFollowUpIds: partnerScope.grantedFollowUpIds,
+          activeGrantedFollowUpIds: partnerScope.activeGrantedFollowUpIds,
+          historicalGrantedFollowUpIds: partnerScope.historicalGrantedFollowUpIds,
+        };
+      }
+    }
+
+    const followUp = await followUpService.getFollowUpDetail(req.params.id, scopedPartner);
+    sendSuccess(res, followUp, 'Follow-up detail loaded');
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const createFollowUp = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const payload = { ...req.body };
 
     if (req.user) {
-      await customerAccessService.assertCustomerAccess(
+      await customerAccessService.assertCustomerWriteAccess(
         { id: req.user.userId, role: req.user.role },
         payload.customerId
       );

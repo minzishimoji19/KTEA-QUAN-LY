@@ -102,6 +102,50 @@ export class FollowUpService extends BaseService {
     throw new BadRequestError(`Nhân viên chăm sóc '${trimmed}' không tồn tại trong hệ thống.`);
   }
 
+  enrichFollowUpForActor(followUp: any, scopedPartner?: ScopedPartnerScheduleFilter) {
+    if (!scopedPartner) {
+      return {
+        ...followUp,
+        isCurrentlyAssignedToMe: true,
+        isHistoricalForMe: false,
+        assignmentStatus: 'CURRENT' as const,
+        canEdit:
+          followUp.status !== FollowUpStatus.COMPLETED &&
+          followUp.status !== FollowUpStatus.CANCELLED,
+      };
+    }
+
+    const aliasSetLower = new Set(
+      (scopedPartner.aliases || []).map((a) => a.trim().toLowerCase()).filter(Boolean)
+    );
+    const currentCustSet = new Set(scopedPartner.currentCustomerIds || []);
+    const activeGrantSet = new Set(scopedPartner.activeGrantedFollowUpIds || []);
+
+    const isDirectOwnerById = followUp.assignedToUserId === scopedPartner.userId;
+    const isDirectOwnerByAlias =
+      !followUp.assignedToUserId &&
+      Boolean(followUp.assignedTo?.trim()) &&
+      aliasSetLower.has(followUp.assignedTo.trim().toLowerCase());
+
+    const isCurrentlyAssignedCaregiver = isDirectOwnerById || isDirectOwnerByAlias;
+    const hasActiveCustomerOrScheduleGrant =
+      currentCustSet.has(followUp.customerId) || activeGrantSet.has(followUp.id);
+
+    const isCurrent = isCurrentlyAssignedCaregiver && hasActiveCustomerOrScheduleGrant;
+    const canEdit =
+      isCurrent &&
+      followUp.status !== FollowUpStatus.COMPLETED &&
+      followUp.status !== FollowUpStatus.CANCELLED;
+
+    return {
+      ...followUp,
+      isCurrentlyAssignedToMe: isCurrent,
+      isHistoricalForMe: !isCurrent,
+      assignmentStatus: (isCurrent ? 'CURRENT' : 'HISTORICAL') as 'CURRENT' | 'HISTORICAL',
+      canEdit,
+    };
+  }
+
   async getFollowUps(
     filter?: 'today' | 'overdue' | 'upcoming' | 'completed' | 'all',
     status?: FollowUpStatus,
@@ -116,7 +160,15 @@ export class FollowUpService extends BaseService {
         throw new NotFoundError(`Customer with ID '${customerId}' not found`);
       }
     }
-    return followUpRepository.findAll(filter, status, customerId, assignedTo, scopedCustomerIds, scopedPartner);
+    const items = await followUpRepository.findAll(
+      filter,
+      status,
+      customerId,
+      assignedTo,
+      scopedCustomerIds,
+      scopedPartner
+    );
+    return items.map((item) => this.enrichFollowUpForActor(item, scopedPartner));
   }
 
   async getFollowUpById(id: string) {
@@ -125,6 +177,11 @@ export class FollowUpService extends BaseService {
       throw new NotFoundError(`Follow-up with ID '${id}' not found`);
     }
     return followUp;
+  }
+
+  async getFollowUpDetail(id: string, scopedPartner?: ScopedPartnerScheduleFilter) {
+    const followUp = await this.getFollowUpById(id);
+    return this.enrichFollowUpForActor(followUp, scopedPartner);
   }
 
   /**
@@ -554,6 +611,7 @@ export class FollowUpService extends BaseService {
       } else if (
         hasCaregiverChange &&
         ((validatedCaregiver?.name || null) !== current.assignedTo ||
+          (validatedCaregiver?.userId || null) !== (current.assignedToUserId || null) ||
           (current.status === FollowUpStatus.CANCELLED && Boolean(data.status)))
       ) {
         // Đổi caregiver hoặc kích hoạt lại từ CANCELLED
@@ -562,6 +620,7 @@ export class FollowUpService extends BaseService {
           customerId: current.customerId,
           caregiverUserId: validatedCaregiver?.userId || null,
           caregiverName: validatedCaregiver?.name || null,
+          previousCaregiverUserId: current.assignedToUserId,
           previousCaregiverName: current.assignedTo,
           assignedById: (data as any).assignedById || actor?.userId || null,
         });
@@ -647,6 +706,7 @@ export class FollowUpService extends BaseService {
       await assignmentSyncService.revokeFollowUpAssignment(tx, {
         followUpId: id,
         customerId: current.customerId,
+        hardDelete: true,
       });
 
       return tx.followUp.delete({
@@ -796,8 +856,15 @@ export class FollowUpService extends BaseService {
         }
 
         // Safe to delete non-completed task (PENDING, IN_PROGRESS, CANCELLED)
-        await prisma.followUp.delete({
-          where: { id },
+        await prisma.$transaction(async (tx) => {
+          await assignmentSyncService.revokeFollowUpAssignment(tx, {
+            followUpId: id,
+            customerId: fu.customerId,
+            hardDelete: true,
+          });
+          await tx.followUp.delete({
+            where: { id },
+          });
         });
 
         succeeded.push(id);
@@ -937,6 +1004,7 @@ export class FollowUpService extends BaseService {
             customerId: fu.customerId,
             caregiverUserId: targetUserId,
             caregiverName: targetName,
+            previousCaregiverUserId: fu.assignedToUserId,
             previousCaregiverName: fu.assignedTo,
             assignedById: data.assignedById || null,
           });

@@ -35,8 +35,8 @@ export const assessmentRecommendationService = {
       throw new NotFoundError(`Không tìm thấy khảo sát nhu cầu với ID '${assessmentId}'`);
     }
 
-    // 2. IDOR / RBAC Check on customer
-    await customerAccessService.assertCustomerAccess(user, assessment.customerId);
+    // 2. IDOR / RBAC Write Check on customer
+    await customerAccessService.assertCustomerWriteAccess(user, assessment.customerId);
 
     // 3. Status Guard: Must be COMPLETED
     if (assessment.status !== AssessmentStatus.COMPLETED) {

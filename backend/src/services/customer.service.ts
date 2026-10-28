@@ -24,32 +24,75 @@ export class CustomerService extends BaseService {
 
     const { total, customers } = await customerRepository.findMany(filters);
     const pagination = buildPaginationMeta(total, filters.page || 1, filters.pageSize || 10);
+    const scopedPartner = filters.scopedPartner || (filters.scopedUserId ? { userId: filters.scopedUserId } : undefined);
 
     return {
-      items: customers.map((c) => enrichCustomerWithStatus(c)),
+      items: customers.map((c) => enrichCustomerWithStatus(c, scopedPartner)),
       pagination,
     };
   }
 
-  async getCustomerById(id: string, scopedUserId?: string) {
-    const customer = await customerRepository.findById(id, scopedUserId);
+  async getCustomerById(
+    id: string,
+    scopedUserId?: string,
+    scopedPartner?: CustomerQueryFilters['scopedPartner']
+  ) {
+    const customer = await customerRepository.findById(id, scopedUserId, scopedPartner);
     if (!customer) {
       throw new NotFoundError(`Customer with ID '${id}' not found`);
     }
-    return enrichCustomerWithStatus(customer);
+    const partnerCtx = scopedPartner || (scopedUserId ? { userId: scopedUserId } : undefined);
+    return enrichCustomerWithStatus(customer, partnerCtx);
   }
 
-  async getCustomerDetail(id: string, scopedUserId?: string) {
-    const customer = await customerRepository.findDetailById(id, scopedUserId);
+  async getCustomerDetail(
+    id: string,
+    scopedUserId?: string,
+    scopedPartner?: CustomerQueryFilters['scopedPartner']
+  ) {
+    const customer = await customerRepository.findDetailById(id, scopedUserId, scopedPartner);
     if (!customer) {
       throw new NotFoundError(`Customer with ID '${id}' not found`);
     }
 
-    return enrichCustomerWithStatus({
-      ...customer,
-      source: customer.source || customer.customerSource?.name || null,
-      note: customer.note || customer.address || null,
-    });
+    const partnerCtx = scopedPartner || (scopedUserId ? { userId: scopedUserId } : undefined);
+    let filteredActivities = customer.activities;
+
+    // Scope schedule-specific activities for Partner so other partners' private schedule events do not leak
+    if (partnerCtx?.userId && Array.isArray(customer.activities)) {
+      const visibleFollowUpTitles = new Set(
+        (customer.followUps || []).map((f: any) => String(f.title || '').trim()).filter(Boolean)
+      );
+      const schedulePrefixes = [
+        'Follow-up Scheduled: ',
+        'Lên lịch chăm sóc: ',
+        'Follow-up PENDING: ',
+        'Follow-up IN_PROGRESS: ',
+        'Follow-up COMPLETED: ',
+        'Follow-up CANCELLED: ',
+        'Đổi người chăm sóc: ',
+        'Cập nhật ghi chú lịch chăm sóc: ',
+        'Mở lại lịch chăm sóc: ',
+      ];
+
+      filteredActivities = customer.activities.filter((act: any) => {
+        const title = String(act.title || '');
+        const matchedPrefix = schedulePrefixes.find((p) => title.startsWith(p));
+        if (!matchedPrefix) return true;
+        const scheduleTitle = title.slice(matchedPrefix.length).trim();
+        return visibleFollowUpTitles.has(scheduleTitle);
+      });
+    }
+
+    return enrichCustomerWithStatus(
+      {
+        ...customer,
+        activities: filteredActivities,
+        source: customer.source || customer.customerSource?.name || null,
+        note: customer.note || customer.address || null,
+      },
+      partnerCtx
+    );
   }
 
   async createCustomer(data: {

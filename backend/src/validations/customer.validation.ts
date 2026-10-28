@@ -12,6 +12,7 @@ export const listCustomersQuerySchema = z.object({
   need: z.string().optional(),
   tag: z.string().optional(),
   surveyStatus: z.enum(['NOT_CREATED', 'SENT', 'COMPLETED', 'all']).optional(),
+  assignmentScope: z.enum(['all', 'current', 'historical']).optional().default('all'),
   startDate: z.string().datetime({ offset: true }).optional().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()),
   endDate: z.string().datetime({ offset: true }).optional().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()),
   sortBy: z.enum(['createdAt', 'updatedAt', 'fullName', 'overallStatus']).optional().default('createdAt'),

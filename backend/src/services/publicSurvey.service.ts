@@ -81,8 +81,8 @@ export const publicSurveyService = {
     input: { questionnaireId?: string; questionnaireVersionId?: string; notes?: string | null },
     user: UserContext
   ) {
-    // 1. Assert customer access
-    await customerAccessService.assertCustomerAccess(user, customerId);
+    // 1. Assert customer write access
+    await customerAccessService.assertCustomerWriteAccess(user, customerId);
 
     const customer = await prisma.customer.findUnique({
       where: { id: customerId },
@@ -278,7 +278,7 @@ export const publicSurveyService = {
     });
     if (!link) throw new NotFoundError('Link khảo sát không tồn tại');
 
-    await customerAccessService.assertCustomerAccess(user, link.assessment.customerId);
+    await customerAccessService.assertCustomerWriteAccess(user, link.assessment.customerId);
 
     const eff = effectiveLinkStatus(link);
     if (eff === PublicSurveyLinkStatus.REVOKED) {

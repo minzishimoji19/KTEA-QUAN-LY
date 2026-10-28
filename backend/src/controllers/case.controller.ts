@@ -34,13 +34,13 @@ export const getCasesByCustomer = async (req: Request, res: Response, next: Next
 
 export const getCaseById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
+    const customerCase = await caseService.getCaseById(req.params.id);
     if (req.user) {
-      await customerAccessService.assertCaseAccess(
+      await customerAccessService.assertCustomerAccess(
         { id: req.user.userId, role: req.user.role },
-        req.params.id
+        customerCase.customerId
       );
     }
-    const customerCase = await caseService.getCaseById(req.params.id);
     sendSuccess(res, customerCase, 'Case retrieved successfully');
   } catch (error) {
     next(error);

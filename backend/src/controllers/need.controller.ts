@@ -22,7 +22,7 @@ export const getNeedsByCustomer = async (req: Request, res: Response, next: Next
 export const createNeed = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (req.user) {
-      await customerAccessService.assertCustomerAccess(
+      await customerAccessService.assertCustomerWriteAccess(
         { id: req.user.userId, role: req.user.role },
         req.params.id
       );

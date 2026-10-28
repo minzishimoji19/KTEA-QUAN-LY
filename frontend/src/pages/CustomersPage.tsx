@@ -18,6 +18,7 @@ import {
   Loader2,
   Send,
   FileText,
+  History,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { formatDate } from '../utils/formatters';
@@ -139,6 +140,7 @@ export const CustomersPage: React.FC = () => {
   const search = searchParams.get('search') || '';
   const status = searchParams.get('status') || '';
   const surveyStatus = searchParams.get('surveyStatus') || '';
+  const assignmentScope = (searchParams.get('assignmentScope') as 'all' | 'current' | 'historical') || 'all';
   const priority = searchParams.get('priority') || '';
   const sourceId = searchParams.get('sourceId') || searchParams.get('source') || '';
   const product = searchParams.get('product') || '';
@@ -249,6 +251,7 @@ export const CustomersPage: React.FC = () => {
     search: search.trim() || undefined,
     status: status || undefined,
     surveyStatus: surveyStatus || undefined,
+    assignmentScope: role === 'PARTNER' ? assignmentScope : undefined,
     priority: priority || undefined,
     sourceId: sourceId || undefined,
     product: product || undefined,
@@ -525,7 +528,25 @@ export const CustomersPage: React.FC = () => {
           <span className="font-semibold text-slate-100 hover:text-blue-400 transition-colors truncate">
             {row.fullName}
           </span>
-          <div className="flex items-center gap-1.5 mt-0.5">
+          <div className="flex items-center flex-wrap gap-1.5 mt-0.5">
+            {role === 'PARTNER' && (
+              row.isHistoricalForMe ? (
+                <span
+                  className="inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-950/70 text-amber-300 border border-amber-700/60"
+                  title="Khách hàng từng được phân công cho bạn (hiện đã kết thúc hoặc chuyển giao). Chế độ chỉ xem lịch sử."
+                >
+                  <History className="w-2.5 h-2.5 shrink-0" />
+                  <span>Lịch sử phân công</span>
+                </span>
+              ) : (
+                <span
+                  className="inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-700/60"
+                  title="Khách hàng hiện đang được phân công cho bạn phụ trách."
+                >
+                  <span>Đang phụ trách</span>
+                </span>
+              )
+            )}
             {row.customerTags && row.customerTags.length > 0 && (
               <div className="flex items-center gap-1">
                 {row.customerTags.slice(0, 1).map((ct) => (
@@ -901,10 +922,35 @@ export const CustomersPage: React.FC = () => {
             : null;
 
         if (!caregiverName || caregivers.length === 0) {
+          if (role === 'PARTNER' && row.isHistoricalForMe) {
+            return (
+              <span className="inline-flex items-center gap-1 text-amber-400/90 font-sans text-xs">
+                <History className="w-3.5 h-3.5 shrink-0" />
+                <span>Đã kết thúc phân công</span>
+              </span>
+            );
+          }
           return (
             <span className="text-slate-500 font-sans text-xs">
               Chưa phân công
             </span>
+          );
+        }
+
+        if (role === 'PARTNER' && row.isHistoricalForMe) {
+          return (
+            <div
+              className="flex flex-col gap-0.5 min-w-0"
+              title={`Đã chuyển giao sang: ${caregiverName} (Bạn chỉ có quyền xem lịch sử)`}
+            >
+              <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-400">
+                <History className="w-3 h-3 shrink-0" />
+                <span>Đã chuyển giao</span>
+              </span>
+              <span className="text-xs font-medium text-slate-300 truncate">
+                {caregiverName}
+              </span>
+            </div>
           );
         }
 
@@ -1044,6 +1090,45 @@ export const CustomersPage: React.FC = () => {
           </div>
         }
       />
+
+      {/* Partner Assignment Scope Tabs (Đang phụ trách vs Lịch sử phân công) */}
+      {role === 'PARTNER' && (
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 border border-slate-800/80 rounded-lg p-2">
+          <div className="flex items-center gap-1.5">
+            {(
+              [
+                { key: 'all', label: 'Tất cả phạm vi' },
+                { key: 'current', label: 'Đang phụ trách' },
+                { key: 'historical', label: 'Lịch sử phân công (Chỉ xem)' },
+              ] as const
+            ).map((tab) => {
+              const isActive = assignmentScope === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => updateFilters({ assignmentScope: tab.key === 'all' ? undefined : tab.key, page: 1 })}
+                  className={cn(
+                    'px-3 py-1.5 rounded-md text-xs font-mono transition-all flex items-center gap-1.5',
+                    isActive
+                      ? tab.key === 'historical'
+                        ? 'bg-amber-600/20 text-amber-300 border border-amber-500/40 font-semibold'
+                        : 'bg-blue-600 text-white font-semibold shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  )}
+                >
+                  {tab.key === 'historical' && <History className="w-3.5 h-3.5" />}
+                  {tab.key === 'current' && <UserCheck className="w-3.5 h-3.5" />}
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <span className="text-[11px] text-slate-400 font-sans pr-2">
+            Khách hàng ở trạng thái <strong className="text-amber-300">Lịch sử phân công</strong> chỉ cho phép xem dữ liệu lịch sử, không thể chỉnh sửa.
+          </span>
+        </div>
+      )}
 
       {/* Comprehensive Filter Bar */}
       <FilterBar activeCount={activeFilterCount} onReset={handleResetFilters}>

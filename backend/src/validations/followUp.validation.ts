@@ -5,6 +5,7 @@ export const VALID_CARETAKERS = ['Ktea', 'xoaicaldez', 'mfast'] as const;
 
 export const listFollowUpsQuerySchema = z.object({
   filter: z.enum(['today', 'overdue', 'upcoming', 'completed', 'all']).optional().default('all'),
+  assignmentScope: z.enum(['all', 'current', 'historical']).optional().default('all'),
   status: z.nativeEnum(FollowUpStatus).optional(),
   customerId: z.string().optional(),
   assignedTo: z.string().optional(),

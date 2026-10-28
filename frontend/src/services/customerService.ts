@@ -8,6 +8,7 @@ export interface CustomerQueryParams {
   search?: string;
   status?: string;
   surveyStatus?: string;
+  assignmentScope?: 'all' | 'current' | 'historical';
   priority?: string;
   sourceId?: string;
   product?: string;
@@ -27,6 +28,9 @@ export const customerService = {
     if (params.search) query.append('search', params.search);
     if (params.status) query.append('status', params.status);
     if (params.surveyStatus) query.append('surveyStatus', params.surveyStatus);
+    if (params.assignmentScope && params.assignmentScope !== 'all') {
+      query.append('assignmentScope', params.assignmentScope);
+    }
     if (params.priority) query.append('priority', params.priority);
     if (params.sourceId) query.append('sourceId', params.sourceId);
     if (params.product) query.append('product', params.product);

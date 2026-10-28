@@ -602,16 +602,33 @@ export class UserService {
                 followUpId: fu.id,
                 customerId,
                 caregiverUserId: toUserId,
+                caregiverName: targetUser.fullName,
+                previousCaregiverUserId: fu.assignedToUserId,
+                previousCaregiverName: fu.assignedTo,
                 assignedById: actor.id,
               });
             }
 
-            // 2. If fromUserId provided, unassign customer and any lingering grants from fromUserId
+            // 2. Revoke active customer assignments from previous partner(s) while preserving historical grants (`active: false`)
             if (fromUserId && fromUserId !== toUserId) {
               await assignmentSyncService.revokeAllAssignments(tx, {
                 customerId,
                 userId: fromUserId,
               });
+            } else if (!fromUserId) {
+              const previousAssignments = await tx.customerAssignment.findMany({
+                where: {
+                  customerId,
+                  userId: { not: toUserId },
+                },
+                select: { userId: true },
+              });
+              for (const prev of previousAssignments) {
+                await assignmentSyncService.revokeAllAssignments(tx, {
+                  customerId,
+                  userId: prev.userId,
+                });
+              }
             }
 
             // 3. Assign to target user directly

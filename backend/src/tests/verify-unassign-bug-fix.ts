@@ -182,7 +182,7 @@ async function runUnassignTests() {
     assert.strictEqual(unassignResA.status, 200, 'Unassign must return 200');
     assert.strictEqual(unassignResA.body.data.completelyRevoked, true, 'Must be completely revoked');
 
-    // 3. Verify database no longer has assignment or grant
+    // 3. Verify database no longer has active assignment; grant is preserved as inactive history
     const dbAssignAfterA = await prisma.customerAssignment.findUnique({
       where: { customerId_userId: { customerId: testCustomerA.id, userId: partnerUser.id } },
     });
@@ -191,13 +191,14 @@ async function runUnassignTests() {
     const dbGrantAfterA = await prisma.customerAssignmentGrant.findFirst({
       where: { customerId: testCustomerA.id, userId: partnerUser.id },
     });
-    assert.strictEqual(dbGrantAfterA, null, 'CustomerAssignmentGrant must be deleted from DB');
+    assert.ok(dbGrantAfterA, 'CustomerAssignmentGrant must be preserved for historical visibility');
+    assert.strictEqual(dbGrantAfterA.active, false, 'CustomerAssignmentGrant.active must be false');
 
     // 4. Reload assignments API: Customer A MUST NOT BE PRESENT!
     const listResAfterA = await api(`/api/users/${partnerUser.id}/assignments`, { cookie: adminCookie });
     const foundAfterA = listResAfterA.body.data.find((x: any) => x.customerId === testCustomerA.id);
     assert.strictEqual(foundAfterA, undefined, 'Customer A must NOT appear after reload');
-    console.log('✓ TEST A PASSED: Direct unassignment removes record completely from DB and API.');
+    console.log('✓ TEST A PASSED: Direct unassignment removes active assignment and preserves historical grant.');
 
     // -------------------------------------------------------------------------
     // TEST B: ĐĂNG NHẬP LẠI (SESSION RELOAD VERIFICATION)
@@ -211,16 +212,25 @@ async function runUnassignTests() {
     assert.strictEqual(partnerReloginRes.status, 200);
     partnerCookie = partnerReloginRes.cookie;
 
-    // Check Partner's own customer list
-    const partnerCustList = await api('/api/customers', { cookie: partnerCookie });
-    assert.strictEqual(partnerCustList.status, 200);
-    const partnerHasCustomerA = partnerCustList.body.data.some((c: any) => c.id === testCustomerA.id);
-    assert.strictEqual(partnerHasCustomerA, false, 'Partner must not see unassigned Customer A');
+    // Check Partner's CURRENT customer list -> must NOT include unassigned Customer A
+    const partnerCurrentCustList = await api('/api/customers?assignmentScope=current', { cookie: partnerCookie });
+    assert.strictEqual(partnerCurrentCustList.status, 200);
+    const partnerHasCurrentCustomerA = partnerCurrentCustList.body.data.some((c: any) => c.id === testCustomerA.id);
+    assert.strictEqual(partnerHasCurrentCustomerA, false, 'Partner must not see unassigned Customer A in current scope');
 
-    // Check Partner querying Customer A detail directly -> 404
-    const detail404 = await api(`/api/customers/${testCustomerA.id}`, { cookie: partnerCookie });
-    assert.strictEqual(detail404.status, 404, 'Direct access to unassigned customer must return 404');
-    console.log('✓ TEST B PASSED: Fresh session confirms customer stays unassigned permanently.');
+    // Check Partner's HISTORICAL access -> read-only historical view allowed, write forbidden (403)
+    const detailHistorical = await api(`/api/customers/${testCustomerA.id}`, { cookie: partnerCookie });
+    assert.strictEqual(detailHistorical.status, 200, 'Historical read access to previously assigned customer must return 200');
+    assert.strictEqual(detailHistorical.body.data.isHistoricalForMe, true, 'Must be marked as historical for Partner');
+    assert.strictEqual(detailHistorical.body.data.canEditCustomer, false, 'Must not be editable by Partner');
+
+    const editHistorical403 = await api(`/api/customers/${testCustomerA.id}`, {
+      method: 'PATCH',
+      cookie: partnerCookie,
+      body: { overallStatus: 'DANG_TU_VAN' },
+    });
+    assert.strictEqual(editHistorical403.status, 403, 'Mutating unassigned historical customer must return 403');
+    console.log('✓ TEST B PASSED: Fresh session confirms customer is removed from current scope and locked to read-only historical scope.');
 
     // -------------------------------------------------------------------------
     // TEST C: NHIỀU NGUỒN PHÂN CÔNG (DIRECT + CARE_SCHEDULE)
@@ -310,10 +320,19 @@ async function runUnassignTests() {
     });
     assert.strictEqual(dbAssignB, null, 'CustomerAssignment must be deleted');
 
-    // Partner access to Customer B must now be 404
-    const partnerAccessLostB = await api(`/api/customers/${testCustomerB.id}`, { cookie: partnerCookie });
-    assert.strictEqual(partnerAccessLostB.status, 404, 'Partner must get 404 for revoked Customer B');
-    console.log('✓ TEST D PASSED: Final source revocation removes all access; follow-up history preserved.');
+    // Partner active access to Customer B must now be historical-only (403 on write)
+    const partnerAccessHistoricalB = await api(`/api/customers/${testCustomerB.id}`, { cookie: partnerCookie });
+    assert.strictEqual(partnerAccessHistoricalB.status, 200, 'Partner retains read-only historical view for Customer B');
+    assert.strictEqual(partnerAccessHistoricalB.body.data.isHistoricalForMe, true, 'Customer B must be marked historical');
+    assert.strictEqual(partnerAccessHistoricalB.body.data.canEditCustomer, false, 'Customer B must not be editable');
+
+    const partnerEditRevokedB = await api(`/api/customers/${testCustomerB.id}`, {
+      method: 'PATCH',
+      cookie: partnerCookie,
+      body: { overallStatus: 'DANG_TU_VAN' },
+    });
+    assert.strictEqual(partnerEditRevokedB.status, 403, 'Partner must get 403 when editing revoked Customer B');
+    console.log('✓ TEST D PASSED: Final source revocation removes active write access; historical view and follow-up history preserved.');
 
     // -------------------------------------------------------------------------
     // TEST E: BẢO VỆ RBAC (PARTNER KHÔNG THỂ HỦY PHÂN CÔNG)
