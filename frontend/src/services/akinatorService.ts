@@ -78,8 +78,8 @@ export const akinatorAdminApi = {
   /**
    * Fetches the currently published configuration version.
    */
-  async getCurrentPublishedConfig(): Promise<AkinatorConfigDetail> {
-    return apiClient.get<AkinatorConfigDetail>('/akinator/configs/current');
+  async getCurrentPublishedConfig(): Promise<AkinatorConfigDetail | null> {
+    return apiClient.get<AkinatorConfigDetail | null>('/akinator/configs/current');
   },
 
   /**

@@ -284,7 +284,7 @@ export const AkinatorPage: React.FC = () => {
                   <Loader2 className="w-5 h-5 text-blue-500 animate-spin mx-auto" />
                   <p>Đang tải thông tin cấu hình...</p>
                 </div>
-              ) : error ? (
+              ) : error || !currentConfig ? (
                 <div className="py-4 text-xs text-amber-300/90 bg-amber-950/20 border border-amber-900/40 rounded-lg p-3 space-y-1">
                   <div className="flex items-center gap-1.5 font-medium">
                     <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />
@@ -294,7 +294,7 @@ export const AkinatorPage: React.FC = () => {
                     Vui lòng chọn tab "Cấu hình Akinator" để tạo và xuất bản phiên bản cấu hình đầu tiên.
                   </p>
                 </div>
-              ) : currentConfig ? (
+              ) : (
                 <div className="space-y-3.5 text-xs">
                   <div>
                     <span className="text-slate-400 text-[11px] block">Tiêu đề:</span>
@@ -351,7 +351,7 @@ export const AkinatorPage: React.FC = () => {
                     </div>
                   )}
                 </div>
-              ) : null}
+              )}
             </div>
           </div>
         </div>

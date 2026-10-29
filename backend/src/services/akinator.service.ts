@@ -175,10 +175,7 @@ export const akinatorService = {
 
   async getCurrentPublishedConfig() {
     const config = await akinatorRepository.findCurrentPublishedConfig();
-    if (!config) {
-      throw new NotFoundError('Hiện chưa có phiên bản cấu hình Akinator nào được xuất bản');
-    }
-    return config;
+    return config || null;
   },
 
   async createDraftConfig(input: CreateAkinatorDraftInput, actor?: AkinatorActorContext) {
@@ -601,6 +598,9 @@ export const akinatorService = {
           data: sessionContactUpdate,
         });
       }
+    }, {
+      maxWait: 15000,
+      timeout: 30000,
     });
 
     // Reload updated answers and compute next question
@@ -769,6 +769,9 @@ export const akinatorService = {
       });
 
       return createdResult;
+    }, {
+      maxWait: 15000,
+      timeout: 30000,
     });
 
     return {
@@ -935,6 +938,9 @@ export const akinatorService = {
       });
 
       return review;
+    }, {
+      maxWait: 15000,
+      timeout: 30000,
     });
 
     await auditLogService.log({
@@ -980,8 +986,8 @@ export const akinatorService = {
 
     // TRANSFERRED must go through the dedicated atomic transfer workflow (/api/akinator/sessions/:id/transfer)
     if (toStatus === AkinatorWorkflowStatus.TRANSFERRED) {
-      throw new ForbiddenError(
-        'Chuyển trạng thái sang Đã chuyển (TRANSFERRED) trực tiếp chưa được kích hoạt qua API cập nhật trạng thái thông thường. Bắt buộc phải thực hiện qua luồng kiểm tra trùng và tích hợp khách hàng (POST /api/akinator/sessions/:id/transfer)'
+      throw new BadRequestError(
+        'Chuyển trạng thái sang Đã chuyển (TRANSFERRED) trực tiếp không được phép qua API cập nhật trạng thái thông thường. Bắt buộc phải thực hiện qua luồng kiểm tra trùng và tích hợp khách hàng (POST /api/akinator/sessions/:id/transfer)'
       );
     }
 
@@ -1100,6 +1106,9 @@ export const akinatorService = {
           actorEmail: actor.email || null,
         },
       });
+    }, {
+      maxWait: 15000,
+      timeout: 30000,
     });
 
     await auditLogService.log({
@@ -1195,22 +1204,21 @@ export const akinatorService = {
       try {
         attempts++;
         return await prisma.$transaction(async (tx) => {
-      // 1. Fetch fresh session within transaction
-      const session = await tx.akinatorSession.findUnique({
-        where: { id: sessionId },
-        include: {
-          adminReview: true,
-          result: true,
-        },
-      });
-
-      if (!session) {
+      // 0. Acquire exclusive row lock on this session to serialize concurrent transfers
+      const lockedRows: any = await tx.$queryRaw`
+        SELECT workflow_status FROM akinator_sessions WHERE id = ${sessionId} FOR UPDATE
+      `;
+      if (!lockedRows || lockedRows.length === 0) {
         throw new NotFoundError(`Không tìm thấy hồ sơ Akinator với ID: ${sessionId}`);
       }
+      const currentLockedStatus = lockedRows[0].workflow_status;
 
-      // 2. Idempotency Check: if already transferred, return existing link safely
-      if (session.workflowStatus === AkinatorWorkflowStatus.TRANSFERRED) {
-        const linkedId = session.adminReview?.linkedCustomerId;
+      // 1. Idempotency Check: if already transferred, return existing link safely
+      if (currentLockedStatus === AkinatorWorkflowStatus.TRANSFERRED) {
+        const review = await tx.akinatorAdminReview.findUnique({
+          where: { sessionId },
+        });
+        const linkedId = review?.linkedCustomerId;
         const existingCustomer = linkedId
           ? await tx.customer.findUnique({
               where: { id: linkedId },
@@ -1229,19 +1237,32 @@ export const akinatorService = {
 
         return {
           alreadyTransferred: true,
-          sessionId: session.id,
+          sessionId,
           customerId: existingCustomer?.id || null,
           customer: existingCustomer,
-          mode: session.adminReview?.linkedCustomerId ? 'LINKED' : 'TRANSFERRED',
+          mode: review?.linkedCustomerId ? 'LINKED' : 'TRANSFERRED',
           message: 'Hồ sơ này đã được chuyển sang Khách hàng trước đó',
         };
       }
 
-      // 3. Status pre-condition: Must be APPROVED
-      if (session.workflowStatus !== AkinatorWorkflowStatus.APPROVED) {
+      // 2. Status pre-condition: Must be APPROVED
+      if (currentLockedStatus !== AkinatorWorkflowStatus.APPROVED) {
         throw new BadRequestError(
-          `Chỉ hồ sơ ở trạng thái Đã duyệt (APPROVED) mới có thể chuyển sang Khách hàng. Trạng thái hiện tại: ${session.workflowStatus}`
+          `Chỉ hồ sơ ở trạng thái Đã duyệt (APPROVED) mới có thể chuyển sang Khách hàng. Trạng thái hiện tại: ${currentLockedStatus}`
         );
+      }
+
+      // 3. Fetch fresh session within transaction (now serialized)
+      const session = await tx.akinatorSession.findUnique({
+        where: { id: sessionId },
+        include: {
+          adminReview: true,
+          result: true,
+        },
+      });
+
+      if (!session) {
+        throw new NotFoundError(`Không tìm thấy hồ sơ Akinator với ID: ${sessionId}`);
       }
 
       // 4. Validate required customer fields
@@ -1450,15 +1471,22 @@ export const akinatorService = {
       }
 
       throw new BadRequestError('Phương thức chuyển không hợp lệ');
-        });
+        },
+        {
+          maxWait: 15000,
+          timeout: 30000,
+        }
+      );
       } catch (err: any) {
         const isConflict =
+          err?.code === 'P2028' ||
           err?.code === 'P2034' ||
           err?.meta?.code === 1020 ||
           err?.meta?.code === 1213 ||
           String(err?.message || '').includes('Record has changed since last read') ||
           String(err?.message || '').includes('try restarting transaction') ||
-          String(err?.message || '').includes('Deadlock');
+          String(err?.message || '').includes('Deadlock') ||
+          String(err?.message || '').includes('Transaction already closed');
 
         if (isConflict && attempts < 3) {
           await new Promise((res) => setTimeout(res, 50 * attempts));
