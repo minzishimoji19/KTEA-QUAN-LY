@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLayout } from './LayoutContext';
@@ -48,6 +49,7 @@ export const Sidebar: React.FC = () => {
           { name: 'Khách hàng', href: '/customers', icon: Users },
           { name: 'Lịch chăm sóc', href: '/follow-ups', icon: CalendarCheck, badge: 'Nhiệm vụ' },
           { name: 'Phân tích dữ liệu', href: '/analytics', icon: BarChart3 },
+          { name: 'Akinator', href: '/akinator', icon: Sparkles, badge: 'Mới' },
           { name: 'Trung tâm xử lý', href: '/push', icon: Send },
           { name: 'Quản lý tài khoản', href: '/users', icon: ShieldCheck },
           { name: 'Cài đặt', href: '/settings', icon: SlidersHorizontal },

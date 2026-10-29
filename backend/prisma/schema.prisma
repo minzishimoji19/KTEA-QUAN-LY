@@ -847,3 +847,256 @@ model PublicSurveyLink {
   @@map("public_survey_links")
 }
 
+// =========================================================================
+// ISOLATED AKINATOR MODULE: ADAPTIVE QUIZ, RULE ENGINE & ADMIN REVIEW
+// =========================================================================
+
+enum AkinatorConfigStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AkinatorQuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  YES_NO
+  NUMBER
+  CURRENCY
+  TEXT
+  DATE
+}
+
+enum AkinatorCustomerFieldMapping {
+  NONE
+  FULL_NAME
+  PHONE
+  EMAIL
+  DOB
+  GENDER
+  ADDRESS
+}
+
+enum AkinatorQuizStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+enum AkinatorWorkflowStatus {
+  PENDING_PROCESSING
+  IN_PROGRESS
+  NEEDS_MORE_INFO
+  PENDING_APPROVAL
+  APPROVED
+  TRANSFERRED
+  REJECTED
+}
+
+enum AkinatorEvaluationStatus {
+  EVALUATED
+  INSUFFICIENT_DATA
+}
+
+model AkinatorConfigVersion {
+  id                     String               @id @default(uuid())
+  versionNumber          Int                  @unique @map("version_number")
+  title                  String               @map("title")
+  description            String?              @map("description") @db.Text
+  status                 AkinatorConfigStatus @default(DRAFT) @map("status")
+  isCurrent              Boolean              @default(false) @map("is_current")
+  maxQuestionsPerSession Int                  @default(15) @map("max_questions_per_session")
+  disclaimerText         String               @map("disclaimer_text") @db.Text
+  changeLog              String?              @map("change_log") @db.Text
+  publishedAt            DateTime?            @map("published_at")
+  publishedById          String?              @map("published_by_id")
+  createdById            String?              @map("created_by_id")
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+
+  questions              AkinatorQuestion[]
+  rules                  AkinatorRule[]
+  sessions               AkinatorSession[]
+
+  @@index([status])
+  @@index([isCurrent])
+  @@map("akinator_config_versions")
+}
+
+model AkinatorQuestion {
+  id                   String                       @id @default(uuid())
+  configVersionId      String                       @map("config_version_id")
+  code                 String                       @map("code")
+  questionText         String                       @map("question_text") @db.Text
+  description          String?                      @map("description") @db.Text
+  questionType         AkinatorQuestionType         @map("question_type")
+  isEntryQuestion      Boolean                      @default(false) @map("is_entry_question")
+  isRequiredForEval    Boolean                      @default(false) @map("is_required_for_eval")
+  priorityWeight       Int                          @default(50) @map("priority_weight")
+  mapsToCustomerField  AkinatorCustomerFieldMapping @default(NONE) @map("maps_to_customer_field")
+  options              Json?                        @map("options")
+  validationConfig     Json?                        @map("validation_config")
+  visibilityConditions Json?                        @map("visibility_conditions")
+  nextQuestionRules    Json?                        @map("next_question_rules")
+  active               Boolean                      @default(true) @map("active")
+  createdAt            DateTime                     @default(now()) @map("created_at")
+  updatedAt            DateTime                     @updatedAt @map("updated_at")
+
+  configVersion        AkinatorConfigVersion        @relation(fields: [configVersionId], references: [id], onDelete: Cascade)
+  rawAnswers           AkinatorRawAnswer[]
+
+  @@unique([configVersionId, code], name: "akinator_version_question_code_unique")
+  @@index([configVersionId])
+  @@index([priorityWeight])
+  @@map("akinator_questions")
+}
+
+model AkinatorRule {
+  id                    String                @id @default(uuid())
+  configVersionId       String                @map("config_version_id")
+  code                  String                @map("code")
+  name                  String                @map("name")
+  description           String?               @map("description") @db.Text
+  priorityOrder         Int                   @default(1) @map("priority_order")
+  requiredQuestionCodes Json                  @map("required_question_codes")
+  conditions            Json                  @map("conditions")
+  outcomePayload        Json                  @map("outcome_payload")
+  stopOnMatch           Boolean               @default(false) @map("stop_on_match")
+  active                Boolean               @default(true) @map("active")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+
+  configVersion         AkinatorConfigVersion @relation(fields: [configVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([configVersionId, code], name: "akinator_version_rule_code_unique")
+  @@index([configVersionId])
+  @@index([priorityOrder])
+  @@map("akinator_rules")
+}
+
+model AkinatorSession {
+  id                String                  @id @default(uuid())
+  /// SHA-256 hash of raw session token (never store raw token)
+  sessionTokenHash  String                  @unique @map("session_token_hash") @db.VarChar(64)
+  configVersionId   String                  @map("config_version_id")
+  quizStatus        AkinatorQuizStatus      @default(IN_PROGRESS) @map("quiz_status")
+  workflowStatus    AkinatorWorkflowStatus? @map("workflow_status")
+  rawFullName       String?                 @map("raw_full_name")
+  rawPhone          String?                 @map("raw_phone")
+  rawEmail          String?                 @map("raw_email")
+  startedAt         DateTime                @default(now()) @map("started_at")
+  completedAt       DateTime?               @map("completed_at")
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+
+  configVersion     AkinatorConfigVersion   @relation(fields: [configVersionId], references: [id], onDelete: Restrict)
+  rawAnswers        AkinatorRawAnswer[]
+  result            AkinatorResult?
+  adminReview       AkinatorAdminReview?
+  statusHistories   AkinatorStatusHistory[]
+
+  @@index([configVersionId])
+  @@index([quizStatus])
+  @@index([workflowStatus])
+  @@index([rawPhone])
+  @@index([completedAt])
+  @@map("akinator_sessions")
+}
+
+model AkinatorRawAnswer {
+  id                   String           @id @default(uuid())
+  sessionId            String           @map("session_id")
+  questionId           String           @map("question_id")
+  questionCode         String           @map("question_code")
+  questionTextSnapshot String           @map("question_text_snapshot") @db.Text
+  answerValue          Json             @map("answer_value")
+  answerLabelSnapshot  String?          @map("answer_label_snapshot") @db.Text
+  selectionReason      String?          @map("selection_reason") @db.Text
+  stepOrder            Int              @default(1) @map("step_order")
+  answeredAt           DateTime         @default(now()) @map("answered_at")
+
+  session              AkinatorSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question             AkinatorQuestion @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@unique([sessionId, questionCode], name: "akinator_session_question_code_unique")
+  @@index([sessionId])
+  @@index([questionId])
+  @@map("akinator_raw_answers")
+}
+
+model AkinatorResult {
+  id                   String                   @id @default(uuid())
+  sessionId            String                   @unique @map("session_id")
+  configVersionId      String                   @map("config_version_id")
+  evaluationStatus     AkinatorEvaluationStatus @map("evaluation_status")
+  summaryTitle         String                   @map("summary_title")
+  summaryDescription   String                   @map("summary_description") @db.Text
+  outcomeData          Json                     @map("outcome_data")
+  missingCriteria      Json                     @map("missing_criteria")
+  matchedRulesSnapshot Json                     @map("matched_rules_snapshot")
+  answersSnapshot      Json                     @map("answers_snapshot")
+  disclaimerText       String                   @map("disclaimer_text") @db.Text
+  generatedAt          DateTime                 @default(now()) @map("generated_at")
+
+  session              AkinatorSession          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([configVersionId])
+  @@index([evaluationStatus])
+  @@map("akinator_results")
+}
+
+model AkinatorAdminReview {
+  id                 String          @id @default(uuid())
+  sessionId          String          @unique @map("session_id")
+  editedFullName     String?         @map("edited_full_name")
+  editedPhone        String?         @map("edited_phone")
+  editedEmail        String?         @map("edited_email")
+  editedGender       Gender?         @map("edited_gender")
+  editedDateOfBirth  DateTime?       @map("edited_date_of_birth")
+  editedAddress      String?         @map("edited_address")
+  editedSource       String?         @map("edited_source")
+  editedPriority     PriorityLevel?  @map("edited_priority")
+  processorNote      String?         @map("processor_note") @db.Text
+  missingInfoNote    String?         @map("missing_info_note") @db.Text
+  approvalNote       String?         @map("approval_note") @db.Text
+  rejectionReason    String?         @map("rejection_reason") @db.Text
+  assignedAdminId    String?         @map("assigned_admin_id")
+  approvedById       String?         @map("approved_by_id")
+  approvedAt         DateTime?       @map("approved_at")
+  rejectedById       String?         @map("rejected_by_id")
+  rejectedAt         DateTime?       @map("rejected_at")
+  linkedCustomerId   String?         @map("linked_customer_id")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  session            AkinatorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([editedPhone])
+  @@index([assignedAdminId])
+  @@index([approvedById])
+  @@index([linkedCustomerId])
+  @@map("akinator_admin_reviews")
+}
+
+model AkinatorStatusHistory {
+  id                    String                  @id @default(uuid())
+  sessionId             String                  @map("session_id")
+  fromStatus            AkinatorWorkflowStatus? @map("from_status")
+  toStatus              AkinatorWorkflowStatus  @map("to_status")
+  actionType            String                  @map("action_type")
+  changedFieldsSnapshot Json?                   @map("changed_fields_snapshot")
+  note                  String?                 @map("note") @db.Text
+  actorUserId           String?                 @map("actor_user_id")
+  actorEmail            String?                 @map("actor_email")
+  createdAt             DateTime                @default(now()) @map("created_at")
+
+  session               AkinatorSession         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([toStatus])
+  @@index([actorUserId])
+  @@index([createdAt])
+  @@map("akinator_status_histories")
+}
+
+

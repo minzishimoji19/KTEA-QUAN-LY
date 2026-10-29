@@ -26,6 +26,10 @@ import {
   surveyLinkManagementRouter,
   publicSurveyRouter,
 } from './publicSurvey.routes.js';
+import {
+  publicAkinatorRouter,
+  adminAkinatorRouter,
+} from './akinator.routes.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
@@ -41,6 +45,12 @@ router.use('/notifications', pushNotificationRoutes);
 
 // Public Survey Endpoints (unauthenticated, token-only auth)
 router.use('/public/survey', publicSurveyRouter);
+
+// Public Akinator Quiz Endpoints (unauthenticated, token-scoped, rate-limited)
+router.use('/public/akinator', publicAkinatorRouter);
+
+// Admin Akinator Management & Workflow Endpoints (authenticated, ADMIN only)
+router.use('/akinator', requireAuth, adminAkinatorRouter);
 
 // User & Role Management (authenticated, admin-only routes inside)
 router.use('/users', requireAuth, userRoutes);

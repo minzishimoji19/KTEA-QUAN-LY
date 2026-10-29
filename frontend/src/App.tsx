@@ -18,6 +18,8 @@ import { SettingsPage } from './pages/SettingsPage';
 import { UsersManagementPage } from './pages/UsersManagementPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { SurveyPage } from './pages/SurveyPage';
+import { AkinatorQuizPage } from './pages/AkinatorQuizPage';
+import { AkinatorPage } from './pages/AkinatorPage';
 
 // Component redirecting PARTNER to their scoped customers page instead of system-wide dashboard
 const DashboardOrPartnerRedirect: React.FC = () => {
@@ -40,6 +42,10 @@ export const App: React.FC = () => {
 
               {/* Public Survey Route for customers - No login required */}
               <Route path="/survey/:token" element={<SurveyPage />} />
+
+              {/* Public Akinator Quiz Route for interactive evaluation - No login required */}
+              <Route path="/akinator/quiz" element={<AkinatorQuizPage />} />
+              <Route path="/akinator/quiz/:token" element={<AkinatorQuizPage />} />
 
               {/* Protected Authenticated Routes */}
               <Route
@@ -81,6 +87,14 @@ export const App: React.FC = () => {
                   element={
                     <ProtectedRoute allowedRoles={['ADMIN']}>
                       <AnalyticsPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="akinator"
+                  element={
+                    <ProtectedRoute allowedRoles={['ADMIN']}>
+                      <AkinatorPage />
                     </ProtectedRoute>
                   }
                 />
