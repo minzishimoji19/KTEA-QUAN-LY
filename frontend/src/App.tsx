@@ -44,6 +44,8 @@ export const App: React.FC = () => {
               <Route path="/survey/:token" element={<SurveyPage />} />
 
               {/* Public Akinator Quiz Route for interactive evaluation - No login required */}
+              <Route path="/quiz" element={<AkinatorQuizPage />} />
+              <Route path="/quiz/:token" element={<AkinatorQuizPage />} />
               <Route path="/akinator/quiz" element={<AkinatorQuizPage />} />
               <Route path="/akinator/quiz/:token" element={<AkinatorQuizPage />} />
 

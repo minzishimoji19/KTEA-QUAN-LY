@@ -312,3 +312,83 @@ export const transferAkinatorSessionToCustomer = async (
     next(error);
   }
 };
+
+// =========================================================================
+// CUSTOMER AKINATOR SESSIONS (STAFF & PARTNER)
+// =========================================================================
+
+export const createCustomerAkinatorSessionHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const customerId = req.params.customerId || req.params.id;
+    const result = await akinatorService.createCustomerAkinatorSession(
+      customerId,
+      req.body || {},
+      {
+        userId: req.user?.userId,
+        email: req.user?.email,
+        role: req.user?.role,
+      }
+    );
+    sendCreated(res, result, 'Khởi tạo link đánh giá Akinator cho khách hàng thành công');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getCustomerAkinatorSessionsHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const customerId = req.params.customerId || req.params.id;
+    const sessions = await akinatorService.getCustomerAkinatorSessions(customerId, {
+      userId: req.user?.userId,
+      email: req.user?.email,
+      role: req.user?.role,
+    });
+    sendSuccess(res, sessions, 'Danh sách phiên đánh giá Akinator của khách hàng');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getCustomerLatestAkinatorResultHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const customerId = req.params.customerId || req.params.id;
+    const latest = await akinatorService.getCustomerLatestAkinatorResult(customerId, {
+      userId: req.user?.userId,
+      email: req.user?.email,
+      role: req.user?.role,
+    });
+    sendSuccess(res, latest, 'Kết quả đánh giá Akinator mới nhất của khách hàng');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const revokeCustomerAkinatorSessionHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const sessionId = req.params.sessionId || req.params.id;
+    const result = await akinatorService.revokeCustomerAkinatorSession(sessionId, {
+      userId: req.user?.userId,
+      email: req.user?.email,
+      role: req.user?.role,
+    });
+    sendSuccess(res, result, result.message || 'Thu hồi link đánh giá Akinator thành công');
+  } catch (error) {
+    next(error);
+  }
+};

@@ -3,12 +3,14 @@ import prisma from '../config/database.js';
 import {
   AkinatorConfigStatus,
   AkinatorCustomerFieldMapping,
+  AkinatorSessionSourceType,
   AkinatorQuizStatus,
   AkinatorWorkflowStatus,
   AkinatorEvaluationStatus,
   Gender,
   PriorityLevel,
   CustomerStatus,
+  Role,
 } from '@prisma/client';
 import {
   akinatorRepository,
@@ -26,6 +28,7 @@ import {
   AkinatorAnsweredRecord,
 } from './akinatorEngine.service.js';
 import { auditLogService } from './auditLog.service.js';
+import { customerAccessService } from './customerAccess.service.js';
 import { parseStrictDateOnly } from '../utils/dateUtils.js';
 import { buildPaginationMeta } from '../utils/db.js';
 import {
@@ -38,6 +41,7 @@ import {
 export interface AkinatorActorContext {
   userId?: string;
   email?: string;
+  role?: string;
 }
 
 export function hashAkinatorSessionToken(rawToken: string): string {
@@ -446,6 +450,14 @@ export const akinatorService = {
       throw new NotFoundError('Phiên làm quiz không tồn tại hoặc không hợp lệ');
     }
 
+    if (session.quizStatus === AkinatorQuizStatus.REVOKED || session.revokedAt) {
+      throw new BadRequestError('Link làm quiz này đã bị thu hồi hoặc vô hiệu hóa');
+    }
+
+    if (session.expiresAt && session.expiresAt < new Date()) {
+      throw new BadRequestError('Link làm quiz này đã hết hạn truy cập');
+    }
+
     if (session.quizStatus === AkinatorQuizStatus.COMPLETED) {
       return {
         sessionId: session.id,
@@ -457,6 +469,24 @@ export const akinatorService = {
         readyToComplete: false,
         result: sanitizePublicResult(session.result),
       };
+    }
+
+    // Auto-transition NOT_STARTED to IN_PROGRESS upon customer first accessing the quiz
+    if (session.quizStatus === AkinatorQuizStatus.NOT_STARTED) {
+      await prisma.akinatorSession.update({
+        where: { id: session.id },
+        data: {
+          quizStatus: AkinatorQuizStatus.IN_PROGRESS,
+          startedAt: new Date(),
+          lastAccessedAt: new Date(),
+        },
+      });
+      session.quizStatus = AkinatorQuizStatus.IN_PROGRESS;
+    } else {
+      await prisma.akinatorSession.update({
+        where: { id: session.id },
+        data: { lastAccessedAt: new Date() },
+      });
     }
 
     const answeredRecords: AkinatorAnsweredRecord[] = session.rawAnswers.map((a) => ({
@@ -502,7 +532,18 @@ export const akinatorService = {
       throw new NotFoundError('Phiên làm quiz không tồn tại hoặc không hợp lệ');
     }
 
-    if (session.quizStatus !== AkinatorQuizStatus.IN_PROGRESS) {
+    if (session.quizStatus === AkinatorQuizStatus.REVOKED || session.revokedAt) {
+      throw new BadRequestError('Phiên làm quiz này đã bị thu hồi hoặc vô hiệu hóa');
+    }
+
+    if (session.expiresAt && session.expiresAt < new Date()) {
+      throw new BadRequestError('Link làm quiz này đã hết hạn truy cập');
+    }
+
+    if (
+      session.quizStatus !== AkinatorQuizStatus.IN_PROGRESS &&
+      session.quizStatus !== AkinatorQuizStatus.NOT_STARTED
+    ) {
       throw new BadRequestError(
         'Phiên làm quiz này đã kết thúc, không thể gửi hoặc sửa câu trả lời'
       );
@@ -717,11 +758,14 @@ export const akinatorService = {
         return freshSession.result;
       }
 
+      const isCrmCustomerLink =
+        session.sourceType === AkinatorSessionSourceType.CRM_CUSTOMER_LINK && Boolean(session.customerId);
+
       await tx.akinatorSession.update({
         where: { id: session.id },
         data: {
           quizStatus: AkinatorQuizStatus.COMPLETED,
-          workflowStatus: AkinatorWorkflowStatus.PENDING_PROCESSING,
+          workflowStatus: isCrmCustomerLink ? null : AkinatorWorkflowStatus.PENDING_PROCESSING,
           rawFullName: initName,
           rawPhone: initPhone,
           rawEmail: initEmail,
@@ -745,28 +789,40 @@ export const akinatorService = {
         },
       });
 
-      await tx.akinatorAdminReview.create({
-        data: {
-          sessionId: session.id,
-          editedFullName: initName,
-          editedPhone: initPhone,
-          editedEmail: initEmail,
-          editedGender: initGender,
-          editedDateOfBirth: initDob,
-          editedAddress: initAddress,
-          editedPriority: evaluation.outcomeData.primaryPriority || null,
-        },
-      });
+      if (!isCrmCustomerLink) {
+        await tx.akinatorAdminReview.create({
+          data: {
+            sessionId: session.id,
+            editedFullName: initName,
+            editedPhone: initPhone,
+            editedEmail: initEmail,
+            editedGender: initGender,
+            editedDateOfBirth: initDob,
+            editedAddress: initAddress,
+            editedPriority: evaluation.outcomeData.primaryPriority || null,
+          },
+        });
 
-      await tx.akinatorStatusHistory.create({
-        data: {
-          sessionId: session.id,
-          fromStatus: null,
-          toStatus: AkinatorWorkflowStatus.PENDING_PROCESSING,
-          actionType: 'QUIZ_COMPLETED',
-          note: 'Khách hàng hoàn thành quiz. Khởi tạo hồ sơ ở trạng thái Chờ xử lý (PENDING_PROCESSING).',
-        },
-      });
+        await tx.akinatorStatusHistory.create({
+          data: {
+            sessionId: session.id,
+            fromStatus: null,
+            toStatus: AkinatorWorkflowStatus.PENDING_PROCESSING,
+            actionType: 'QUIZ_COMPLETED',
+            note: 'Khách hàng hoàn thành quiz. Khởi tạo hồ sơ ở trạng thái Chờ xử lý (PENDING_PROCESSING).',
+          },
+        });
+      } else {
+        await tx.akinatorStatusHistory.create({
+          data: {
+            sessionId: session.id,
+            fromStatus: null,
+            toStatus: AkinatorWorkflowStatus.APPROVED,
+            actionType: 'CRM_QUIZ_COMPLETED',
+            note: `Khách hàng CRM (ID: ${session.customerId}) đã hoàn thành đánh giá Akinator trực tuyến.`,
+          },
+        });
+      }
 
       return createdResult;
     }, {
@@ -1496,5 +1552,224 @@ export const akinatorService = {
       }
     }
     throw new BadRequestError('Không thể hoàn tất giao dịch chuyển hồ sơ');
+  },
+
+  // =========================================================================
+  // 6. CRM CUSTOMER AKINATOR SESSIONS (STAFF & PARTNER INITIATED)
+  // =========================================================================
+
+  async createCustomerAkinatorSession(
+    customerId: string,
+    _input: { notes?: string },
+    actor: AkinatorActorContext
+  ) {
+    const actorRole = (actor.role as Role) || Role.PARTNER;
+    const actorUserId = actor.userId || '';
+
+    // Enforce write access for the targeted customer (Partners only allowed on currently assigned customers)
+    await customerAccessService.assertCustomerWriteAccess(
+      { id: actorUserId, role: actorRole },
+      customerId
+    );
+
+    const customer = await prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { id: true, fullName: true, phone: true },
+    });
+    if (!customer) {
+      throw new NotFoundError('Khách hàng không tồn tại');
+    }
+
+    const publishedConfig = await akinatorRepository.findCurrentPublishedConfig();
+    if (!publishedConfig) {
+      throw new BadRequestError('Hiện chưa có bộ câu hỏi Akinator nào được xuất bản');
+    }
+
+    const rawToken = generateAkinatorSessionToken();
+    const tokenHash = hashAkinatorSessionToken(rawToken);
+
+    // Default expiry: 7 days
+    const expiryDays = parseInt(process.env.AKINATOR_LINK_EXPIRY_DAYS || '7', 10);
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + expiryDays);
+
+    const session = await akinatorRepository.createCustomerSession({
+      sessionTokenHash: tokenHash,
+      configVersionId: publishedConfig.id,
+      customerId,
+      createdById: actorUserId || null,
+      expiresAt,
+    });
+
+    const frontendOrigin = process.env.FRONTEND_API_URL || 'https://ktea-quan-ly.vercel.app';
+    const publicUrl = `${frontendOrigin}/quiz?token=${rawToken}`;
+
+    await auditLogService.log({
+      actorId: actorUserId || undefined,
+      actorEmail: actor.email || undefined,
+      action: 'AKINATOR_CUSTOMER_LINK_CREATED',
+      entityType: 'AKINATOR_SESSION',
+      entityId: session.id,
+      details: {
+        customerId,
+        customerName: customer.fullName,
+        configVersionId: publishedConfig.id,
+        versionNumber: publishedConfig.versionNumber,
+        expiresAt: expiresAt.toISOString(),
+      },
+    });
+
+    return {
+      sessionId: session.id,
+      publicUrl,
+      rawToken,
+      expiresAt: expiresAt.toISOString(),
+      status: session.quizStatus,
+      customerId,
+      configVersion: {
+        id: publishedConfig.id,
+        versionNumber: publishedConfig.versionNumber,
+        title: publishedConfig.title,
+      },
+      createdBy: session.createdBy,
+      createdAt: session.createdAt.toISOString(),
+    };
+  },
+
+  async getCustomerAkinatorSessions(customerId: string, actor: AkinatorActorContext) {
+    const actorRole = (actor.role as Role) || Role.PARTNER;
+    const actorUserId = actor.userId || '';
+
+    // Enforce read access (Partners can view both current and historical assigned customers)
+    await customerAccessService.assertCustomerAccess(
+      { id: actorUserId, role: actorRole },
+      customerId
+    );
+
+    const rawSessions = await akinatorRepository.findSessionsByCustomerId(customerId);
+    const now = new Date();
+
+    return rawSessions.map((s) => {
+      let effectiveStatus = s.quizStatus;
+      if (
+        (effectiveStatus === AkinatorQuizStatus.NOT_STARTED ||
+          effectiveStatus === AkinatorQuizStatus.IN_PROGRESS) &&
+        s.expiresAt &&
+        s.expiresAt < now
+      ) {
+        effectiveStatus = AkinatorQuizStatus.EXPIRED;
+      }
+
+      return {
+        id: s.id,
+        quizStatus: effectiveStatus,
+        startedAt: s.startedAt,
+        completedAt: s.completedAt,
+        expiresAt: s.expiresAt,
+        revokedAt: s.revokedAt,
+        lastAccessedAt: s.lastAccessedAt,
+        createdAt: s.createdAt,
+        configVersion: s.configVersion,
+        createdBy: s.createdBy,
+        hasResult: Boolean(s.result),
+        answeredCount: s._count.rawAnswers,
+        resultSummary: s.result
+          ? {
+              summaryTitle: s.result.summaryTitle,
+              evaluationStatus: s.result.evaluationStatus,
+              generatedAt: s.result.generatedAt,
+            }
+          : null,
+      };
+    });
+  },
+
+  async getCustomerLatestAkinatorResult(customerId: string, actor: AkinatorActorContext) {
+    const actorRole = (actor.role as Role) || Role.PARTNER;
+    const actorUserId = actor.userId || '';
+
+    // Enforce read access
+    await customerAccessService.assertCustomerAccess(
+      { id: actorUserId, role: actorRole },
+      customerId
+    );
+
+    const latest = await akinatorRepository.findLatestCompletedResultByCustomerId(customerId);
+    if (!latest || !latest.result) {
+      return null;
+    }
+
+    return {
+      sessionId: latest.id,
+      completedAt: latest.completedAt,
+      startedAt: latest.startedAt,
+      createdAt: latest.createdAt,
+      configVersion: latest.configVersion,
+      createdBy: latest.createdBy,
+      result: {
+        id: latest.result.id,
+        evaluationStatus: latest.result.evaluationStatus,
+        summaryTitle: latest.result.summaryTitle,
+        summaryDescription: latest.result.summaryDescription,
+        outcomeData: latest.result.outcomeData,
+        missingCriteria: latest.result.missingCriteria,
+        matchedRulesSnapshot: latest.result.matchedRulesSnapshot,
+        answersSnapshot: latest.result.answersSnapshot,
+        disclaimerText: latest.result.disclaimerText,
+        generatedAt: latest.result.generatedAt,
+      },
+      answeredQuestions: latest.rawAnswers.map((a) => ({
+        questionCode: a.questionCode,
+        questionText: a.questionTextSnapshot,
+        answerValue: a.answerValue,
+        answerLabel: a.answerLabelSnapshot,
+        stepOrder: a.stepOrder,
+      })),
+    };
+  },
+
+  async revokeCustomerAkinatorSession(sessionId: string, actor: AkinatorActorContext) {
+    const actorRole = (actor.role as Role) || Role.PARTNER;
+    const actorUserId = actor.userId || '';
+
+    const session = await akinatorRepository.findSessionById(sessionId);
+    if (!session) {
+      throw new NotFoundError('Phiên làm quiz không tồn tại');
+    }
+
+    if (session.customerId) {
+      await customerAccessService.assertCustomerWriteAccess(
+        { id: actorUserId, role: actorRole },
+        session.customerId
+      );
+    } else if (actorRole !== Role.ADMIN) {
+      throw new ForbiddenError('Chỉ Quản trị viên mới có quyền thu hồi phiên vãng lai');
+    }
+
+    if (session.quizStatus === AkinatorQuizStatus.COMPLETED) {
+      throw new BadRequestError('Không thể thu hồi phiên quiz đã hoàn thành');
+    }
+
+    const updated = await akinatorRepository.revokeSession(sessionId, actorUserId);
+
+    await auditLogService.log({
+      actorId: actorUserId || undefined,
+      actorEmail: actor.email || undefined,
+      action: 'AKINATOR_SESSION_REVOKED',
+      entityType: 'AKINATOR_SESSION',
+      entityId: sessionId,
+      details: {
+        customerId: session.customerId,
+        customerName: session.customer?.fullName,
+        revokedAt: updated.revokedAt,
+      },
+    });
+
+    return {
+      sessionId: updated.id,
+      quizStatus: updated.quizStatus,
+      revokedAt: updated.revokedAt,
+      message: 'Thu hồi link đánh giá Akinator thành công',
+    };
   },
 };

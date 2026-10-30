@@ -27,6 +27,9 @@ import {
   CheckDuplicateCustomerResponse,
   TransferAkinatorSessionInput,
   TransferAkinatorSessionResponse,
+  CustomerAkinatorSessionItem,
+  CustomerAkinatorLatestResult,
+  CreateCustomerAkinatorLinkResponse,
 } from '../types/akinator';
 
 export const akinatorPublicApi = {
@@ -242,5 +245,51 @@ export const akinatorAdminApi = {
       `/akinator/sessions/${encodeURIComponent(sessionId)}/transfer`,
       input
     );
+  },
+};
+
+export const akinatorCustomerApi = {
+  /**
+   * Generates a new Akinator session link for a CRM Customer.
+   */
+  async createLink(
+    customerId: string,
+    input?: { notes?: string }
+  ): Promise<CreateCustomerAkinatorLinkResponse> {
+    return apiClient.post<CreateCustomerAkinatorLinkResponse>(
+      `/customers/${encodeURIComponent(customerId)}/akinator-sessions`,
+      input || {}
+    );
+  },
+
+  /**
+   * Lists all Akinator sessions for a specific Customer.
+   */
+  async getSessions(customerId: string): Promise<CustomerAkinatorSessionItem[]> {
+    return apiClient.get<CustomerAkinatorSessionItem[]>(
+      `/customers/${encodeURIComponent(customerId)}/akinator-sessions`
+    );
+  },
+
+  /**
+   * Fetches the latest completed Akinator evaluation result for a Customer.
+   */
+  async getLatestResult(customerId: string): Promise<CustomerAkinatorLatestResult | null> {
+    return apiClient.get<CustomerAkinatorLatestResult | null>(
+      `/customers/${encodeURIComponent(customerId)}/akinator-sessions/latest`
+    );
+  },
+
+  /**
+   * Revokes an active Akinator session link for a Customer.
+   */
+  async revokeSession(
+    sessionId: string,
+    customerId?: string
+  ): Promise<{ sessionId: string; quizStatus: string; message: string }> {
+    const url = customerId
+      ? `/customers/${encodeURIComponent(customerId)}/akinator-sessions/${encodeURIComponent(sessionId)}/revoke`
+      : `/akinator-sessions/${encodeURIComponent(sessionId)}/revoke`;
+    return apiClient.post(url);
   },
 };

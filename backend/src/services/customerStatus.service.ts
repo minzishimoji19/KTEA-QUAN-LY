@@ -203,9 +203,19 @@ export interface CustomerSurveyStats {
  */
 export function computeCustomerSurveyStatus(
   assessments: any[] | null | undefined,
-  now: Date = new Date()
+  akinatorSessionsOrNow?: any[] | Date | null,
+  maybeNow: Date = new Date()
 ): CustomerSurveyStats {
   const list = Array.isArray(assessments) ? assessments : [];
+  let akinatorList: any[] = [];
+  let now: Date = maybeNow;
+
+  if (akinatorSessionsOrNow instanceof Date) {
+    now = akinatorSessionsOrNow;
+  } else if (Array.isArray(akinatorSessionsOrNow)) {
+    akinatorList = akinatorSessionsOrNow;
+  }
+
   const nowMs = now.getTime();
 
   let completedCount = 0;
@@ -292,6 +302,65 @@ export function computeCustomerSurveyStatus(
       }
     } else if (a.status === 'IN_PROGRESS' && answerCount > 0) {
       hasDraftProgress = true;
+    }
+  }
+
+  // 2. Process Akinator sessions for the customer (adaptive quiz flow)
+  for (const s of akinatorList) {
+    if (!s) continue;
+
+    if (s.quizStatus === 'COMPLETED') {
+      completedCount++;
+      const compTime = s.completedAt || s.updatedAt || s.createdAt;
+      if (compTime) {
+        const iso = compTime instanceof Date ? compTime.toISOString() : String(compTime);
+        if (!latestCompletedAt || new Date(iso).getTime() > new Date(latestCompletedAt).getTime()) {
+          latestCompletedAt = iso;
+        }
+      }
+      continue;
+    }
+
+    const createdIso =
+      s.createdAt instanceof Date
+        ? s.createdAt.toISOString()
+        : s.createdAt
+        ? String(s.createdAt)
+        : null;
+    if (
+      createdIso &&
+      (!latestLinkCreatedAt || new Date(createdIso).getTime() > new Date(latestLinkCreatedAt).getTime())
+    ) {
+      latestLinkCreatedAt = createdIso;
+    }
+
+    const isRevoked = s.quizStatus === 'REVOKED' || Boolean(s.revokedAt);
+    const expiresMs = s.expiresAt ? new Date(s.expiresAt).getTime() : 0;
+    const isExpired = !isRevoked && (s.quizStatus === 'EXPIRED' || (expiresMs > 0 && expiresMs <= nowMs));
+
+    if (isRevoked) {
+      revokedLinkCount++;
+      if (!latestInactiveLinkStatus) {
+        latestInactiveLinkStatus = 'REVOKED';
+      }
+    } else if (isExpired) {
+      expiredLinkCount++;
+      if (!latestInactiveLinkStatus) {
+        latestInactiveLinkStatus = 'EXPIRED';
+      }
+    } else if (s.quizStatus === 'NOT_STARTED' || s.quizStatus === 'IN_PROGRESS') {
+      activeLinkCount++;
+      if (!latestLinkExpiresAt && s.expiresAt) {
+        latestLinkExpiresAt =
+          s.expiresAt instanceof Date ? s.expiresAt.toISOString() : String(s.expiresAt);
+      }
+      if (s.lastAccessedAt || s.quizStatus === 'IN_PROGRESS') {
+        hasOpenedLink = true;
+      }
+      const rawAnsCount = typeof s._count?.rawAnswers === 'number' ? s._count.rawAnswers : 0;
+      if (rawAnsCount > 0 || s.quizStatus === 'IN_PROGRESS') {
+        hasDraftProgress = true;
+      }
     }
   }
 
@@ -502,7 +571,11 @@ export function enrichCustomerWithStatus<T extends CustomerWithCases>(
     return enrichFollowUpItem(cf);
   });
 
-  const surveyStats = computeCustomerSurveyStatus((customer as any).assessments, new Date());
+  const surveyStats = computeCustomerSurveyStatus(
+    (customer as any).assessments,
+    (customer as any).akinatorSessions,
+    new Date()
+  );
 
   return {
     ...customer,

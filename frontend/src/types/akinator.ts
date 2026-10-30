@@ -495,3 +495,110 @@ export interface TransferAkinatorSessionResponse {
   mode: string;
   message: string;
 }
+
+// =========================================================================
+// CUSTOMER AKINATOR SESSIONS (CRM WORKSPACE)
+// =========================================================================
+
+export interface CustomerAkinatorSessionItem {
+  id: string;
+  quizStatus: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'ABANDONED' | 'EXPIRED' | 'REVOKED';
+  startedAt?: string | null;
+  completedAt?: string | null;
+  expiresAt?: string | null;
+  revokedAt?: string | null;
+  lastAccessedAt?: string | null;
+  createdAt: string;
+  configVersion?: {
+    id: string;
+    versionNumber: number;
+    title: string;
+  };
+  createdBy?: {
+    id: string;
+    fullName: string;
+    email: string;
+  } | null;
+  hasResult: boolean;
+  answeredCount: number;
+  resultSummary?: {
+    summaryTitle: string;
+    evaluationStatus: string;
+    generatedAt: string;
+  } | null;
+}
+
+export interface CustomerAkinatorLatestResult {
+  sessionId: string;
+  completedAt: string;
+  startedAt?: string | null;
+  createdAt: string;
+  configVersion?: {
+    id: string;
+    versionNumber: number;
+    title: string;
+    disclaimerText?: string;
+  };
+  createdBy?: {
+    id: string;
+    fullName: string;
+    email: string;
+  } | null;
+  result: {
+    id: string;
+    evaluationStatus: 'EVALUATED' | 'INSUFFICIENT_DATA';
+    summaryTitle: string;
+    summaryDescription: string;
+    outcomeData: {
+      categories: Array<{
+        ruleCode: string;
+        ruleName: string;
+        categoryCode: string;
+        categoryLabel: string;
+        referenceTitle: string;
+        referenceSummary: string;
+        suggestedDirections: string[];
+        cautionNotes: string[];
+        suggestedPriority?: string | null;
+      }>;
+      primaryPriority?: string | null;
+      isReferenceOnly: boolean;
+    };
+    missingCriteria?: Array<{
+      questionCode: string;
+      questionText: string;
+      reason: string;
+    }>;
+    matchedRulesSnapshot?: any[];
+    answersSnapshot?: Record<string, any>;
+    disclaimerText: string;
+    generatedAt: string;
+  };
+  answeredQuestions?: Array<{
+    questionCode: string;
+    questionText: string;
+    answerValue: any;
+    answerLabel?: string | null;
+    stepOrder: number;
+  }>;
+}
+
+export interface CreateCustomerAkinatorLinkResponse {
+  sessionId: string;
+  publicUrl: string;
+  rawToken: string;
+  expiresAt: string;
+  status: string;
+  customerId: string;
+  configVersion: {
+    id: string;
+    versionNumber: number;
+    title: string;
+  };
+  createdBy?: {
+    id: string;
+    fullName: string;
+    email: string;
+  } | null;
+  createdAt: string;
+}

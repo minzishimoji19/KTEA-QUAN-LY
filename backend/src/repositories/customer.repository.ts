@@ -165,29 +165,54 @@ export class CustomerRepository extends BaseRepository {
       };
     }
 
-    // 5b. Survey status filter (computed from real Assessment + PublicSurveyLink records)
+    // 5b. Survey status filter (computed from real Assessment + PublicSurveyLink + AkinatorSession records)
     if (filters.surveyStatus && filters.surveyStatus !== 'all') {
       const now = new Date();
       if (filters.surveyStatus === 'COMPLETED') {
-        where.assessments = {
-          some: {
-            status: 'COMPLETED',
+        const completedConditions: Prisma.CustomerWhereInput[] = [
+          {
+            OR: [
+              { assessments: { some: { status: 'COMPLETED' } } },
+              { akinatorSessions: { some: { quizStatus: 'COMPLETED' } } },
+            ],
           },
-        };
+        ];
+        where.AND = Array.isArray(where.AND)
+          ? [...where.AND, ...completedConditions]
+          : where.AND
+          ? [where.AND, ...completedConditions]
+          : completedConditions;
       } else if (filters.surveyStatus === 'SENT') {
         const sentConditions: Prisma.CustomerWhereInput[] = [
           { assessments: { none: { status: 'COMPLETED' } } },
+          { akinatorSessions: { none: { quizStatus: 'COMPLETED' } } },
           {
-            assessments: {
-              some: {
-                status: { not: 'CANCELLED' },
-                publicSurveyLink: {
-                  status: 'ACTIVE',
-                  revokedAt: null,
-                  expiresAt: { gt: now },
+            OR: [
+              {
+                assessments: {
+                  some: {
+                    status: { not: 'CANCELLED' },
+                    publicSurveyLink: {
+                      status: 'ACTIVE',
+                      revokedAt: null,
+                      expiresAt: { gt: now },
+                    },
+                  },
                 },
               },
-            },
+              {
+                akinatorSessions: {
+                  some: {
+                    quizStatus: { in: ['NOT_STARTED', 'IN_PROGRESS'] },
+                    revokedAt: null,
+                    OR: [
+                      { expiresAt: null },
+                      { expiresAt: { gt: now } },
+                    ],
+                  },
+                },
+              },
+            ],
           },
         ];
         where.AND = Array.isArray(where.AND)
@@ -198,6 +223,7 @@ export class CustomerRepository extends BaseRepository {
       } else if (filters.surveyStatus === 'NOT_CREATED') {
         const notCreatedConditions: Prisma.CustomerWhereInput[] = [
           { assessments: { none: { status: 'COMPLETED' } } },
+          { akinatorSessions: { none: { quizStatus: 'COMPLETED' } } },
           {
             assessments: {
               none: {
@@ -207,6 +233,18 @@ export class CustomerRepository extends BaseRepository {
                   revokedAt: null,
                   expiresAt: { gt: now },
                 },
+              },
+            },
+          },
+          {
+            akinatorSessions: {
+              none: {
+                quizStatus: { in: ['NOT_STARTED', 'IN_PROGRESS'] },
+                revokedAt: null,
+                OR: [
+                  { expiresAt: null },
+                  { expiresAt: { gt: now } },
+                ],
               },
             },
           },
@@ -358,6 +396,22 @@ export class CustomerRepository extends BaseRepository {
               },
             },
           },
+          akinatorSessions: {
+            orderBy: { createdAt: 'desc' },
+            select: {
+              id: true,
+              quizStatus: true,
+              startedAt: true,
+              completedAt: true,
+              expiresAt: true,
+              revokedAt: true,
+              lastAccessedAt: true,
+              createdAt: true,
+              _count: {
+                select: { rawAnswers: true },
+              },
+            },
+          },
           recommendations: {
             where: { status: { in: ['NEW', 'ACTIVE', 'REVIEWED'] } },
             orderBy: [{ score: 'desc' }, { generatedAt: 'desc' }],
@@ -472,6 +526,22 @@ export class CustomerRepository extends BaseRepository {
             },
           },
         },
+        akinatorSessions: {
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            quizStatus: true,
+            startedAt: true,
+            completedAt: true,
+            expiresAt: true,
+            revokedAt: true,
+            lastAccessedAt: true,
+            createdAt: true,
+            _count: {
+              select: { rawAnswers: true },
+            },
+          },
+        },
         _count: {
           select: {
             cases: true,
@@ -571,6 +641,22 @@ export class CustomerRepository extends BaseRepository {
                 lastAccessedAt: true,
                 createdAt: true,
               },
+            },
+          },
+        },
+        akinatorSessions: {
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            quizStatus: true,
+            startedAt: true,
+            completedAt: true,
+            expiresAt: true,
+            revokedAt: true,
+            lastAccessedAt: true,
+            createdAt: true,
+            _count: {
+              select: { rawAnswers: true },
             },
           },
         },

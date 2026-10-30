@@ -30,6 +30,7 @@ import {
   publicAkinatorRouter,
   adminAkinatorRouter,
 } from './akinator.routes.js';
+import { revokeCustomerAkinatorSessionHandler } from '../controllers/akinator.controller.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
@@ -51,6 +52,9 @@ router.use('/public/akinator', publicAkinatorRouter);
 
 // Admin Akinator Management & Workflow Endpoints (authenticated, ADMIN only)
 router.use('/akinator', requireAuth, adminAkinatorRouter);
+
+// Staff Akinator Link Management (authenticated, RBAC scoped)
+router.post('/akinator-sessions/:sessionId/revoke', requireAuth, revokeCustomerAkinatorSessionHandler);
 
 // User & Role Management (authenticated, admin-only routes inside)
 router.use('/users', requireAuth, userRoutes);

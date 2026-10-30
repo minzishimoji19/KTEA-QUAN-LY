@@ -52,6 +52,12 @@ import {
   getAssessmentsByCustomer,
   startAssessment,
 } from '../controllers/assessment.controller.js';
+import {
+  createCustomerAkinatorSessionHandler,
+  getCustomerAkinatorSessionsHandler,
+  getCustomerLatestAkinatorResultHandler,
+  revokeCustomerAkinatorSessionHandler,
+} from '../controllers/akinator.controller.js';
 import { createAssessmentSchema } from '../validations/assessment.validation.js';
 import { requireAdmin } from '../middleware/auth.js';
 
@@ -207,6 +213,30 @@ router.post(
   '/:id/assessments',
   validateRequest({ params: customerIdParamSchema, body: createAssessmentSchema }),
   startAssessment
+);
+
+// Nested Sub-Resource Endpoints: Akinator Customer Sessions
+router.get(
+  '/:id/akinator-sessions',
+  validateRequest({ params: customerIdParamSchema }),
+  getCustomerAkinatorSessionsHandler
+);
+
+router.post(
+  '/:id/akinator-sessions',
+  validateRequest({ params: customerIdParamSchema }),
+  createCustomerAkinatorSessionHandler
+);
+
+router.get(
+  '/:id/akinator-sessions/latest',
+  validateRequest({ params: customerIdParamSchema }),
+  getCustomerLatestAkinatorResultHandler
+);
+
+router.post(
+  '/:id/akinator-sessions/:sessionId/revoke',
+  revokeCustomerAkinatorSessionHandler
 );
 
 export default router;

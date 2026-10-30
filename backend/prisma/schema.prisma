@@ -163,6 +163,7 @@ model Customer {
   assignmentGrants CustomerAssignmentGrant[]
   assessments     Assessment[]
   assessmentRuns  AssessmentRecommendationRun[]
+  akinatorSessions AkinatorSession[] @relation("CustomerAkinatorSessions")
 
   @@index([phone])
   @@index([sourceId])
@@ -489,6 +490,8 @@ model User {
   performedRecommendationRuns AssessmentRecommendationRun[] @relation("UserPerformedRecommendationRuns")
   createdSurveyLinks  PublicSurveyLink[] @relation("UserCreatedSurveyLinks")
   revokedSurveyLinks  PublicSurveyLink[] @relation("UserRevokedSurveyLinks")
+  createdAkinatorSessions AkinatorSession[] @relation("UserCreatedAkinatorSessions")
+  revokedAkinatorSessions AkinatorSession[] @relation("UserRevokedAkinatorSessions")
 
   @@map("users")
 }
@@ -877,10 +880,18 @@ enum AkinatorCustomerFieldMapping {
   ADDRESS
 }
 
+enum AkinatorSessionSourceType {
+  PUBLIC_WALK_IN
+  CRM_CUSTOMER_LINK
+}
+
 enum AkinatorQuizStatus {
+  NOT_STARTED
   IN_PROGRESS
   COMPLETED
   ABANDONED
+  EXPIRED
+  REVOKED
 }
 
 enum AkinatorWorkflowStatus {
@@ -975,27 +986,41 @@ model AkinatorRule {
 }
 
 model AkinatorSession {
-  id                String                  @id @default(uuid())
+  id                String                    @id @default(uuid())
   /// SHA-256 hash of raw session token (never store raw token)
-  sessionTokenHash  String                  @unique @map("session_token_hash") @db.VarChar(64)
-  configVersionId   String                  @map("config_version_id")
-  quizStatus        AkinatorQuizStatus      @default(IN_PROGRESS) @map("quiz_status")
-  workflowStatus    AkinatorWorkflowStatus? @map("workflow_status")
-  rawFullName       String?                 @map("raw_full_name")
-  rawPhone          String?                 @map("raw_phone")
-  rawEmail          String?                 @map("raw_email")
-  startedAt         DateTime                @default(now()) @map("started_at")
-  completedAt       DateTime?               @map("completed_at")
-  createdAt         DateTime                @default(now()) @map("created_at")
-  updatedAt         DateTime                @updatedAt @map("updated_at")
+  sessionTokenHash  String                    @unique @map("session_token_hash") @db.VarChar(64)
+  configVersionId   String                    @map("config_version_id")
+  sourceType        AkinatorSessionSourceType @default(PUBLIC_WALK_IN) @map("source_type")
+  customerId        String?                   @map("customer_id")
+  createdById       String?                   @map("created_by_id")
+  quizStatus        AkinatorQuizStatus        @default(IN_PROGRESS) @map("quiz_status")
+  workflowStatus    AkinatorWorkflowStatus?   @map("workflow_status")
+  rawFullName       String?                   @map("raw_full_name")
+  rawPhone          String?                   @map("raw_phone")
+  rawEmail          String?                   @map("raw_email")
+  startedAt         DateTime?                 @default(now()) @map("started_at")
+  lastAccessedAt    DateTime?                 @map("last_accessed_at")
+  completedAt       DateTime?                 @map("completed_at")
+  expiresAt         DateTime?                 @map("expires_at")
+  revokedAt         DateTime?                 @map("revoked_at")
+  revokedById       String?                   @map("revoked_by_id")
+  createdAt         DateTime                  @default(now()) @map("created_at")
+  updatedAt         DateTime                  @updatedAt @map("updated_at")
 
-  configVersion     AkinatorConfigVersion   @relation(fields: [configVersionId], references: [id], onDelete: Restrict)
+  configVersion     AkinatorConfigVersion     @relation(fields: [configVersionId], references: [id], onDelete: Restrict)
+  customer          Customer?                 @relation("CustomerAkinatorSessions", fields: [customerId], references: [id], onDelete: SetNull)
+  createdBy         User?                     @relation("UserCreatedAkinatorSessions", fields: [createdById], references: [id], onDelete: SetNull)
+  revokedBy         User?                     @relation("UserRevokedAkinatorSessions", fields: [revokedById], references: [id], onDelete: SetNull)
   rawAnswers        AkinatorRawAnswer[]
   result            AkinatorResult?
   adminReview       AkinatorAdminReview?
   statusHistories   AkinatorStatusHistory[]
 
   @@index([configVersionId])
+  @@index([sourceType])
+  @@index([customerId, quizStatus, completedAt])
+  @@index([customerId, createdAt])
+  @@index([createdById])
   @@index([quizStatus])
   @@index([workflowStatus])
   @@index([rawPhone])

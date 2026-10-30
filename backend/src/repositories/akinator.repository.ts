@@ -3,6 +3,7 @@ import {
   AkinatorConfigStatus,
   AkinatorQuestionType,
   AkinatorCustomerFieldMapping,
+  AkinatorSessionSourceType,
   AkinatorQuizStatus,
   AkinatorWorkflowStatus,
   AkinatorEvaluationStatus,
@@ -529,5 +530,137 @@ export const akinatorRepository = {
     ]);
 
     return { total, items };
+  },
+
+  // =========================================================================
+  // 4. CUSTOMER AKINATOR SESSIONS & MULTI-SESSION HISTORY
+  // =========================================================================
+
+  async createCustomerSession(data: {
+    sessionTokenHash: string;
+    configVersionId: string;
+    customerId: string;
+    createdById?: string | null;
+    expiresAt?: Date | null;
+  }) {
+    return prisma.akinatorSession.create({
+      data: {
+        sessionTokenHash: data.sessionTokenHash,
+        configVersionId: data.configVersionId,
+        sourceType: AkinatorSessionSourceType.CRM_CUSTOMER_LINK,
+        customerId: data.customerId,
+        createdById: data.createdById ?? null,
+        quizStatus: AkinatorQuizStatus.NOT_STARTED,
+        expiresAt: data.expiresAt ?? null,
+      },
+      include: {
+        configVersion: {
+          select: {
+            id: true,
+            versionNumber: true,
+            title: true,
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+    });
+  },
+
+  async findSessionsByCustomerId(customerId: string) {
+    return prisma.akinatorSession.findMany({
+      where: { customerId },
+      include: {
+        configVersion: {
+          select: {
+            id: true,
+            versionNumber: true,
+            title: true,
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        result: true,
+        _count: {
+          select: {
+            rawAnswers: true,
+          },
+        },
+      },
+      orderBy: [
+        { createdAt: 'desc' },
+      ],
+    });
+  },
+
+  async findLatestCompletedResultByCustomerId(customerId: string) {
+    return prisma.akinatorSession.findFirst({
+      where: {
+        customerId,
+        quizStatus: AkinatorQuizStatus.COMPLETED,
+        result: { isNot: null },
+      },
+      include: {
+        configVersion: {
+          select: {
+            id: true,
+            versionNumber: true,
+            title: true,
+            disclaimerText: true,
+          },
+        },
+        createdBy: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        result: true,
+        rawAnswers: {
+          orderBy: { stepOrder: 'asc' },
+        },
+      },
+      orderBy: [
+        { completedAt: 'desc' },
+        { createdAt: 'desc' },
+      ],
+    });
+  },
+
+  async findSessionById(id: string) {
+    return prisma.akinatorSession.findUnique({
+      where: { id },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+          },
+        },
+      },
+    });
+  },
+
+  async revokeSession(sessionId: string, revokedById?: string | null) {
+    return prisma.akinatorSession.update({
+      where: { id: sessionId },
+      data: {
+        quizStatus: AkinatorQuizStatus.REVOKED,
+        revokedAt: new Date(),
+        revokedById: revokedById ?? null,
+      },
+    });
   },
 };
