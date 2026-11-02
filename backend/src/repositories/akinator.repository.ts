@@ -10,6 +10,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { DEFAULT_AKINATOR_DISCLAIMER } from '../services/akinatorEngine.service.js';
+import { BadRequestError } from '../utils/errors.js';
 
 export interface CreateAkinatorDraftInput {
   title: string;
@@ -256,28 +257,71 @@ export const akinatorRepository = {
 
   async saveDraftQuestions(versionId: string, questions: SaveAkinatorQuestionInput[]) {
     return prisma.$transaction(async (tx) => {
-      await tx.akinatorQuestion.deleteMany({
+      const existingQuestions = await tx.akinatorQuestion.findMany({
         where: { configVersionId: versionId },
       });
+      const existingMap = new Map(existingQuestions.map((q) => [q.code, q]));
+      const incomingCodes = new Set(questions.map((q) => q.code));
 
-      await tx.akinatorQuestion.createMany({
-        data: questions.map((q) => ({
-          configVersionId: versionId,
-          code: q.code,
-          questionText: q.questionText,
-          description: q.description ?? null,
-          questionType: q.questionType,
-          isEntryQuestion: Boolean(q.isEntryQuestion),
-          isRequiredForEval: Boolean(q.isRequiredForEval),
-          priorityWeight: q.priorityWeight ?? 50,
-          mapsToCustomerField: q.mapsToCustomerField ?? AkinatorCustomerFieldMapping.NONE,
-          options: q.options ?? Prisma.JsonNull,
-          validationConfig: q.validationConfig ?? Prisma.JsonNull,
-          visibilityConditions: q.visibilityConditions ?? Prisma.JsonNull,
-          nextQuestionRules: q.nextQuestionRules ?? Prisma.JsonNull,
-          active: q.active !== undefined ? Boolean(q.active) : true,
-        })),
-      });
+      // 1. Remove questions that are no longer in the incoming list
+      for (const existing of existingQuestions) {
+        if (!incomingCodes.has(existing.code)) {
+          const answerCount = await tx.akinatorRawAnswer.count({
+            where: { questionId: existing.id },
+          });
+          if (answerCount > 0) {
+            throw new BadRequestError(
+              `Không thể xóa câu hỏi '${existing.code}' vì đã có câu trả lời liên kết.`
+            );
+          }
+          await tx.akinatorQuestion.delete({
+            where: { id: existing.id },
+          });
+        }
+      }
+
+      // 2. Update existing questions or create new questions
+      for (const q of questions) {
+        const existing = existingMap.get(q.code);
+        if (existing) {
+          await tx.akinatorQuestion.update({
+            where: { id: existing.id },
+            data: {
+              questionText: q.questionText,
+              description: q.description ?? null,
+              questionType: q.questionType,
+              isEntryQuestion: Boolean(q.isEntryQuestion),
+              isRequiredForEval: Boolean(q.isRequiredForEval),
+              priorityWeight: q.priorityWeight ?? 50,
+              mapsToCustomerField: q.mapsToCustomerField ?? AkinatorCustomerFieldMapping.NONE,
+              options: q.options ?? Prisma.JsonNull,
+              validationConfig: q.validationConfig ?? Prisma.JsonNull,
+              visibilityConditions: q.visibilityConditions ?? Prisma.JsonNull,
+              nextQuestionRules: q.nextQuestionRules ?? Prisma.JsonNull,
+              active: q.active !== undefined ? Boolean(q.active) : true,
+            },
+          });
+        } else {
+          await tx.akinatorQuestion.create({
+            data: {
+              configVersionId: versionId,
+              code: q.code,
+              questionText: q.questionText,
+              description: q.description ?? null,
+              questionType: q.questionType,
+              isEntryQuestion: Boolean(q.isEntryQuestion),
+              isRequiredForEval: Boolean(q.isRequiredForEval),
+              priorityWeight: q.priorityWeight ?? 50,
+              mapsToCustomerField: q.mapsToCustomerField ?? AkinatorCustomerFieldMapping.NONE,
+              options: q.options ?? Prisma.JsonNull,
+              validationConfig: q.validationConfig ?? Prisma.JsonNull,
+              visibilityConditions: q.visibilityConditions ?? Prisma.JsonNull,
+              nextQuestionRules: q.nextQuestionRules ?? Prisma.JsonNull,
+              active: q.active !== undefined ? Boolean(q.active) : true,
+            },
+          });
+        }
+      }
 
       return tx.akinatorConfigVersion.findUniqueOrThrow({
         where: { id: versionId },

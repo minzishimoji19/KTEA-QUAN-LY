@@ -168,6 +168,15 @@ export const akinatorAdminApi = {
     );
   },
 
+  /**
+   * Deletes a draft or unreferenced configuration version (Admin only).
+   */
+  async deleteConfig(versionId: string): Promise<{ success: boolean; message: string }> {
+    return apiClient.delete<{ success: boolean; message: string }>(
+      `/akinator/configs/${encodeURIComponent(versionId)}`
+    );
+  },
+
   // =========================================================================
   // ADMIN AKINATOR SESSIONS & WORKFLOW MANAGEMENT (PHASE 5)
   // =========================================================================

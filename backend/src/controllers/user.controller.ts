@@ -56,6 +56,19 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
   }
 };
 
+export const deleteUser = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const result = await userService.deleteUser(
+      { id: req.user!.userId, email: req.user!.email },
+      id
+    );
+    sendSuccess(res, result, result.message);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const assignCustomers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const partnerUserId = req.body.partnerUserId || req.body.userId;

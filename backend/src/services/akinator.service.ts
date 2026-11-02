@@ -405,6 +405,63 @@ export const akinatorService = {
     return published;
   },
 
+  /**
+   * ADMIN only: Safely delete an Akinator configuration version.
+   * Business rules:
+   * - Cannot delete if PUBLISHED or currently active (isCurrent)
+   * - Cannot delete if referenced by any Akinator sessions (to preserve historical integrity)
+   * - Only unreferenced DRAFT or unreferenced ARCHIVED versions can be deleted
+   */
+  async deleteConfigVersion(versionId: string, actor?: AkinatorActorContext) {
+    const existing = await this.getConfigById(versionId);
+
+    if (existing.status === AkinatorConfigStatus.PUBLISHED || existing.isCurrent) {
+      throw new BadRequestError(
+        'Không thể xóa phiên bản đang áp dụng hoặc đã xuất bản. Phiên bản đã xuất bản là bất biến để đảm bảo tính toàn vẹn dữ liệu.'
+      );
+    }
+
+    const sessionCount = await prisma.akinatorSession.count({
+      where: { configVersionId: versionId },
+    });
+
+    if (sessionCount > 0) {
+      throw new BadRequestError(
+        `Không thể xóa phiên bản đã có ${sessionCount} phiên làm quiz tham chiếu. Để bảo toàn lịch sử khảo sát, phiên bản này không thể bị xóa vật lý.`
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.akinatorRule.deleteMany({
+        where: { configVersionId: versionId },
+      });
+      await tx.akinatorQuestion.deleteMany({
+        where: { configVersionId: versionId },
+      });
+      await tx.akinatorConfigVersion.delete({
+        where: { id: versionId },
+      });
+
+      await auditLogService.log({
+        actorId: actor?.userId || undefined,
+        actorEmail: actor?.email || undefined,
+        action: 'DELETE_AKINATOR_CONFIG_VERSION',
+        entityType: 'AKINATOR_CONFIG_VERSION',
+        entityId: versionId,
+        details: {
+          versionNumber: existing.versionNumber,
+          title: existing.title,
+          status: existing.status,
+        },
+      });
+    });
+
+    return {
+      success: true,
+      message: `Đã xóa phiên bản v${existing.versionNumber} ('${existing.title}') thành công.`,
+    };
+  },
+
   // =========================================================================
   // B. PUBLIC QUIZ SESSIONS (TOKEN-SCOPED, NO CRM MUTATION)
   // =========================================================================

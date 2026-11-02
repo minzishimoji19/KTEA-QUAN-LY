@@ -19,6 +19,7 @@ import {
   saveAkinatorDraftRules,
   validateAkinatorConfigVersion,
   publishAkinatorConfigVersion,
+  deleteAkinatorConfigVersion,
   startPublicAkinatorSession,
   getPublicAkinatorSession,
   submitPublicAkinatorAnswer,
@@ -178,6 +179,13 @@ adminAkinatorRouter.post(
     body: publishConfigSchema,
   }),
   publishAkinatorConfigVersion
+);
+
+// DELETE /api/akinator/configs/:versionId
+adminAkinatorRouter.delete(
+  '/configs/:versionId',
+  validateRequest({ params: configVersionIdParamSchema }),
+  deleteAkinatorConfigVersion
 );
 
 // ---- 2. Admin Session Review & Workflow Management ----

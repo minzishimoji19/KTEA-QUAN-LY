@@ -19,7 +19,9 @@ import {
   EyeOff,
   CheckSquare,
   Square,
+  Trash2,
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { authService } from '../services/authService';
 import { useQueryClient } from '@tanstack/react-query';
 import { customerService } from '../services/customerService';
@@ -32,6 +34,7 @@ import { DateDisplay } from '../components/common';
 
 export const UsersManagementPage: React.FC = () => {
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'users' | 'assignments' | 'audit'>('users');
 
@@ -39,6 +42,10 @@ export const UsersManagementPage: React.FC = () => {
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [userSearchTerm, setUserSearchTerm] = useState('');
+
+  // Delete User Modal State
+  const [deleteTargetUser, setDeleteTargetUser] = useState<AuthUser | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
 
 
 
@@ -256,6 +263,22 @@ export const UsersManagementPage: React.FC = () => {
       toast.error('Không thể đặt lại mật khẩu', err instanceof Error ? err.message : 'Lỗi máy chủ');
     } finally {
       setIsSubmittingReset(false);
+    }
+  };
+
+  // Delete User Handler
+  const handleDeleteUser = async () => {
+    if (!deleteTargetUser) return;
+    setIsDeletingUser(true);
+    try {
+      const res = await authService.deleteUser(deleteTargetUser.id);
+      toast.success(res.message || `Đã xóa tài khoản ${deleteTargetUser.email} thành công`);
+      setDeleteTargetUser(null);
+      await loadUsers();
+    } catch (err: unknown) {
+      toast.error('Không thể xóa tài khoản', err instanceof Error ? err.message : 'Lỗi máy chủ');
+    } finally {
+      setIsDeletingUser(false);
     }
   };
 
@@ -641,6 +664,20 @@ export const UsersManagementPage: React.FC = () => {
                               ) : (
                                 <Unlock className="w-3.5 h-3.5" />
                               )}
+                            </button>
+
+                            {/* Delete Account Button */}
+                            <button
+                              onClick={() => setDeleteTargetUser(u)}
+                              disabled={u.id === currentUser?.id}
+                              title={u.id === currentUser?.id ? 'Không thể tự xóa tài khoản đang đăng nhập' : 'Xóa tài khoản'}
+                              className={`p-1.5 rounded-lg transition-colors ${
+                                u.id === currentUser?.id
+                                  ? 'text-slate-600 cursor-not-allowed opacity-40'
+                                  : 'text-slate-400 hover:text-red-400 hover:bg-red-950/30'
+                              }`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </td>
@@ -1309,6 +1346,78 @@ export const UsersManagementPage: React.FC = () => {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DELETE USER CONFIRMATION */}
+      {deleteTargetUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md rounded-2xl border border-red-500/30 bg-slate-900 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-red-950/20">
+              <div className="flex items-center gap-2 text-red-400">
+                <Trash2 className="w-4 h-4" />
+                <h3 className="text-sm font-semibold text-slate-100 font-mono">Xác nhận xóa tài khoản</h3>
+              </div>
+              <button
+                onClick={() => !isDeletingUser && setDeleteTargetUser(null)}
+                disabled={isDeletingUser}
+                className="text-slate-500 hover:text-slate-300 p-1 rounded transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="space-y-1">
+                <p className="text-xs text-slate-300">
+                  Bạn có chắc chắn muốn xóa vĩnh viễn tài khoản sau khỏi hệ thống?
+                </p>
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-1 text-xs">
+                  <div className="font-semibold text-slate-100">{deleteTargetUser.fullName}</div>
+                  <div className="text-slate-400 font-mono">{deleteTargetUser.email}</div>
+                  <div className="text-[11px] text-slate-500">
+                    Vai trò: {deleteTargetUser.role === 'ADMIN' ? 'Quản trị viên' : 'Nhân viên'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-800/40 text-[11px] text-amber-300 space-y-1.5">
+                <div className="flex items-center gap-1.5 font-semibold text-amber-400">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>Quy tắc bảo vệ dữ liệu nghiệp vụ:</span>
+                </div>
+                <ul className="list-disc pl-5 space-y-1 text-amber-300/90">
+                  <li>Không thể xóa nếu tài khoản đang phụ trách khách hàng hoặc có lịch chăm sóc chưa hoàn thành.</li>
+                  <li>Nếu cần ngừng quyền truy cập ngay, bạn có thể <strong>Khóa tài khoản</strong> thay vì xóa.</li>
+                  <li>Lịch sử chăm sóc, phiếu khảo sát và nhật ký bảo mật trước đây sẽ được bảo toàn.</li>
+                </ul>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isDeletingUser}
+                  onClick={() => setDeleteTargetUser(null)}
+                  className="text-xs"
+                >
+                  Hủy bỏ
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  disabled={isDeletingUser}
+                  onClick={handleDeleteUser}
+                  className="text-xs bg-red-600 hover:bg-red-500 text-white gap-1.5"
+                >
+                  {isDeletingUser ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                  <span>{isDeletingUser ? 'Đang kiểm tra & xóa...' : 'Xác nhận xóa tài khoản'}</span>
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}

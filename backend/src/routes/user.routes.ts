@@ -3,6 +3,7 @@ import {
   listUsers,
   createUser,
   updateUser,
+  deleteUser,
   assignCustomers,
   unassignCustomer,
   bulkUnassignCustomers,
@@ -30,6 +31,7 @@ router.use(requireAdmin);
 router.get('/', listUsers);
 router.post('/', createUser);
 router.patch('/:id', updateUser);
+router.delete('/:id', deleteUser);
 router.post('/:id/link-caretaker', linkUserCaretaker);
 router.post('/assignments', assignCustomers);
 router.post('/unassign', unassignCustomer);

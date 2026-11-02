@@ -20,6 +20,7 @@ import {
   Eye,
   Sliders,
   Check,
+  Lock,
 } from 'lucide-react';
 import {
   AkinatorQuestionItem,
@@ -37,6 +38,7 @@ interface Props {
   existingQuestions: AkinatorQuestionItem[];
   onClose: () => void;
   onSave: (savedQuestion: AkinatorQuestionItem) => void;
+  isReadOnly?: boolean;
 }
 
 const QUESTION_TYPES: Array<{ value: AkinatorQuestionType; label: string }> = [
@@ -79,6 +81,7 @@ export const AkinatorQuestionEditorModal: React.FC<Props> = ({
   existingQuestions,
   onClose,
   onSave,
+  isReadOnly = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'basic' | 'options' | 'visibility' | 'branching'>('basic');
   const [error, setError] = useState<string | null>(null);
@@ -165,7 +168,7 @@ export const AkinatorQuestionEditorModal: React.FC<Props> = ({
     }
     setActiveTab('basic');
     setError(null);
-  }, [question, existingQuestions, isOpen]);
+  }, [question, isOpen]);
 
   if (!isOpen) return null;
 
@@ -395,7 +398,13 @@ export const AkinatorQuestionEditorModal: React.FC<Props> = ({
           <div>
             <h2 className="text-base font-semibold text-slate-100 flex items-center gap-2">
               <Sliders className="w-4 h-4 text-blue-400" />
-              <span>{question ? `Chỉnh sửa câu hỏi [${question.code}]` : 'Thêm câu hỏi mới'}</span>
+              <span>
+                {isReadOnly
+                  ? `Chi tiết câu hỏi [${question?.code || ''}] (Phiên bản xuất bản - Chỉ xem)`
+                  : question
+                  ? `Chỉnh sửa câu hỏi [${question.code}]`
+                  : 'Thêm câu hỏi mới'}
+              </span>
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
               Cấu hình nội dung, loại câu hỏi, điều kiện hiển thị và rẽ nhánh thích ứng.
@@ -480,16 +489,26 @@ export const AkinatorQuestionEditorModal: React.FC<Props> = ({
                 <div>
                   <label className="font-medium text-slate-300 block mb-1">
                     Mã câu hỏi (Code) <span className="text-red-400">*</span>
+                    {Boolean(question) && (
+                      <span className="text-[10px] text-amber-400 font-normal ml-2">
+                        (Mã kỹ thuật cố định khi sửa)
+                      </span>
+                    )}
                   </label>
                   <input
                     type="text"
                     value={code}
+                    disabled={Boolean(question) || isReadOnly}
                     onChange={(e) => setCode(e.target.value.replace(/\s+/g, '_'))}
                     placeholder="Ví dụ: q_monthly_income"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono focus:border-blue-500 outline-none"
+                    className={`w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 font-mono focus:border-blue-500 outline-none ${
+                      question || isReadOnly ? 'opacity-60 cursor-not-allowed bg-slate-900' : ''
+                    }`}
                   />
                   <p className="text-[11px] text-slate-500 mt-1">
-                    Dùng làm định danh duy nhất trong cây logic (chữ cái, số, gạch dưới).
+                    {question
+                      ? 'Mã định danh kỹ thuật được giữ nguyên để bảo đảm tính toàn vẹn của các quy tắc rẽ nhánh và rule đánh giá.'
+                      : 'Dùng làm định danh duy nhất trong cây logic (chữ cái, số, gạch dưới).'}
                   </p>
                 </div>
 
@@ -499,8 +518,11 @@ export const AkinatorQuestionEditorModal: React.FC<Props> = ({
                   </label>
                   <select
                     value={questionType}
+                    disabled={isReadOnly}
                     onChange={(e) => setQuestionType(e.target.value as AkinatorQuestionType)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:border-blue-500 outline-none"
+                    className={`w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:border-blue-500 outline-none ${
+                      isReadOnly ? 'opacity-60 cursor-not-allowed' : ''
+                    }`}
                   >
                     {QUESTION_TYPES.map((t) => (
                       <option key={t.value} value={t.value}>
@@ -513,14 +535,17 @@ export const AkinatorQuestionEditorModal: React.FC<Props> = ({
 
               <div>
                 <label className="font-medium text-slate-300 block mb-1">
-                  Nội dung câu hỏi <span className="text-red-400">*</span>
+                  Tên / Nội dung câu hỏi hiển thị <span className="text-red-400">*</span>
                 </label>
                 <textarea
                   rows={2}
                   value={questionText}
+                  disabled={isReadOnly}
                   onChange={(e) => setQuestionText(e.target.value)}
-                  placeholder="Nhập nội dung câu hỏi hiển thị cho khách hàng..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:border-blue-500 outline-none leading-relaxed"
+                  placeholder="Nhập tên / nội dung câu hỏi hiển thị cho khách hàng..."
+                  className={`w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:border-blue-500 outline-none leading-relaxed ${
+                    isReadOnly ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
                 />
               </div>
 
@@ -531,9 +556,12 @@ export const AkinatorQuestionEditorModal: React.FC<Props> = ({
                 <input
                   type="text"
                   value={description}
+                  disabled={isReadOnly}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Ví dụ: Chọn mục tiêu chính bạn quan tâm trong 3 tháng tới"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:border-blue-500 outline-none"
+                  className={`w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:border-blue-500 outline-none ${
+                    isReadOnly ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
                 />
               </div>
 
@@ -1032,17 +1060,24 @@ export const AkinatorQuestionEditorModal: React.FC<Props> = ({
             onClick={onClose}
             className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors"
           >
-            Hủy bỏ
+            {isReadOnly ? 'Đóng' : 'Hủy bỏ'}
           </button>
 
-          <button
-            type="button"
-            onClick={handleSubmit}
-            className="flex items-center gap-1.5 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 transition-all"
-          >
-            <Check className="w-4 h-4" />
-            <span>Lưu câu hỏi vào bản nháp</span>
-          </button>
+          {isReadOnly ? (
+            <div className="text-[11px] text-amber-300 bg-amber-950/40 border border-amber-800/40 px-3 py-1.5 rounded-lg flex items-center gap-2">
+              <Lock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+              <span>Phiên bản đã xuất bản là bất biến. Vui lòng bấm &quot;Sao chép sang bản nháp mới&quot; ở ngoài để chỉnh sửa.</span>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              className="flex items-center gap-1.5 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 transition-all"
+            >
+              <Check className="w-4 h-4" />
+              <span>Lưu câu hỏi vào bản nháp</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

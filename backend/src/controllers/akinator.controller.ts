@@ -157,6 +157,25 @@ export const publishAkinatorConfigVersion = async (
   }
 };
 
+export const deleteAkinatorConfigVersion = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const result = await akinatorService.deleteConfigVersion(
+      req.params.versionId,
+      {
+        userId: req.user?.userId,
+        email: req.user?.email,
+      }
+    );
+    sendSuccess(res, result, result.message);
+  } catch (error) {
+    next(error);
+  }
+};
+
 // =========================================================================
 // B. PUBLIC QUIZ SESSION CONTROLLERS (TOKEN-SCOPED, NO AUTH)
 // =========================================================================

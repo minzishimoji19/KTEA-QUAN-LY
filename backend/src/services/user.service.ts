@@ -271,6 +271,107 @@ export class UserService {
   }
 
   /**
+   * ADMIN only: Safely delete an employee/partner/admin account.
+   * Validates:
+   * - Target exists
+   * - Cannot self-delete
+   * - Cannot delete last remaining Admin
+   * - Cannot delete if currently has active customer assignments or active grants
+   * - Cannot delete if currently has active care schedules (PENDING or IN_PROGRESS)
+   */
+  async deleteUser(
+    actor: { id: string; email: string },
+    targetUserId: string
+  ) {
+    const user = await prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+
+    if (!user) {
+      throw new NotFoundError('Tài khoản người dùng không tồn tại');
+    }
+
+    if (user.id === actor.id) {
+      throw new BadRequestError('Không thể tự xóa tài khoản đang đăng nhập.');
+    }
+
+    if (user.role === Role.ADMIN) {
+      const adminCount = await prisma.user.count({
+        where: { role: Role.ADMIN },
+      });
+      if (adminCount <= 1) {
+        throw new BadRequestError('Không thể xóa quản trị viên duy nhất trong hệ thống.');
+      }
+    }
+
+    // Check active assignments and active care schedules
+    const [activeAssignments, activeGrants, activeFollowUps] = await Promise.all([
+      prisma.customerAssignment.count({ where: { userId: targetUserId } }),
+      prisma.customerAssignmentGrant.count({ where: { userId: targetUserId, active: true } }),
+      prisma.followUp.count({
+        where: {
+          assignedToUserId: targetUserId,
+          status: { in: [FollowUpStatus.PENDING, FollowUpStatus.IN_PROGRESS] },
+        },
+      }),
+    ]);
+
+    const totalActiveCustomers = activeAssignments + activeGrants;
+    if (totalActiveCustomers > 0) {
+      throw new BadRequestError(
+        `Tài khoản này đang phụ trách ${totalActiveCustomers} phân công khách hàng. Vui lòng chuyển giao (reassign) hoặc thu hồi phân công khách hàng trước khi xóa tài khoản, hoặc khóa tài khoản thay vì xóa.`
+      );
+    }
+
+    if (activeFollowUps > 0) {
+      throw new BadRequestError(
+        `Tài khoản này đang có ${activeFollowUps} lịch chăm sóc chưa hoàn thành. Vui lòng chuyển giao lịch chăm sóc sang nhân viên khác trước khi xóa tài khoản.`
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Detach any caretaker link safely
+      await tx.caretaker.updateMany({
+        where: { userId: targetUserId },
+        data: { userId: null },
+      });
+
+      // Remove any historical/inactive customer assignment grants
+      await tx.customerAssignmentGrant.deleteMany({
+        where: { userId: targetUserId },
+      });
+
+      // Remove assignments if any lingering
+      await tx.customerAssignment.deleteMany({
+        where: { userId: targetUserId },
+      });
+
+      // Delete the user
+      await tx.user.delete({
+        where: { id: targetUserId },
+      });
+
+      await auditLogService.log({
+        actorId: actor.id,
+        actorEmail: actor.email,
+        action: 'DELETE_USER',
+        entityType: 'User',
+        entityId: targetUserId,
+        details: {
+          email: user.email,
+          fullName: user.fullName,
+          role: user.role,
+        },
+      });
+    });
+
+    return {
+      success: true,
+      message: `Đã xóa tài khoản ${user.email} (${user.fullName}) thành công.`,
+    };
+  }
+
+  /**
    * ADMIN only: Assign customers to a partner.
    */
   async assignCustomers(

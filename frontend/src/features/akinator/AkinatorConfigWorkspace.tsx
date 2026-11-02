@@ -86,6 +86,10 @@ export const AkinatorConfigWorkspace: React.FC = () => {
   const [validationResult, setValidationResult] = useState<AkinatorValidationResult | null>(null);
   const [isValidating, setIsValidating] = useState<boolean>(false);
 
+  // Delete Config state
+  const [configToDelete, setConfigToDelete] = useState<AkinatorConfigSummary | null>(null);
+  const [isDeletingConfig, setIsDeletingConfig] = useState<boolean>(false);
+
   // Load configs list
   const loadConfigs = useCallback(async () => {
     try {
@@ -364,6 +368,32 @@ export const AkinatorConfigWorkspace: React.FC = () => {
     }
   };
 
+  const handleConfirmDeleteConfig = async () => {
+    if (!configToDelete) return;
+    try {
+      setIsDeletingConfig(true);
+      setError(null);
+      const res = await akinatorAdminApi.deleteConfig(configToDelete.id);
+      flashSuccess(res.message || `Đã xóa bản nháp v${configToDelete.versionNumber} thành công!`);
+      const deletedId = configToDelete.id;
+      setConfigToDelete(null);
+
+      // Reload config list
+      const updatedList = await akinatorAdminApi.listConfigs();
+      setConfigs(updatedList);
+
+      // If the deleted config was currently selected, select another one
+      if (selectedConfigId === deletedId) {
+        const nextSelected = updatedList.find((c) => c.isCurrent) || updatedList[0];
+        setSelectedConfigId(nextSelected?.id || null);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Không thể xóa phiên bản cấu hình');
+    } finally {
+      setIsDeletingConfig(false);
+    }
+  };
+
   // Filtered questions
   const filteredQuestions = useMemo(() => {
     if (!currentConfig?.questions) return [];
@@ -450,8 +480,28 @@ export const AkinatorConfigWorkspace: React.FC = () => {
                             </span>
                           )}
                           {cfg.status === 'DRAFT' && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                              Bản nháp
+                            <span className="flex items-center gap-1">
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                                Bản nháp
+                              </span>
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfigToDelete(cfg);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.stopPropagation();
+                                    setConfigToDelete(cfg);
+                                  }
+                                }}
+                                className="p-0.5 rounded hover:bg-red-950/60 text-slate-500 hover:text-red-400 cursor-pointer transition-colors"
+                                title="Xóa bản nháp này"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </span>
                             </span>
                           )}
                           {cfg.status === 'ARCHIVED' && (
@@ -552,6 +602,17 @@ export const AkinatorConfigWorkspace: React.FC = () => {
                       >
                         <Send className="w-3.5 h-3.5" />
                         <span>Xuất bản v{currentConfig.versionNumber}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => currentConfig && setConfigToDelete(currentConfig as unknown as AkinatorConfigSummary)}
+                        disabled={isSaving}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-950/40 hover:bg-red-900/60 text-red-300 text-xs font-medium border border-red-800/60 transition-colors disabled:opacity-50"
+                        title="Xóa bản nháp này"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Xóa bản nháp</span>
                       </button>
                     </>
                   ) : (
@@ -1146,6 +1207,7 @@ export const AkinatorConfigWorkspace: React.FC = () => {
         existingQuestions={currentConfig?.questions || []}
         onClose={() => setIsQuestionModalOpen(false)}
         onSave={handleSaveQuestion}
+        isReadOnly={!isDraftMode}
       />
 
       {/* Rule Editor Modal */}
@@ -1157,6 +1219,75 @@ export const AkinatorConfigWorkspace: React.FC = () => {
         onClose={() => setIsRuleModalOpen(false)}
         onSave={handleSaveRule}
       />
+
+      {/* Delete Config Confirmation Modal */}
+      {configToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md rounded-2xl border border-red-500/30 bg-slate-900 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-red-950/20">
+              <div className="flex items-center gap-2 text-red-400">
+                <Trash2 className="w-4 h-4" />
+                <h3 className="text-sm font-semibold text-slate-100 font-mono">Xác nhận xóa bản nháp Akinator</h3>
+              </div>
+              <button
+                onClick={() => !isDeletingConfig && setConfigToDelete(null)}
+                disabled={isDeletingConfig}
+                className="text-slate-500 hover:text-slate-300 p-1 rounded transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="space-y-1">
+                <p className="text-xs text-slate-300">
+                  Bạn có chắc chắn muốn xóa vĩnh viễn phiên bản cấu hình bản nháp này?
+                </p>
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-1 text-xs">
+                  <div className="font-semibold text-slate-100 font-mono">
+                    Phiên bản v{configToDelete.versionNumber} ({configToDelete.title})
+                  </div>
+                  <div className="text-[11px] text-amber-400">
+                    Trạng thái: Bản nháp (DRAFT)
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-800/40 text-[11px] text-amber-300 space-y-1.5">
+                <div className="flex items-center gap-1.5 font-semibold text-amber-400">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>Quy tắc bảo vệ dữ liệu:</span>
+                </div>
+                <ul className="list-disc pl-5 space-y-1 text-amber-300/90">
+                  <li>Thao tác này sẽ xóa toàn bộ câu hỏi và luật đánh giá thuộc bản nháp này.</li>
+                  <li>Chỉ cho phép xóa bản nháp chưa từng được xuất bản và chưa có phiên quiz nào sử dụng.</li>
+                  <li>Thao tác này <strong>không thể hoàn tác</strong>.</li>
+                </ul>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  disabled={isDeletingConfig}
+                  onClick={() => setConfigToDelete(null)}
+                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingConfig}
+                  onClick={handleConfirmDeleteConfig}
+                  className="flex items-center gap-1.5 px-5 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold shadow-lg shadow-red-600/30 transition-all"
+                >
+                  {isDeletingConfig ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                  <span>{isDeletingConfig ? 'Đang xóa...' : 'Xác nhận xóa bản nháp'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

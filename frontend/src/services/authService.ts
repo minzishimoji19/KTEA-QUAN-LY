@@ -66,6 +66,10 @@ export const authService = {
     return apiClient.patch<AuthUser>(`/users/${id}`, data);
   },
 
+  deleteUser: async (id: string): Promise<{ success: boolean; message: string }> => {
+    return apiClient.delete<{ success: boolean; message: string }>(`/users/${id}`);
+  },
+
   assignCustomers: async (data: {
     partnerUserId: string;
     customerIds: string[];
