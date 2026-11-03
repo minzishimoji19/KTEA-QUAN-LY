@@ -59,8 +59,21 @@ export const LoginPage: React.FC = () => {
           setErrorMessage('Tài khoản đã bị tạm khóa. Vui lòng liên hệ Quản trị viên để được hỗ trợ.');
         } else if (err.statusCode === 429) {
           setErrorMessage('Quá nhiều lần đăng nhập không thành công. Vui lòng thử lại sau 15 phút.');
+        } else if (err.statusCode === 503 || err.code === 'DATABASE_UNAVAILABLE') {
+          setErrorMessage('Hệ thống cơ sở dữ liệu tạm thời không thể kết nối. Vui lòng thử lại sau giây lát hoặc liên hệ Quản trị viên.');
         } else {
-          setErrorMessage(err.message || 'Đăng nhập không thành công. Vui lòng thử lại.');
+          const rawMsg = err.message || '';
+          if (
+            rawMsg.includes('database') ||
+            rawMsg.includes('Prisma') ||
+            rawMsg.includes('mysql-') ||
+            rawMsg.includes('invocation') ||
+            rawMsg.includes('Can\'t reach')
+          ) {
+            setErrorMessage('Hệ thống cơ sở dữ liệu tạm thời không thể kết nối. Vui lòng thử lại sau giây lát hoặc liên hệ Quản trị viên.');
+          } else {
+            setErrorMessage(rawMsg || 'Đăng nhập không thành công. Vui lòng thử lại.');
+          }
         }
       } else {
         setErrorMessage('Không thể kết nối đến máy chủ. Vui lòng kiểm tra đường truyền.');
