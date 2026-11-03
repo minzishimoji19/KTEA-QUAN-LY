@@ -138,93 +138,99 @@ export const akinatorRepository = {
   },
 
   async createDraftConfig(input: CreateAkinatorDraftInput) {
-    return prisma.$transaction(async (tx) => {
-      const latest = await tx.akinatorConfigVersion.findFirst({
-        orderBy: { versionNumber: 'desc' },
-        select: { versionNumber: true },
+    let sourceConfig = null;
+    if (input.sourceVersionId) {
+      sourceConfig = await prisma.akinatorConfigVersion.findUnique({
+        where: { id: input.sourceVersionId },
+        include: { questions: true, rules: true },
       });
-      const nextVersionNumber = (latest?.versionNumber || 0) + 1;
+    }
 
-      let sourceConfig = null;
-      if (input.sourceVersionId) {
-        sourceConfig = await tx.akinatorConfigVersion.findUnique({
-          where: { id: input.sourceVersionId },
-          include: { questions: true, rules: true },
+    return prisma.$transaction(
+      async (tx) => {
+        const latest = await tx.akinatorConfigVersion.findFirst({
+          orderBy: { versionNumber: 'desc' },
+          select: { versionNumber: true },
         });
-      }
+        const nextVersionNumber = (latest?.versionNumber || 0) + 1;
 
-      const created = await tx.akinatorConfigVersion.create({
-        data: {
-          versionNumber: nextVersionNumber,
-          title: input.title,
-          description: input.description ?? sourceConfig?.description ?? null,
-          status: AkinatorConfigStatus.DRAFT,
-          isCurrent: false,
-          maxQuestionsPerSession:
-            input.maxQuestionsPerSession ?? sourceConfig?.maxQuestionsPerSession ?? 15,
-          disclaimerText:
-            input.disclaimerText ?? sourceConfig?.disclaimerText ?? DEFAULT_AKINATOR_DISCLAIMER,
-          changeLog: input.changeLog ?? null,
-          createdById: input.createdById ?? null,
-        },
-      });
+        const created = await tx.akinatorConfigVersion.create({
+          data: {
+            versionNumber: nextVersionNumber,
+            title: input.title,
+            description: input.description ?? sourceConfig?.description ?? null,
+            status: AkinatorConfigStatus.DRAFT,
+            isCurrent: false,
+            maxQuestionsPerSession:
+              input.maxQuestionsPerSession ?? sourceConfig?.maxQuestionsPerSession ?? 15,
+            disclaimerText:
+              input.disclaimerText ?? sourceConfig?.disclaimerText ?? DEFAULT_AKINATOR_DISCLAIMER,
+            changeLog: input.changeLog ?? null,
+            createdById: input.createdById ?? null,
+          },
+        });
 
-      if (sourceConfig) {
-        if (sourceConfig.questions.length > 0) {
-          await tx.akinatorQuestion.createMany({
-            data: sourceConfig.questions.map((q) => ({
-              configVersionId: created.id,
-              code: q.code,
-              questionText: q.questionText,
-              description: q.description,
-              questionType: q.questionType,
-              isEntryQuestion: q.isEntryQuestion,
-              isRequiredForEval: q.isRequiredForEval,
-              priorityWeight: q.priorityWeight,
-              mapsToCustomerField: q.mapsToCustomerField,
-              options: q.options ?? Prisma.JsonNull,
-              validationConfig: q.validationConfig ?? Prisma.JsonNull,
-              visibilityConditions: q.visibilityConditions ?? Prisma.JsonNull,
-              nextQuestionRules: q.nextQuestionRules ?? Prisma.JsonNull,
-              active: q.active,
-            })),
-          });
+        if (sourceConfig) {
+          if (sourceConfig.questions.length > 0) {
+            await tx.akinatorQuestion.createMany({
+              data: sourceConfig.questions.map((q) => ({
+                configVersionId: created.id,
+                code: q.code,
+                questionText: q.questionText,
+                description: q.description,
+                questionType: q.questionType,
+                isEntryQuestion: q.isEntryQuestion,
+                isRequiredForEval: q.isRequiredForEval,
+                priorityWeight: q.priorityWeight,
+                mapsToCustomerField: q.mapsToCustomerField,
+                options: q.options ?? Prisma.JsonNull,
+                validationConfig: q.validationConfig ?? Prisma.JsonNull,
+                visibilityConditions: q.visibilityConditions ?? Prisma.JsonNull,
+                nextQuestionRules: q.nextQuestionRules ?? Prisma.JsonNull,
+                active: q.active,
+              })),
+            });
+          }
+
+          if (sourceConfig.rules.length > 0) {
+            await tx.akinatorRule.createMany({
+              data: sourceConfig.rules.map((r) => ({
+                configVersionId: created.id,
+                code: r.code,
+                name: r.name,
+                description: r.description,
+                priorityOrder: r.priorityOrder,
+                requiredQuestionCodes: r.requiredQuestionCodes as any,
+                conditions: r.conditions as any,
+                outcomePayload: r.outcomePayload as any,
+                stopOnMatch: r.stopOnMatch,
+                active: r.active,
+              })),
+            });
+          }
         }
 
-        if (sourceConfig.rules.length > 0) {
-          await tx.akinatorRule.createMany({
-            data: sourceConfig.rules.map((r) => ({
-              configVersionId: created.id,
-              code: r.code,
-              name: r.name,
-              description: r.description,
-              priorityOrder: r.priorityOrder,
-              requiredQuestionCodes: r.requiredQuestionCodes as any,
-              conditions: r.conditions as any,
-              outcomePayload: r.outcomePayload as any,
-              stopOnMatch: r.stopOnMatch,
-              active: r.active,
-            })),
-          });
-        }
+        return tx.akinatorConfigVersion.findUniqueOrThrow({
+          where: { id: created.id },
+          include: {
+            questions: {
+              orderBy: [
+                { isEntryQuestion: 'desc' },
+                { priorityWeight: 'desc' },
+                { code: 'asc' },
+              ],
+            },
+            rules: {
+              orderBy: { priorityOrder: 'asc' },
+            },
+          },
+        });
+      },
+      {
+        maxWait: 5000,
+        timeout: 15000,
       }
-
-      return tx.akinatorConfigVersion.findUniqueOrThrow({
-        where: { id: created.id },
-        include: {
-          questions: {
-            orderBy: [
-              { isEntryQuestion: 'desc' },
-              { priorityWeight: 'desc' },
-              { code: 'asc' },
-            ],
-          },
-          rules: {
-            orderBy: { priorityOrder: 'asc' },
-          },
-        },
-      });
-    });
+    );
   },
 
   async updateDraftMetadata(
@@ -256,54 +262,70 @@ export const akinatorRepository = {
   },
 
   async saveDraftQuestions(versionId: string, questions: SaveAkinatorQuestionInput[]) {
-    return prisma.$transaction(async (tx) => {
-      const existingQuestions = await tx.akinatorQuestion.findMany({
-        where: { configVersionId: versionId },
-      });
-      const existingMap = new Map(existingQuestions.map((q) => [q.code, q]));
-      const incomingCodes = new Set(questions.map((q) => q.code));
+    return prisma.$transaction(
+      async (tx) => {
+        const existingQuestions = await tx.akinatorQuestion.findMany({
+          where: { configVersionId: versionId },
+        });
+        const existingMap = new Map(existingQuestions.map((q) => [q.code, q]));
+        const incomingCodes = new Set(questions.map((q) => q.code));
 
-      // 1. Remove questions that are no longer in the incoming list
-      for (const existing of existingQuestions) {
-        if (!incomingCodes.has(existing.code)) {
-          const answerCount = await tx.akinatorRawAnswer.count({
-            where: { questionId: existing.id },
+        // 1. Remove questions that are no longer in the incoming list
+        const toDelete = existingQuestions.filter((q) => !incomingCodes.has(q.code));
+        if (toDelete.length > 0) {
+          const toDeleteIds = toDelete.map((q) => q.id);
+          const rawAnswers = await tx.akinatorRawAnswer.findMany({
+            where: { questionId: { in: toDeleteIds } },
+            select: { questionId: true },
+            distinct: ['questionId'],
           });
-          if (answerCount > 0) {
+
+          if (rawAnswers.length > 0) {
+            const answeredQuestionIds = new Set(rawAnswers.map((a) => a.questionId));
+            const blockedQuestion = toDelete.find((q) => answeredQuestionIds.has(q.id));
             throw new BadRequestError(
-              `Không thể xóa câu hỏi '${existing.code}' vì đã có câu trả lời liên kết.`
+              `Không thể xóa câu hỏi '${blockedQuestion?.code || ''}' vì đã có câu trả lời liên kết.`
             );
           }
-          await tx.akinatorQuestion.delete({
-            where: { id: existing.id },
+
+          await tx.akinatorQuestion.deleteMany({
+            where: { id: { in: toDeleteIds } },
           });
         }
-      }
 
-      // 2. Update existing questions or create new questions
-      for (const q of questions) {
-        const existing = existingMap.get(q.code);
-        if (existing) {
-          await tx.akinatorQuestion.update({
-            where: { id: existing.id },
-            data: {
-              questionText: q.questionText,
-              description: q.description ?? null,
-              questionType: q.questionType,
-              isEntryQuestion: Boolean(q.isEntryQuestion),
-              isRequiredForEval: Boolean(q.isRequiredForEval),
-              priorityWeight: q.priorityWeight ?? 50,
-              mapsToCustomerField: q.mapsToCustomerField ?? AkinatorCustomerFieldMapping.NONE,
-              options: q.options ?? Prisma.JsonNull,
-              validationConfig: q.validationConfig ?? Prisma.JsonNull,
-              visibilityConditions: q.visibilityConditions ?? Prisma.JsonNull,
-              nextQuestionRules: q.nextQuestionRules ?? Prisma.JsonNull,
-              active: q.active !== undefined ? Boolean(q.active) : true,
-            },
-          });
-        } else {
-          await tx.akinatorQuestion.create({
-            data: {
+        // 2. Separate into updates and creates (with dirty-checking to skip unchanged records)
+        const toCreate: SaveAkinatorQuestionInput[] = [];
+        const toUpdate: SaveAkinatorQuestionInput[] = [];
+
+        for (const q of questions) {
+          const existing = existingMap.get(q.code);
+          if (existing) {
+            const isDifferent =
+              existing.questionText !== q.questionText ||
+              (existing.description ?? null) !== (q.description ?? null) ||
+              existing.questionType !== q.questionType ||
+              Boolean(existing.isEntryQuestion) !== Boolean(q.isEntryQuestion) ||
+              Boolean(existing.isRequiredForEval) !== Boolean(q.isRequiredForEval) ||
+              existing.priorityWeight !== (q.priorityWeight ?? 50) ||
+              existing.mapsToCustomerField !== (q.mapsToCustomerField ?? AkinatorCustomerFieldMapping.NONE) ||
+              existing.active !== (q.active !== undefined ? Boolean(q.active) : true) ||
+              JSON.stringify(existing.options) !== JSON.stringify(q.options ?? null) ||
+              JSON.stringify(existing.validationConfig) !== JSON.stringify(q.validationConfig ?? null) ||
+              JSON.stringify(existing.visibilityConditions) !== JSON.stringify(q.visibilityConditions ?? null) ||
+              JSON.stringify(existing.nextQuestionRules) !== JSON.stringify(q.nextQuestionRules ?? null);
+
+            if (isDifferent) {
+              toUpdate.push(q);
+            }
+          } else {
+            toCreate.push(q);
+          }
+        }
+
+        // 2a. Bulk insert new questions in a single query
+        if (toCreate.length > 0) {
+          await tx.akinatorQuestion.createMany({
+            data: toCreate.map((q) => ({
               configVersionId: versionId,
               code: q.code,
               questionText: q.questionText,
@@ -318,66 +340,102 @@ export const akinatorRepository = {
               visibilityConditions: q.visibilityConditions ?? Prisma.JsonNull,
               nextQuestionRules: q.nextQuestionRules ?? Prisma.JsonNull,
               active: q.active !== undefined ? Boolean(q.active) : true,
-            },
+            })),
           });
         }
-      }
 
-      return tx.akinatorConfigVersion.findUniqueOrThrow({
-        where: { id: versionId },
-        include: {
-          questions: {
-            orderBy: [
-              { isEntryQuestion: 'desc' },
-              { priorityWeight: 'desc' },
-              { code: 'asc' },
-            ],
+        // 2b. Parallel update existing questions
+        if (toUpdate.length > 0) {
+          await Promise.all(
+            toUpdate.map((q) => {
+              const existing = existingMap.get(q.code)!;
+              return tx.akinatorQuestion.update({
+                where: { id: existing.id },
+                data: {
+                  questionText: q.questionText,
+                  description: q.description ?? null,
+                  questionType: q.questionType,
+                  isEntryQuestion: Boolean(q.isEntryQuestion),
+                  isRequiredForEval: Boolean(q.isRequiredForEval),
+                  priorityWeight: q.priorityWeight ?? 50,
+                  mapsToCustomerField: q.mapsToCustomerField ?? AkinatorCustomerFieldMapping.NONE,
+                  options: q.options ?? Prisma.JsonNull,
+                  validationConfig: q.validationConfig ?? Prisma.JsonNull,
+                  visibilityConditions: q.visibilityConditions ?? Prisma.JsonNull,
+                  nextQuestionRules: q.nextQuestionRules ?? Prisma.JsonNull,
+                  active: q.active !== undefined ? Boolean(q.active) : true,
+                },
+              });
+            })
+          );
+        }
+
+        return tx.akinatorConfigVersion.findUniqueOrThrow({
+          where: { id: versionId },
+          include: {
+            questions: {
+              orderBy: [
+                { isEntryQuestion: 'desc' },
+                { priorityWeight: 'desc' },
+                { code: 'asc' },
+              ],
+            },
+            rules: {
+              orderBy: { priorityOrder: 'asc' },
+            },
           },
-          rules: {
-            orderBy: { priorityOrder: 'asc' },
-          },
-        },
-      });
-    });
+        });
+      },
+      {
+        maxWait: 5000,
+        timeout: 15000,
+      }
+    );
   },
 
   async saveDraftRules(versionId: string, rules: SaveAkinatorRuleInput[]) {
-    return prisma.$transaction(async (tx) => {
-      await tx.akinatorRule.deleteMany({
-        where: { configVersionId: versionId },
-      });
+    return prisma.$transaction(
+      async (tx) => {
+        await tx.akinatorRule.deleteMany({
+          where: { configVersionId: versionId },
+        });
 
-      await tx.akinatorRule.createMany({
-        data: rules.map((r, idx) => ({
-          configVersionId: versionId,
-          code: r.code,
-          name: r.name,
-          description: r.description ?? null,
-          priorityOrder: r.priorityOrder ?? idx + 1,
-          requiredQuestionCodes: r.requiredQuestionCodes ?? [],
-          conditions: r.conditions,
-          outcomePayload: r.outcomePayload,
-          stopOnMatch: Boolean(r.stopOnMatch),
-          active: r.active !== undefined ? Boolean(r.active) : true,
-        })),
-      });
+        await tx.akinatorRule.createMany({
+          data: rules.map((r, idx) => ({
+            configVersionId: versionId,
+            code: r.code,
+            name: r.name,
+            description: r.description ?? null,
+            priorityOrder: r.priorityOrder ?? idx + 1,
+            requiredQuestionCodes: r.requiredQuestionCodes ?? [],
+            conditions: r.conditions,
+            outcomePayload: r.outcomePayload,
+            stopOnMatch: Boolean(r.stopOnMatch),
+            active: r.active !== undefined ? Boolean(r.active) : true,
+          })),
+        });
 
-      return tx.akinatorConfigVersion.findUniqueOrThrow({
-        where: { id: versionId },
-        include: {
-          questions: {
-            orderBy: [
-              { isEntryQuestion: 'desc' },
-              { priorityWeight: 'desc' },
-              { code: 'asc' },
-            ],
+        return tx.akinatorConfigVersion.findUniqueOrThrow({
+          where: { id: versionId },
+          include: {
+            questions: {
+              orderBy: [
+                { isEntryQuestion: 'desc' },
+                { priorityWeight: 'desc' },
+                { code: 'asc' },
+              ],
+            },
+            rules: {
+              orderBy: { priorityOrder: 'asc' },
+            },
           },
-          rules: {
-            orderBy: { priorityOrder: 'asc' },
-          },
-        },
-      });
-    });
+        });
+      },
+      {
+        maxWait: 5000,
+        timeout: 15000,
+      }
+    );
   },
 
   async publishConfigVersion(
@@ -385,42 +443,48 @@ export const akinatorRepository = {
     publishedById?: string | null,
     changeLog?: string | null
   ) {
-    return prisma.$transaction(async (tx) => {
-      // Demote previously current published version(s) to ARCHIVED & isCurrent=false
-      await tx.akinatorConfigVersion.updateMany({
-        where: {
-          isCurrent: true,
-          id: { not: versionId },
-        },
-        data: {
-          isCurrent: false,
-          status: AkinatorConfigStatus.ARCHIVED,
-        },
-      });
+    return prisma.$transaction(
+      async (tx) => {
+        // Demote previously current published version(s) to ARCHIVED & isCurrent=false
+        await tx.akinatorConfigVersion.updateMany({
+          where: {
+            isCurrent: true,
+            id: { not: versionId },
+          },
+          data: {
+            isCurrent: false,
+            status: AkinatorConfigStatus.ARCHIVED,
+          },
+        });
 
-      return tx.akinatorConfigVersion.update({
-        where: { id: versionId },
-        data: {
-          status: AkinatorConfigStatus.PUBLISHED,
-          isCurrent: true,
-          publishedAt: new Date(),
-          publishedById: publishedById ?? null,
-          ...(changeLog !== undefined ? { changeLog } : {}),
-        },
-        include: {
-          questions: {
-            orderBy: [
-              { isEntryQuestion: 'desc' },
-              { priorityWeight: 'desc' },
-              { code: 'asc' },
-            ],
+        return tx.akinatorConfigVersion.update({
+          where: { id: versionId },
+          data: {
+            status: AkinatorConfigStatus.PUBLISHED,
+            isCurrent: true,
+            publishedAt: new Date(),
+            publishedById: publishedById ?? null,
+            ...(changeLog !== undefined ? { changeLog } : {}),
           },
-          rules: {
-            orderBy: { priorityOrder: 'asc' },
+          include: {
+            questions: {
+              orderBy: [
+                { isEntryQuestion: 'desc' },
+                { priorityWeight: 'desc' },
+                { code: 'asc' },
+              ],
+            },
+            rules: {
+              orderBy: { priorityOrder: 'asc' },
+            },
           },
-        },
-      });
-    });
+        });
+      },
+      {
+        maxWait: 5000,
+        timeout: 15000,
+      }
+    );
   },
 
   // =========================================================================
