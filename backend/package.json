@@ -5,8 +5,9 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "prisma generate && prisma migrate deploy && tsc",
+    "build": "prisma generate && tsc",
     "start": "node dist/index.js",
+    "migrate:deploy": "prisma migrate deploy",
     "lint": "eslint src --ext .ts",
     "db:start": "powershell -ExecutionPolicy Bypass -File ../scripts/start-db.ps1",
     "db:push": "prisma db push",
