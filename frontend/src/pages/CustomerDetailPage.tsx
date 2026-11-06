@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   XCircle,
   HelpCircle,
+  ExternalLink,
 } from 'lucide-react';
 import {
   StatCard,
@@ -994,43 +995,57 @@ export const CustomerDetailPage: React.FC = () => {
                 />
               ) : (
                 <div className="space-y-2.5">
-                  {customer.recommendations.slice(0, 2).map((rec) => (
-                    <div
-                      key={rec.id}
-                      className="p-3 rounded-lg border border-slate-800 bg-slate-950/70 space-y-2"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="font-semibold text-xs text-slate-100 font-sans truncate">
-                            {rec.targetProduct?.name || rec.recommendationType}
-                          </span>
-                          <StatusBadge status={rec.status} />
-                          {rec.score && (
-                            <span className="px-1.5 py-0.2 rounded font-mono text-[9px] bg-blue-950/80 text-blue-300 border border-blue-800/40 font-semibold">
-                              {Number(rec.score)}% PHÙ HỢP
+                  {customer.recommendations.map((rec) => {
+                    const regUrl = rec.targetProduct?.financialDetail?.officialUrl;
+                    return (
+                      <div
+                        key={rec.id}
+                        className="p-3 rounded-lg border border-slate-800 bg-slate-950/70 space-y-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-semibold text-xs text-slate-100 font-sans truncate">
+                              {rec.targetProduct?.name || rec.recommendationType}
                             </span>
+                            <StatusBadge status={rec.status} />
+                            {rec.score && (
+                              <span className="px-1.5 py-0.2 rounded font-mono text-[9px] bg-blue-950/80 text-blue-300 border border-blue-800/40 font-semibold">
+                                {Number(rec.score)}% PHÙ HỢP
+                              </span>
+                            )}
+                          </div>
+                          <DateDisplay date={rec.generatedAt} relativeContext className="text-[10px] text-slate-500 shrink-0" />
+                        </div>
+                        <p className="text-[11px] text-slate-300 bg-slate-900/40 p-2 rounded border border-slate-850 line-clamp-2">
+                          {rec.reason}
+                        </p>
+                        <div className="flex items-center justify-end gap-2 pt-0.5 flex-wrap">
+                          {regUrl && /^https?:\/\//i.test(regUrl) && (
+                            <a
+                              href={regUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-semibold transition-colors"
+                            >
+                              <span>Đăng ký ngay</span>
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                          )}
+                          {role !== 'PARTNER' && (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => setIsCreatePushOpen(true)}
+                              className="h-6 text-[10px] gap-1 bg-purple-600 hover:bg-purple-500 text-white"
+                            >
+                              <Send className="w-2.5 h-2.5" />
+                              <span>Chuyển khách</span>
+                            </Button>
                           )}
                         </div>
-                        <DateDisplay date={rec.generatedAt} relativeContext className="text-[10px] text-slate-500 shrink-0" />
                       </div>
-                      <p className="text-[11px] text-slate-300 bg-slate-900/40 p-2 rounded border border-slate-850 line-clamp-2">
-                        {rec.reason}
-                      </p>
-                      {role !== 'PARTNER' && (
-                        <div className="flex justify-end pt-0.5">
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            onClick={() => setIsCreatePushOpen(true)}
-                            className="h-6 text-[10px] gap-1 bg-purple-600 hover:bg-purple-500 text-white"
-                          >
-                            <Send className="w-2.5 h-2.5" />
-                            <span>Chuyển khách</span>
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1797,44 +1812,60 @@ export const CustomerDetailPage: React.FC = () => {
             />
           ) : (
             <div className="space-y-3">
-              {customer.recommendations.map((rec) => (
-                <div
-                  key={rec.id}
-                  className="p-3.5 rounded-lg border border-slate-800 bg-slate-950/70 space-y-2"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-blue-400" />
-                      <span className="font-semibold text-xs text-slate-100 font-sans">
-                        {rec.targetProduct?.name || rec.recommendationType}
-                      </span>
-                      <StatusBadge status={rec.status} />
-                      {rec.score && (
-                        <span className="px-1.5 py-0.2 rounded font-mono text-[10px] bg-blue-950/80 text-blue-300 border border-blue-800/40">
-                          Điểm phù hợp: {Number(rec.score)}%
+              {customer.recommendations.map((rec) => {
+                const regUrl = rec.targetProduct?.financialDetail?.officialUrl;
+                return (
+                  <div
+                    key={rec.id}
+                    className="p-3.5 rounded-lg border border-slate-800 bg-slate-950/70 space-y-2"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-blue-400" />
+                        <span className="font-semibold text-xs text-slate-100 font-sans">
+                          {rec.targetProduct?.name || rec.recommendationType}
                         </span>
+                        <StatusBadge status={rec.status} />
+                        {rec.score && (
+                          <span className="px-1.5 py-0.2 rounded font-mono text-[10px] bg-blue-950/80 text-blue-300 border border-blue-800/40">
+                            Điểm phù hợp: {Number(rec.score)}%
+                          </span>
+                        )}
+                      </div>
+                      <DateDisplay date={rec.generatedAt} className="text-[10px] text-slate-500" />
+                    </div>
+
+                    <p className="text-xs text-slate-300 leading-relaxed bg-slate-900/50 p-2.5 rounded border border-slate-850">
+                      {rec.reason}
+                    </p>
+
+                    <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
+                      {regUrl && /^https?:\/\//i.test(regUrl) && (
+                        <a
+                          href={regUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors"
+                        >
+                          <span>Đăng ký ngay</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                      {role !== 'PARTNER' && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => setIsCreatePushOpen(true)}
+                          className="h-7 text-xs gap-1 bg-purple-600 hover:bg-purple-500 text-white"
+                        >
+                          <Send className="w-3 h-3" />
+                          <span>Chuyển khách theo đề xuất này</span>
+                        </Button>
                       )}
                     </div>
-                    <DateDisplay date={rec.generatedAt} className="text-[10px] text-slate-500" />
                   </div>
-
-                  <p className="text-xs text-slate-300 leading-relaxed bg-slate-900/50 p-2.5 rounded border border-slate-850">
-                    {rec.reason}
-                  </p>
-
-                  <div className="flex justify-end pt-1">
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => setIsCreatePushOpen(true)}
-                      className="h-7 text-xs gap-1 bg-purple-600 hover:bg-purple-500 text-white"
-                    >
-                      <Send className="w-3 h-3" />
-                      <span>Chuyển khách theo đề xuất này</span>
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

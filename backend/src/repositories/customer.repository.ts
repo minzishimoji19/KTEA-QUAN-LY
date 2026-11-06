@@ -661,8 +661,12 @@ export class CustomerRepository extends BaseRepository {
           },
         },
         recommendations: {
-          include: { targetProduct: true },
-          orderBy: { generatedAt: 'desc' },
+          include: {
+            targetProduct: {
+              include: { financialDetail: true },
+            },
+          },
+          orderBy: [{ score: 'desc' }, { generatedAt: 'desc' }],
         },
         pushRecords: {
           include: {

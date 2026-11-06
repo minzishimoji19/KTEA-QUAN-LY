@@ -14,6 +14,7 @@ import {
   Tag,
   DollarSign,
   Info,
+  ExternalLink,
 } from 'lucide-react';
 import {
   AssessmentRecommendationRun,
@@ -393,6 +394,19 @@ const ProductRecommendationCard: React.FC<ProductCardProps> = ({
 
         {/* Score & Expand button */}
         <div className="flex items-center gap-2 shrink-0">
+          {item.productSnapshot?.financialDetail?.officialUrl &&
+            /^https?:\/\//i.test(item.productSnapshot.financialDetail.officialUrl) && (
+              <a
+                href={item.productSnapshot.financialDetail.officialUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors shadow-sm"
+              >
+                <span>Đăng ký ngay</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
           {typeof item.confidence === 'number' && (
             <div
               className="px-2 py-1 rounded-lg border border-slate-700/80 bg-slate-900/90 font-mono text-[11px] text-slate-300 flex items-center gap-1"

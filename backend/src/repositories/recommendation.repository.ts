@@ -52,7 +52,9 @@ export class RecommendationRepository extends BaseRepository {
             },
           },
         },
-        targetProduct: true,
+        targetProduct: {
+          include: { financialDetail: true },
+        },
         pushRecords: {
           orderBy: { pushedAt: 'desc' },
           take: 1,
@@ -66,7 +68,9 @@ export class RecommendationRepository extends BaseRepository {
     return this.db.recommendation.findMany({
       where: { customerId },
       include: {
-        targetProduct: true,
+        targetProduct: {
+          include: { financialDetail: true },
+        },
         pushRecords: true,
       },
       orderBy: { generatedAt: 'desc' },
@@ -85,7 +89,9 @@ export class RecommendationRepository extends BaseRepository {
             needs: true,
           },
         },
-        targetProduct: true,
+        targetProduct: {
+          include: { financialDetail: true },
+        },
         pushRecords: true,
       },
     });
@@ -110,7 +116,9 @@ export class RecommendationRepository extends BaseRepository {
       },
       include: {
         customer: true,
-        targetProduct: true,
+        targetProduct: {
+          include: { financialDetail: true },
+        },
       },
     });
   }
@@ -121,7 +129,9 @@ export class RecommendationRepository extends BaseRepository {
       data,
       include: {
         customer: true,
-        targetProduct: true,
+        targetProduct: {
+          include: { financialDetail: true },
+        },
         pushRecords: true,
       },
     });

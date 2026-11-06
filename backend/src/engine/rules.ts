@@ -12,6 +12,7 @@ export function isLoanNeed(needType: string): boolean {
   const t = needType.toUpperCase();
   return (
     t.includes('LOAN') ||
+    t.includes('VAY') ||
     t.includes('WORKING_CAPITAL') ||
     t.includes('MORTGAGE') ||
     t.includes('CAPITAL')
@@ -21,7 +22,7 @@ export function isLoanNeed(needType: string): boolean {
 // Helper to check if a needType indicates card
 export function isCardNeed(needType: string): boolean {
   const t = needType.toUpperCase();
-  return t.includes('CARD') || t.includes('CREDIT') || t.includes('CASHBACK');
+  return t.includes('CARD') || t.includes('THE_TIN_DUNG') || t.includes('CREDIT') || t.includes('CASHBACK');
 }
 
 /**
@@ -65,7 +66,7 @@ export const ruleActiveLoanNeed: IRecommendationRule = {
       ruleId: 'RULE_A_ACTIVE_LOAN_NEED',
       ruleName: 'Active Loan Need Match',
       targetProductMatcher: {
-        codePatterns: [targetCode, 'LOAN'],
+        codePatterns: [targetCode, 'LOAN', 'VAY'],
         fallbackCategory: 'LOAN',
       },
       baseScore,
@@ -272,7 +273,12 @@ export function applyRecencyModifier(
     return { finalScore: baseScore, recencyExplanation: null, signal: null };
   }
 
-  if (features.daysSinceLastActivity === null || features.recentActivities.length === 0) {
+  if (
+    features.daysSinceLastActivity === null ||
+    features.daysSinceLastActivity === undefined ||
+    !features.recentActivities ||
+    features.recentActivities.length === 0
+  ) {
     return { finalScore: baseScore, recencyExplanation: null, signal: null };
   }
 

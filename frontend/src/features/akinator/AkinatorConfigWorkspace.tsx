@@ -32,6 +32,7 @@ import {
   AlertCircle,
   FileCheck2,
   X,
+  ExternalLink,
 } from 'lucide-react';
 import {
   AkinatorConfigDetail,
@@ -804,10 +805,23 @@ export const AkinatorConfigWorkspace: React.FC = () => {
                             {q.options && q.options.length > 0 && (
                               <span>{q.options.length} phương án trả lời</span>
                             )}
-                            {q.visibilityConditions?.conditions?.length ? (
+                            {(q.visibilityConditions?.conditions?.length || 0) +
+                              (q.visibilityConditions?.groups?.length || 0) >
+                            0 ? (
                               <span className="text-amber-400/90 flex items-center gap-1">
                                 <Eye className="w-3 h-3" />
-                                <span>Có điều kiện hiển thị ({q.visibilityConditions.conditions.length})</span>
+                                <span>
+                                  Có điều kiện hiển thị (
+                                  {(q.visibilityConditions?.conditions?.length || 0) +
+                                    (q.visibilityConditions?.groups?.reduce(
+                                      (acc, g) => acc + (g.conditions?.length || 0),
+                                      0
+                                    ) || 0)}
+                                  {q.visibilityConditions?.groups?.length
+                                    ? ` • ${q.visibilityConditions.groups.length} nhóm`
+                                    : ''}
+                                  )
+                                </span>
                               </span>
                             ) : null}
                             {q.nextQuestionRules?.length ? (
@@ -898,16 +912,29 @@ export const AkinatorConfigWorkspace: React.FC = () => {
 
                           {/* Outcome summary preview */}
                           {r.outcomePayload && (
-                            <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/80 text-xs space-y-1">
-                              <div className="flex items-center justify-between text-slate-400">
+                            <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/80 text-xs space-y-1.5">
+                              <div className="flex items-center justify-between text-slate-400 flex-wrap gap-2">
                                 <span className="font-mono text-blue-400 font-semibold">
                                   [{r.outcomePayload.categoryCode}] {r.outcomePayload.categoryLabel}
                                 </span>
-                                {r.outcomePayload.suggestedPriority && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
-                                    Ưu tiên: {r.outcomePayload.suggestedPriority}
-                                  </span>
-                                )}
+                                <div className="flex items-center gap-2">
+                                  {r.outcomePayload.registrationUrl && (
+                                    <a
+                                      href={r.outcomePayload.registrationUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25 font-medium transition-colors"
+                                    >
+                                      <span>Link đăng ký</span>
+                                      <ExternalLink className="w-2.5 h-2.5" />
+                                    </a>
+                                  )}
+                                  {r.outcomePayload.suggestedPriority && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
+                                      Ưu tiên: {r.outcomePayload.suggestedPriority}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                               <div className="font-medium text-slate-200">
                                 {r.outcomePayload.referenceTitle}
@@ -918,8 +945,18 @@ export const AkinatorConfigWorkspace: React.FC = () => {
                             </div>
                           )}
 
-                          <div className="flex items-center gap-4 text-[11px] text-slate-500 pt-1 border-t border-slate-900">
-                            <span>{r.conditions?.conditions?.length || 0} điều kiện khớp</span>
+                          <div className="flex items-center gap-4 text-[11px] text-slate-500 pt-1 border-t border-slate-900 flex-wrap">
+                            <span>
+                              {(r.conditions?.conditions?.length || 0) +
+                                (r.conditions?.groups?.reduce(
+                                  (acc, g) => acc + (g.conditions?.length || 0),
+                                  0
+                                ) || 0)}{' '}
+                              điều kiện khớp
+                              {r.conditions?.groups && r.conditions.groups.length > 0
+                                ? ` (${r.conditions.groups.length} nhóm điều kiện)`
+                                : ''}
+                            </span>
                             <span>{r.requiredQuestionCodes?.length || 0} câu hỏi bắt buộc</span>
                           </div>
                         </div>

@@ -62,74 +62,85 @@ export class RuleBasedRecommendationEngine implements IRecommendationEngine {
       const match = rule.evaluate(features, ruleConfig);
       if (!match) continue;
 
-      // Match target product from catalog
+      // Match all target products from catalog that satisfy the rule's patterns
       const patterns = match.targetProductMatcher.codePatterns;
-      let targetProduct: Product | undefined;
+      const matchedProducts: Product[] = [];
+      const seenInRule = new Set<string>();
 
       for (const pattern of patterns) {
-        targetProduct = availableProducts.find(
+        const matchingForPattern = availableProducts.filter(
           (p) =>
             p.active &&
             (p.code === pattern ||
               p.code.includes(pattern) ||
               p.name.toLowerCase().includes(pattern.toLowerCase()))
         );
-        if (targetProduct) break;
+        for (const prod of matchingForPattern) {
+          if (!seenInRule.has(prod.id)) {
+            seenInRule.add(prod.id);
+            matchedProducts.push(prod);
+          }
+        }
       }
 
       // Fallback product if pattern didn't match directly
-      if (!targetProduct) {
-        targetProduct = availableProducts.find((p) => p.active);
+      if (matchedProducts.length === 0) {
+        const fallbackProduct = availableProducts.find((p) => p.active);
+        if (fallbackProduct) {
+          matchedProducts.push(fallbackProduct);
+        }
       }
 
-      if (!targetProduct) continue;
+      if (matchedProducts.length === 0) continue;
 
-      // Repeat Recommendation Guard
-      if (
-        existingActiveProductIds.has(targetProduct.id) ||
-        existingInFlightPushProductIds.has(targetProduct.id) ||
-        recommendedProductIds.has(targetProduct.id)
-      ) {
-        continue;
+      for (const targetProduct of matchedProducts) {
+        // Repeat Recommendation Guard
+        if (
+          existingActiveProductIds.has(targetProduct.id) ||
+          existingInFlightPushProductIds.has(targetProduct.id) ||
+          recommendedProductIds.has(targetProduct.id)
+        ) {
+          continue;
+        }
+
+        // RULE E: Interaction Recency Score & Explanation Modifier
+        const { finalScore, recencyExplanation, signal } = applyRecencyModifier(
+          match.baseScore,
+          features,
+          config.rules.ruleE
+        );
+
+        // Enforce normalized ceiling
+        const normalizedScore = Math.min(finalScore, config.maxNormalizedScore);
+
+        // Check min score threshold
+        if (normalizedScore < config.minScoreThreshold) {
+          continue;
+        }
+
+        const allSignals = [...match.signals];
+        if (signal) {
+          allSignals.push(signal);
+        }
+
+        const fullReason = recencyExplanation
+          ? `${match.reason}${recencyExplanation}`
+          : match.reason;
+
+        candidates.push({
+          customerId: features.customerId,
+          targetProductId: targetProduct.id,
+          targetProductCode: targetProduct.code,
+          targetProductName: targetProduct.name,
+          recommendationType: match.ruleId,
+          score: normalizedScore,
+          reason: fullReason,
+          signals: allSignals,
+          ruleId: match.ruleId,
+        });
+
+        recommendedProductIds.add(targetProduct.id);
       }
-
-      // RULE E: Interaction Recency Score & Explanation Modifier
-      const { finalScore, recencyExplanation, signal } = applyRecencyModifier(
-        match.baseScore,
-        features,
-        config.rules.ruleE
-      );
-
-      // Enforce normalized ceiling
-      const normalizedScore = Math.min(finalScore, config.maxNormalizedScore);
-
-      // Check min score threshold
-      if (normalizedScore < config.minScoreThreshold) {
-        continue;
-      }
-
-      const allSignals = [...match.signals];
-      if (signal) {
-        allSignals.push(signal);
-      }
-
-      const fullReason = recencyExplanation
-        ? `${match.reason}${recencyExplanation}`
-        : match.reason;
-
-      candidates.push({
-        customerId: features.customerId,
-        targetProductId: targetProduct.id,
-        targetProductCode: targetProduct.code,
-        targetProductName: targetProduct.name,
-        recommendationType: match.ruleId,
-        score: normalizedScore,
-        reason: fullReason,
-        signals: allSignals,
-        ruleId: match.ruleId,
-      });
-
-      recommendedProductIds.add(targetProduct.id);
     }
 
     // Sort by score descending

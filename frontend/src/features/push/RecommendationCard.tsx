@@ -95,11 +95,25 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
               {rec.targetProduct?.name || 'Sản phẩm tài chính'}
             </span>
           </div>
-          {rec.targetProduct?.code && (
-            <span className="text-xs font-mono font-bold text-blue-300 px-2 py-0.5 rounded bg-blue-900/60 border border-blue-700/60 flex-shrink-0">
-              {rec.targetProduct.code}
-            </span>
-          )}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {rec.targetProduct?.financialDetail?.officialUrl &&
+              /^https?:\/\//i.test(rec.targetProduct.financialDetail.officialUrl) && (
+                <a
+                  href={rec.targetProduct.financialDetail.officialUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors"
+                >
+                  <span>Đăng ký ngay</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+            {rec.targetProduct?.code && (
+              <span className="text-xs font-mono font-bold text-blue-300 px-2 py-0.5 rounded bg-blue-900/60 border border-blue-700/60">
+                {rec.targetProduct.code}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Reason / Transparent Explanation - WHY IS THIS RECOMMENDED */}

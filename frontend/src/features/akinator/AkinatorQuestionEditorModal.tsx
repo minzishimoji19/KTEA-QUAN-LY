@@ -21,6 +21,7 @@ import {
   Sliders,
   Check,
   Lock,
+  Layers,
 } from 'lucide-react';
 import {
   AkinatorQuestionItem,
@@ -29,6 +30,7 @@ import {
   AkinatorQuestionOption,
   AkinatorConditionOperator,
   AkinatorSingleCondition,
+  AkinatorConditionSubGroup,
   AkinatorNextQuestionRule,
 } from '../../types/akinator';
 
@@ -109,6 +111,7 @@ export const AkinatorQuestionEditorModal: React.FC<Props> = ({
   const [hasVisibility, setHasVisibility] = useState<boolean>(false);
   const [visibilityLogic, setVisibilityLogic] = useState<'AND' | 'OR'>('AND');
   const [visibilityItems, setVisibilityItems] = useState<AkinatorSingleCondition[]>([]);
+  const [visibilityGroups, setVisibilityGroups] = useState<AkinatorConditionSubGroup[]>([]);
 
   // Next question branching rules
   const [nextRules, setNextRules] = useState<AkinatorNextQuestionRule[]>([]);
@@ -132,14 +135,32 @@ export const AkinatorQuestionEditorModal: React.FC<Props> = ({
       setValMinLength(vc.minLength !== undefined ? String(vc.minLength) : '');
       setValMaxLength(vc.maxLength !== undefined ? String(vc.maxLength) : '');
 
-      if (question.visibilityConditions && question.visibilityConditions.conditions?.length > 0) {
+      const visConds = question.visibilityConditions?.conditions || [];
+      const visGrps = question.visibilityConditions?.groups || [];
+      if (question.visibilityConditions && (visConds.length > 0 || visGrps.length > 0)) {
         setHasVisibility(true);
         setVisibilityLogic(question.visibilityConditions.logic || 'AND');
-        setVisibilityItems(question.visibilityConditions.conditions.map((c) => ({ ...c })));
+        setVisibilityItems(
+          visConds.map((c) => ({
+            ...c,
+            value: Array.isArray(c.value) ? c.value.join(', ') : c.value,
+          }))
+        );
+        setVisibilityGroups(
+          visGrps.map((g, idx) => ({
+            id: g.id || `vgrp_${idx + 1}`,
+            logic: g.logic || 'OR',
+            conditions: (g.conditions || []).map((c) => ({
+              ...c,
+              value: Array.isArray(c.value) ? c.value.join(', ') : c.value,
+            })),
+          }))
+        );
       } else {
         setHasVisibility(false);
         setVisibilityLogic('AND');
         setVisibilityItems([]);
+        setVisibilityGroups([]);
       }
 
       setNextRules(question.nextQuestionRules ? question.nextQuestionRules.map((r) => ({ ...r })) : []);
@@ -164,6 +185,7 @@ export const AkinatorQuestionEditorModal: React.FC<Props> = ({
       setHasVisibility(false);
       setVisibilityLogic('AND');
       setVisibilityItems([]);
+      setVisibilityGroups([]);
       setNextRules([]);
     }
     setActiveTab('basic');
@@ -215,6 +237,86 @@ export const AkinatorQuestionEditorModal: React.FC<Props> = ({
 
   const handleRemoveVisibilityItem = (index: number) => {
     setVisibilityItems(visibilityItems.filter((_, i) => i !== index));
+  };
+
+  const handleAddVisibilityGroup = () => {
+    const defaultCode = otherQuestions.length > 0 ? otherQuestions[0].code : '';
+    setVisibilityGroups([
+      ...visibilityGroups,
+      {
+        id: `vgrp_${Date.now()}_${visibilityGroups.length + 1}`,
+        logic: 'OR',
+        conditions: [{ questionCode: defaultCode, operator: 'EQUALS', value: '' }],
+      },
+    ]);
+  };
+
+  const handleUpdateVisibilityGroupLogic = (groupIdx: number, logic: 'AND' | 'OR') => {
+    const next = [...visibilityGroups];
+    next[groupIdx] = { ...next[groupIdx], logic };
+    setVisibilityGroups(next);
+  };
+
+  const handleRemoveVisibilityGroup = (groupIdx: number) => {
+    setVisibilityGroups(visibilityGroups.filter((_, i) => i !== groupIdx));
+  };
+
+  const handleAddCondInVisibilityGroup = (groupIdx: number) => {
+    const defaultCode = otherQuestions.length > 0 ? otherQuestions[0].code : '';
+    const next = [...visibilityGroups];
+    next[groupIdx] = {
+      ...next[groupIdx],
+      conditions: [
+        ...next[groupIdx].conditions,
+        { questionCode: defaultCode, operator: 'EQUALS', value: '' },
+      ],
+    };
+    setVisibilityGroups(next);
+  };
+
+  const handleUpdateCondInVisibilityGroup = (
+    groupIdx: number,
+    condIdx: number,
+    field: keyof AkinatorSingleCondition,
+    val: any
+  ) => {
+    const next = [...visibilityGroups];
+    const nextConds = [...next[groupIdx].conditions];
+    nextConds[condIdx] = { ...nextConds[condIdx], [field]: val };
+    next[groupIdx] = { ...next[groupIdx], conditions: nextConds };
+    setVisibilityGroups(next);
+  };
+
+  const handleRemoveCondInVisibilityGroup = (groupIdx: number, condIdx: number) => {
+    const next = [...visibilityGroups];
+    const nextConds = next[groupIdx].conditions.filter((_, i) => i !== condIdx);
+    next[groupIdx] = { ...next[groupIdx], conditions: nextConds };
+    setVisibilityGroups(next);
+  };
+
+  const normalizeConditionItem = (c: AkinatorSingleCondition): AkinatorSingleCondition => {
+    let parsedVal = c.value;
+    if (c.operator === 'IN' || c.operator === 'NOT_IN') {
+      if (Array.isArray(parsedVal)) {
+        parsedVal = parsedVal.map((item) => String(item).trim()).filter(Boolean);
+      } else if (typeof parsedVal === 'string') {
+        parsedVal = parsedVal
+          .split(',')
+          .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+          .filter(Boolean);
+      }
+    } else if (parsedVal === 'true') {
+      parsedVal = true;
+    } else if (parsedVal === 'false') {
+      parsedVal = false;
+    } else if (
+      typeof parsedVal === 'string' &&
+      parsedVal.trim() !== '' &&
+      !isNaN(Number(parsedVal))
+    ) {
+      parsedVal = Number(parsedVal);
+    }
+    return { ...c, value: parsedVal };
   };
 
   // Handlers for Next Question Rules
@@ -334,17 +436,45 @@ export const AkinatorQuestionEditorModal: React.FC<Props> = ({
     if (valMaxLength !== '') vc.maxLength = parseInt(valMaxLength, 10);
 
     // Visibility config
+    if (hasVisibility) {
+      for (const c of visibilityItems) {
+        if (!c.questionCode) {
+          setError('Tất cả điều kiện hiển thị đơn lẻ cần chọn mã câu hỏi so sánh');
+          setActiveTab('visibility');
+          return;
+        }
+      }
+      for (let gIdx = 0; gIdx < visibilityGroups.length; gIdx++) {
+        const grp = visibilityGroups[gIdx];
+        if (!grp.conditions || grp.conditions.length === 0) {
+          setError(`Nhóm điều kiện hiển thị #${gIdx + 1} không được để trống`);
+          setActiveTab('visibility');
+          return;
+        }
+        for (const c of grp.conditions) {
+          if (!c.questionCode) {
+            setError(`Tất cả điều kiện trong Nhóm điều kiện hiển thị #${gIdx + 1} cần chọn mã câu hỏi so sánh`);
+            setActiveTab('visibility');
+            return;
+          }
+        }
+      }
+    }
+
     const visibilityConditions =
-      hasVisibility && visibilityItems.length > 0
+      hasVisibility && (visibilityItems.length > 0 || visibilityGroups.length > 0)
         ? {
             logic: visibilityLogic,
-            conditions: visibilityItems.map((c) => {
-              let parsedVal = c.value;
-              if (parsedVal === 'true') parsedVal = true;
-              else if (parsedVal === 'false') parsedVal = false;
-              else if (!isNaN(Number(parsedVal)) && parsedVal !== '') parsedVal = Number(parsedVal);
-              return { ...c, value: parsedVal };
-            }),
+            conditions: visibilityItems.map(normalizeConditionItem),
+            ...(visibilityGroups.length > 0
+              ? {
+                  groups: visibilityGroups.map((g, idx) => ({
+                    id: g.id || `vgrp_${idx + 1}`,
+                    logic: g.logic,
+                    conditions: g.conditions.map(normalizeConditionItem),
+                  })),
+                }
+              : {}),
           }
         : null;
 
@@ -808,35 +938,56 @@ export const AkinatorQuestionEditorModal: React.FC<Props> = ({
 
                 {hasVisibility && (
                   <div className="pt-3 border-t border-slate-800/80 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <span className="text-slate-400 text-[11px]">Logic kết hợp:</span>
-                      <div className="flex rounded-lg border border-slate-800 overflow-hidden">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-3">
+                        <span className="text-slate-400 text-[11px]">Logic kết hợp ngoài cùng:</span>
+                        <div className="flex rounded-lg border border-slate-800 overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => setVisibilityLogic('AND')}
+                            className={`px-3 py-1 font-semibold text-xs ${
+                              visibilityLogic === 'AND'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            Tất cả (AND)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setVisibilityLogic('OR')}
+                            className={`px-3 py-1 font-semibold text-xs ${
+                              visibilityLogic === 'OR'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            Bất kỳ (OR)
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => setVisibilityLogic('AND')}
-                          className={`px-3 py-1 font-semibold text-xs ${
-                            visibilityLogic === 'AND'
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-slate-900 text-slate-400 hover:text-slate-200'
-                          }`}
+                          onClick={handleAddVisibilityItem}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium transition-colors"
                         >
-                          Tất cả điều kiện (AND)
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Thêm điều kiện</span>
                         </button>
                         <button
                           type="button"
-                          onClick={() => setVisibilityLogic('OR')}
-                          className={`px-3 py-1 font-semibold text-xs ${
-                            visibilityLogic === 'OR'
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-slate-900 text-slate-400 hover:text-slate-200'
-                          }`}
+                          onClick={handleAddVisibilityGroup}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition-colors"
                         >
-                          Bất kỳ điều kiện (OR)
+                          <Layers className="w-3.5 h-3.5" />
+                          <span>Thêm nhóm điều kiện</span>
                         </button>
                       </div>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
                       {visibilityItems.map((cond, idx) => (
                         <div
                           key={idx}
@@ -887,14 +1038,138 @@ export const AkinatorQuestionEditorModal: React.FC<Props> = ({
                         </div>
                       ))}
 
-                      <button
-                        type="button"
-                        onClick={handleAddVisibilityItem}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs transition-colors"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Thêm điều kiện hiển thị</span>
-                      </button>
+                      {visibilityGroups.map((grp, grpIdx) => (
+                        <div
+                          key={grp.id || grpIdx}
+                          className="bg-indigo-950/15 border border-indigo-500/30 rounded-xl p-3 space-y-2.5"
+                        >
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 font-semibold text-xs">
+                              <Layers className="w-3 h-3" />
+                              Nhóm điều kiện #{grpIdx + 1}
+                            </span>
+
+                            <div className="flex items-center gap-2">
+                              <div className="flex rounded border border-indigo-500/40 overflow-hidden">
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateVisibilityGroupLogic(grpIdx, 'AND')}
+                                  className={`px-2 py-0.5 font-semibold text-[11px] ${
+                                    grp.logic === 'AND'
+                                      ? 'bg-indigo-600 text-white'
+                                      : 'bg-slate-900 text-slate-400'
+                                  }`}
+                                >
+                                  Tất cả (AND)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateVisibilityGroupLogic(grpIdx, 'OR')}
+                                  className={`px-2 py-0.5 font-semibold text-[11px] ${
+                                    grp.logic === 'OR'
+                                      ? 'bg-indigo-600 text-white'
+                                      : 'bg-slate-900 text-slate-400'
+                                  }`}
+                                >
+                                  Bất kỳ (OR)
+                                </button>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleAddCondInVisibilityGroup(grpIdx)}
+                                className="flex items-center gap-1 px-2 py-0.5 bg-indigo-600/80 hover:bg-indigo-600 text-white rounded text-[11px]"
+                              >
+                                <Plus className="w-3 h-3" />
+                                <span>Thêm điều kiện</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveVisibilityGroup(grpIdx)}
+                                className="text-red-400 hover:text-red-300 p-1 rounded"
+                                title="Xóa nhóm điều kiện"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 pl-2 border-l-2 border-indigo-500/30">
+                            {grp.conditions.map((cond, cIdx) => (
+                              <div
+                                key={cIdx}
+                                className="bg-slate-900 p-2 rounded border border-slate-800 flex items-center gap-2 flex-wrap"
+                              >
+                                <select
+                                  value={cond.questionCode}
+                                  onChange={(e) =>
+                                    handleUpdateCondInVisibilityGroup(
+                                      grpIdx,
+                                      cIdx,
+                                      'questionCode',
+                                      e.target.value
+                                    )
+                                  }
+                                  className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-200 text-xs outline-none"
+                                >
+                                  <option value="">-- Chọn câu hỏi điều kiện --</option>
+                                  {otherQuestions.map((q) => (
+                                    <option key={q.code} value={q.code}>
+                                      {q.code} ({q.questionText.slice(0, 30)}...)
+                                    </option>
+                                  ))}
+                                </select>
+
+                                <select
+                                  value={cond.operator}
+                                  onChange={(e) =>
+                                    handleUpdateCondInVisibilityGroup(
+                                      grpIdx,
+                                      cIdx,
+                                      'operator',
+                                      e.target.value as AkinatorConditionOperator
+                                    )
+                                  }
+                                  className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-200 text-xs outline-none"
+                                >
+                                  {CONDITION_OPERATORS.map((op) => (
+                                    <option key={op.value} value={op.value}>
+                                      {op.label}
+                                    </option>
+                                  ))}
+                                </select>
+
+                                {!['IS_ANSWERED', 'IS_NOT_ANSWERED'].includes(cond.operator) && (
+                                  <input
+                                    type="text"
+                                    value={cond.value !== undefined ? String(cond.value) : ''}
+                                    onChange={(e) =>
+                                      handleUpdateCondInVisibilityGroup(
+                                        grpIdx,
+                                        cIdx,
+                                        'value',
+                                        e.target.value
+                                      )
+                                    }
+                                    placeholder="Giá trị so sánh..."
+                                    className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-200 text-xs outline-none flex-1 min-w-[120px]"
+                                  />
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveCondInVisibilityGroup(grpIdx, cIdx)}
+                                  disabled={grp.conditions.length <= 1}
+                                  className="text-slate-500 hover:text-red-400 p-1 rounded disabled:opacity-30"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}

@@ -76,6 +76,8 @@ export interface AkinatorCategoryOutcome {
   suggestedDirections: string[];
   cautionNotes: string[];
   suggestedPriority: PriorityLevel | null;
+  registrationUrl?: string | null;
+  productCode?: string | null;
 }
 
 export interface AkinatorMissingCriterion {
@@ -210,9 +212,16 @@ export interface AkinatorSingleCondition {
   value?: any;
 }
 
+export interface AkinatorConditionSubGroup {
+  id?: string;
+  logic: 'AND' | 'OR';
+  conditions: AkinatorSingleCondition[];
+}
+
 export interface AkinatorConditionGroup {
   logic: 'AND' | 'OR';
   conditions: AkinatorSingleCondition[];
+  groups?: AkinatorConditionSubGroup[];
 }
 
 export interface AkinatorNextQuestionRule {
@@ -248,6 +257,8 @@ export interface AkinatorRuleOutcomePayload {
   suggestedDirections: string[];
   cautionNotes: string[];
   suggestedPriority?: PriorityLevel | null;
+  registrationUrl?: string | null;
+  productCode?: string | null;
 }
 
 export interface AkinatorRuleItem {
@@ -560,6 +571,8 @@ export interface CustomerAkinatorLatestResult {
         suggestedDirections: string[];
         cautionNotes: string[];
         suggestedPriority?: string | null;
+        registrationUrl?: string | null;
+        productCode?: string | null;
       }>;
       primaryPriority?: string | null;
       isReferenceOnly: boolean;

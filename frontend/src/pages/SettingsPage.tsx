@@ -25,6 +25,7 @@ import {
   UserCheck,
   Users,
   Building2,
+  ExternalLink,
 } from 'lucide-react';
 import {
   PageHeader,
@@ -866,14 +867,28 @@ export const SettingsPage: React.FC = () => {
                         <td className="p-3 font-semibold text-blue-400">{prod.code}</td>
                         <td className="p-3 font-sans">
                           <div className="font-medium text-slate-100">{prod.name}</div>
-                          {prod.financialDetail?.providerName ? (
-                            <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                              <Building2 className="w-3 h-3 text-slate-500" />
-                              <span>{prod.financialDetail.providerName}</span>
-                            </div>
-                          ) : (
-                            <div className="text-[10px] text-slate-500 italic mt-0.5">Chưa gắn đối tác</div>
-                          )}
+                          <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                            {prod.financialDetail?.providerName ? (
+                              <div className="text-[10px] text-slate-400 flex items-center gap-1">
+                                <Building2 className="w-3 h-3 text-slate-500" />
+                                <span>{prod.financialDetail.providerName}</span>
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-slate-500 italic">Chưa gắn đối tác</div>
+                            )}
+                            {prod.financialDetail?.officialUrl &&
+                              /^https?:\/\//i.test(prod.financialDetail.officialUrl) && (
+                                <a
+                                  href={prod.financialDetail.officialUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25 font-medium transition-colors"
+                                >
+                                  <span>Link đăng ký</span>
+                                  <ExternalLink className="w-2.5 h-2.5" />
+                                </a>
+                              )}
+                          </div>
                         </td>
                         <td className="p-3">
                           {renderCategoryBadge(prod.financialDetail?.category)}

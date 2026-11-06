@@ -394,53 +394,78 @@ export const CustomerAssessmentsTab: React.FC<CustomerAssessmentsTabProps> = ({
           {/* Categories Grid */}
           {latestAkinatorResult.result.outcomeData?.categories &&
             latestAkinatorResult.result.outcomeData.categories.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
-                {latestAkinatorResult.result.outcomeData.categories.map((cat, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3.5 rounded-lg border border-slate-800 bg-slate-900/60 space-y-2 text-xs"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-semibold text-emerald-300 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                        {cat.categoryLabel}
-                      </span>
-                      {cat.suggestedPriority && (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                          {cat.suggestedPriority}
-                        </span>
-                      )}
+              <div className="space-y-2.5 pt-2">
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span className="font-semibold text-slate-200 uppercase tracking-wider">
+                    Danh sách sản phẩm / giải pháp phù hợp ({latestAkinatorResult.result.outcomeData.categories.length})
+                  </span>
+                  <span className="text-[11px]">Sắp xếp theo thứ tự ưu tiên</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {latestAkinatorResult.result.outcomeData.categories.map((cat, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3.5 rounded-lg border border-slate-800 bg-slate-900/60 space-y-2 text-xs flex flex-col justify-between"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="font-semibold text-emerald-300 flex items-center gap-1.5">
+                            <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 border border-emerald-500/30 font-mono text-[10px]">
+                              #{idx + 1}
+                            </span>
+                            {cat.categoryLabel}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {cat.suggestedPriority && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                {cat.suggestedPriority}
+                              </span>
+                            )}
+                            {cat.registrationUrl && /^https?:\/\//i.test(cat.registrationUrl) && (
+                              <a
+                                href={cat.registrationUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold shadow-sm transition-colors"
+                              >
+                                <span>Đăng ký ngay</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                        <div className="font-semibold text-slate-100 text-xs">{cat.referenceTitle}</div>
+                        <div className="text-slate-400 text-[11px] leading-relaxed">{cat.referenceSummary}</div>
+
+                        {cat.suggestedDirections && cat.suggestedDirections.length > 0 && (
+                          <div className="pt-1 border-t border-slate-800/80">
+                            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                              Hướng tiếp cận gợi ý:
+                            </div>
+                            <ul className="list-disc list-inside space-y-0.5 text-[11px] text-slate-300">
+                              {cat.suggestedDirections.map((dir, dIdx) => (
+                                <li key={dIdx}>{dir}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {cat.cautionNotes && cat.cautionNotes.length > 0 && (
+                          <div className="pt-1">
+                            <div className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider mb-1">
+                              Lưu ý quan trọng:
+                            </div>
+                            <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-200/90">
+                              {cat.cautionNotes.map((note, nIdx) => (
+                                <li key={nIdx}>{note}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="font-medium text-slate-200 text-[11px]">{cat.referenceTitle}</div>
-                    <div className="text-slate-400 text-[11px] leading-relaxed">{cat.referenceSummary}</div>
-
-                    {cat.suggestedDirections && cat.suggestedDirections.length > 0 && (
-                      <div className="pt-1 border-t border-slate-800/80">
-                        <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-                          Hướng tiếp cận gợi ý:
-                        </div>
-                        <ul className="list-disc list-inside space-y-0.5 text-[11px] text-slate-300">
-                          {cat.suggestedDirections.map((dir, dIdx) => (
-                            <li key={dIdx}>{dir}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {cat.cautionNotes && cat.cautionNotes.length > 0 && (
-                      <div className="pt-1">
-                        <div className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider mb-1">
-                          Lưu ý quan trọng:
-                        </div>
-                        <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-200/90">
-                          {cat.cautionNotes.map((note, nIdx) => (
-                            <li key={nIdx}>{note}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
 
@@ -1346,13 +1371,52 @@ export const CustomerAssessmentsTab: React.FC<CustomerAssessmentsTabProps> = ({
             </div>
 
             {/* Result Summary */}
-            <div className="p-4 rounded-lg border border-slate-800 bg-slate-950/60 space-y-2">
-              <div className="font-semibold text-emerald-300 text-sm">
-                {selectedAkinatorDetail.result.summaryTitle}
+            <div className="p-4 rounded-lg border border-slate-800 bg-slate-950/60 space-y-3">
+              <div>
+                <div className="font-semibold text-emerald-300 text-sm">
+                  {selectedAkinatorDetail.result.summaryTitle}
+                </div>
+                <div className="text-xs text-slate-300 leading-relaxed mt-1">
+                  {selectedAkinatorDetail.result.summaryDescription}
+                </div>
               </div>
-              <div className="text-xs text-slate-300 leading-relaxed">
-                {selectedAkinatorDetail.result.summaryDescription}
-              </div>
+
+              {selectedAkinatorDetail.result.outcomeData?.categories &&
+                selectedAkinatorDetail.result.outcomeData.categories.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t border-slate-800">
+                    <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                      Sản phẩm / giải pháp phù hợp ({selectedAkinatorDetail.result.outcomeData.categories.length})
+                    </div>
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {selectedAkinatorDetail.result.outcomeData.categories.map((cat, idx) => (
+                        <div
+                          key={idx}
+                          className="p-3 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between gap-3 flex-wrap text-xs"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-slate-100">
+                              #{idx + 1}. {cat.referenceTitle}
+                            </div>
+                            <div className="text-[11px] text-slate-400 truncate">
+                              {cat.categoryLabel}
+                            </div>
+                          </div>
+                          {cat.registrationUrl && /^https?:\/\//i.test(cat.registrationUrl) && (
+                            <a
+                              href={cat.registrationUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold transition-colors flex-shrink-0"
+                            >
+                              <span>Đăng ký ngay</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
             </div>
 
             {/* Answered Questions Breakdown */}

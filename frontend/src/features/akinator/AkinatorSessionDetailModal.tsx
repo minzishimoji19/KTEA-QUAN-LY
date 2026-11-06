@@ -875,20 +875,33 @@ export const AkinatorSessionDetailModal: React.FC<AkinatorSessionDetailModalProp
                                   key={i}
                                   className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3"
                                 >
-                                  <div className="flex items-center justify-between">
+                                  <div className="flex items-center justify-between flex-wrap gap-2">
                                     <div className="flex items-center gap-2">
                                       <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                                        {cat.categoryCode || `CAT_${i + 1}`}
+                                        #{i + 1} • {cat.categoryCode || `CAT_${i + 1}`}
                                       </span>
                                       <span className="text-sm font-bold text-slate-100">
-                                        {cat.categoryLabel || cat.referenceTitle}
+                                        {cat.referenceTitle || cat.categoryLabel}
                                       </span>
                                     </div>
-                                    {cat.suggestedPriority && (
-                                      <span className="text-xs font-medium text-blue-400">
-                                        {PRIORITY_LABELS[cat.suggestedPriority as PriorityLevel] || cat.suggestedPriority}
-                                      </span>
-                                    )}
+                                    <div className="flex items-center gap-2">
+                                      {cat.suggestedPriority && (
+                                        <span className="text-xs font-medium text-blue-400">
+                                          {PRIORITY_LABELS[cat.suggestedPriority as PriorityLevel] || cat.suggestedPriority}
+                                        </span>
+                                      )}
+                                      {cat.registrationUrl && /^https?:\/\//i.test(cat.registrationUrl) && (
+                                        <a
+                                          href={cat.registrationUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors"
+                                        >
+                                          <span>Đăng ký ngay</span>
+                                          <ExternalLink className="w-3 h-3" />
+                                        </a>
+                                      )}
+                                    </div>
                                   </div>
 
                                   <p className="text-xs text-slate-300 leading-relaxed">

@@ -37,9 +37,16 @@ export interface AkinatorSingleCondition {
   value?: any;
 }
 
-export interface AkinatorConditionGroup {
+export interface AkinatorConditionSubGroup {
+  id?: string;
   logic: 'AND' | 'OR';
   conditions: AkinatorSingleCondition[];
+}
+
+export interface AkinatorConditionGroup {
+  logic: 'AND' | 'OR';
+  conditions?: AkinatorSingleCondition[];
+  groups?: AkinatorConditionSubGroup[];
 }
 
 export interface AkinatorNextQuestionRule {
@@ -81,6 +88,8 @@ export interface AkinatorRuleOutcomePayload {
   suggestedDirections?: string[];
   cautionNotes?: string[];
   suggestedPriority?: PriorityLevel | null;
+  registrationUrl?: string | null;
+  productCode?: string | null;
 }
 
 export interface AkinatorRuleDef {
@@ -129,6 +138,8 @@ export interface AkinatorRuleEvaluationOutput {
       suggestedDirections: string[];
       cautionNotes: string[];
       suggestedPriority: PriorityLevel | null;
+      registrationUrl?: string | null;
+      productCode?: string | null;
     }>;
     primaryPriority: PriorityLevel | null;
     isReferenceOnly: true;
@@ -151,6 +162,38 @@ export interface AkinatorRuleEvaluationOutput {
 
 export const DEFAULT_AKINATOR_DISCLAIMER =
   'Lưu ý quan trọng: Kết quả trên chỉ mang tính chất tham khảo sơ bộ dựa trên thông tin bạn đã cung cấp trong phiên làm quiz. Kết quả này KHÔNG phải là cam kết phê duyệt tín dụng, KHÔNG ấn định hạn mức vay hay lãi suất chính thức. Chuyên viên KTEA sẽ kiểm tra và liên hệ tư vấn chi tiết sau khi hồ sơ được rà soát.';
+
+/**
+ * Parses a condition value into a list of trimmed strings.
+ * Supports arrays, JSON-encoded arrays, and comma-separated strings (e.g. "LOAN_ONLY, BOTH").
+ */
+export function parseConditionListValue(targetVal: any): string[] {
+  if (Array.isArray(targetVal)) {
+    return targetVal.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (typeof targetVal === 'string') {
+    const trimmed = targetVal.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.map((item) => String(item).trim()).filter(Boolean);
+        }
+      } catch {
+        // Fallback to comma split below
+      }
+    }
+    return trimmed
+      .split(',')
+      .map((item) => item.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean);
+  }
+  if (targetVal === undefined || targetVal === null) {
+    return [];
+  }
+  return [String(targetVal).trim()].filter(Boolean);
+}
 
 /**
  * Evaluates a single condition against the current session's answer map.
@@ -186,7 +229,7 @@ export function evaluateSingleCondition(
   switch (condition.operator) {
     case 'EQUALS': {
       if (Array.isArray(rawAnswer)) {
-        return rawAnswer.map(String).includes(String(targetVal));
+        return rawAnswer.map((v) => String(v).trim()).includes(String(targetVal).trim());
       }
       if (typeof rawAnswer === 'boolean' || typeof targetVal === 'boolean') {
         return String(rawAnswer).toLowerCase() === String(targetVal).toLowerCase();
@@ -195,23 +238,23 @@ export function evaluateSingleCondition(
     }
     case 'NOT_EQUALS': {
       if (Array.isArray(rawAnswer)) {
-        return !rawAnswer.map(String).includes(String(targetVal));
+        return !rawAnswer.map((v) => String(v).trim()).includes(String(targetVal).trim());
       }
       return String(rawAnswer).trim() !== String(targetVal).trim();
     }
     case 'IN': {
-      const list = Array.isArray(targetVal) ? targetVal.map(String) : [String(targetVal)];
+      const list = parseConditionListValue(targetVal);
       if (Array.isArray(rawAnswer)) {
-        return rawAnswer.some((item) => list.includes(String(item)));
+        return rawAnswer.some((item) => list.includes(String(item).trim()));
       }
-      return list.includes(String(rawAnswer));
+      return list.includes(String(rawAnswer).trim());
     }
     case 'NOT_IN': {
-      const list = Array.isArray(targetVal) ? targetVal.map(String) : [String(targetVal)];
+      const list = parseConditionListValue(targetVal);
       if (Array.isArray(rawAnswer)) {
-        return !rawAnswer.some((item) => list.includes(String(item)));
+        return !rawAnswer.some((item) => list.includes(String(item).trim()));
       }
-      return !list.includes(String(rawAnswer));
+      return !list.includes(String(rawAnswer).trim());
     }
     case 'GT': {
       const numA = Number(rawAnswer);
@@ -235,7 +278,7 @@ export function evaluateSingleCondition(
     }
     case 'CONTAINS': {
       if (Array.isArray(rawAnswer)) {
-        return rawAnswer.map(String).includes(String(targetVal));
+        return rawAnswer.map((v) => String(v).trim()).includes(String(targetVal).trim());
       }
       return String(rawAnswer).toLowerCase().includes(String(targetVal ?? '').toLowerCase());
     }
@@ -245,22 +288,73 @@ export function evaluateSingleCondition(
 }
 
 /**
- * Evaluates a group of conditions (AND / OR).
- * If group is null/undefined or has no conditions, returns true.
+ * Extracts all single conditions from both top-level `conditions` and nested `groups`.
+ */
+export function extractAllConditionsFromGroup(
+  group: AkinatorConditionGroup | null | undefined
+): AkinatorSingleCondition[] {
+  if (!group) return [];
+  const result: AkinatorSingleCondition[] = [];
+  if (Array.isArray(group.conditions)) {
+    for (const c of group.conditions) {
+      if (c && c.questionCode) result.push(c);
+    }
+  }
+  if (Array.isArray(group.groups)) {
+    for (const sub of group.groups) {
+      if (sub && Array.isArray(sub.conditions)) {
+        for (const c of sub.conditions) {
+          if (c && c.questionCode) result.push(c);
+        }
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Evaluates a group of conditions (AND / OR), supporting both flat top-level `conditions`
+ * and nested condition `groups` (`AkinatorConditionSubGroup[]`).
+ * If group is null/undefined or has no valid conditions/groups, returns true.
  */
 export function evaluateConditionGroup(
   group: AkinatorConditionGroup | null | undefined,
   answersMap: Map<string, any>
 ): boolean {
-  if (!group || !Array.isArray(group.conditions) || group.conditions.length === 0) {
+  if (!group) {
     return true;
   }
 
-  if (group.logic === 'OR') {
-    return group.conditions.some((c) => evaluateSingleCondition(c, answersMap));
+  const topConditions = Array.isArray(group.conditions)
+    ? group.conditions.filter((c) => c && c.questionCode)
+    : [];
+  const subGroups = Array.isArray(group.groups)
+    ? group.groups.filter(
+        (g) => g && Array.isArray(g.conditions) && g.conditions.some((c) => c && c.questionCode)
+      )
+    : [];
+
+  if (topConditions.length === 0 && subGroups.length === 0) {
+    return true;
   }
 
-  return group.conditions.every((c) => evaluateSingleCondition(c, answersMap));
+  const evaluations: boolean[] = [
+    ...topConditions.map((c) => evaluateSingleCondition(c, answersMap)),
+    ...subGroups.map((sub) => {
+      const validSubConds = sub.conditions.filter((c) => c && c.questionCode);
+      if (validSubConds.length === 0) return true;
+      if (sub.logic === 'OR') {
+        return validSubConds.some((c) => evaluateSingleCondition(c, answersMap));
+      }
+      return validSubConds.every((c) => evaluateSingleCondition(c, answersMap));
+    }),
+  ];
+
+  if (group.logic === 'OR') {
+    return evaluations.some(Boolean);
+  }
+
+  return evaluations.every(Boolean);
 }
 
 /**
@@ -720,15 +814,15 @@ export function evaluateAkinatorRules(params: {
           : [],
         cautionNotes: Array.isArray(outcome.cautionNotes) ? outcome.cautionNotes : [],
         suggestedPriority: outcome.suggestedPriority || null,
+        registrationUrl: outcome.registrationUrl ? String(outcome.registrationUrl).trim() : null,
+        productCode: outcome.productCode ? String(outcome.productCode).trim() : null,
       });
 
       if (!primaryPriority && outcome.suggestedPriority) {
         primaryPriority = outcome.suggestedPriority;
       }
-
-      if (rule.stopOnMatch) {
-        break;
-      }
+      // Note: Do not break early on `stopOnMatch` so all matching products/rules
+      // are returned and displayed in `priorityOrder` without artificial limits.
     }
   }
 
@@ -770,10 +864,19 @@ export function evaluateAkinatorRules(params: {
   }
 
   const primary = matchedCategories[0];
+  const summaryTitle =
+    matchedCategories.length > 1
+      ? `${primary.referenceTitle} (cùng ${matchedCategories.length - 1} sản phẩm phù hợp khác)`
+      : primary.referenceTitle;
+  const summaryDescription =
+    matchedCategories.length > 1
+      ? `Hệ thống ghi nhận ${matchedCategories.length} sản phẩm / gói giải pháp phù hợp với thông tin của bạn (ưu tiên hàng đầu: ${primary.referenceTitle}). Xem chi tiết từng sản phẩm và đường dẫn đăng ký bên dưới.`
+      : primary.referenceSummary;
+
   return {
     evaluationStatus: AkinatorEvaluationStatus.EVALUATED,
-    summaryTitle: primary.referenceTitle,
-    summaryDescription: primary.referenceSummary,
+    summaryTitle,
+    summaryDescription,
     outcomeData: {
       categories: matchedCategories,
       primaryPriority: primaryPriority || PriorityLevel.CHUA_CO_NHU_CAU,
@@ -840,18 +943,17 @@ export function validateAkinatorConfigIntegrity(params: {
   }
 
   for (const q of questions) {
-    if (q.visibilityConditions?.conditions) {
-      for (const c of q.visibilityConditions.conditions) {
-        if (!qCodeSet.has(c.questionCode)) {
-          errors.push(
-            `Câu hỏi '${q.code}' có điều kiện hiển thị tham chiếu đến mã câu hỏi không tồn tại '${c.questionCode}'`
-          );
-        } else if (c.questionCode === q.code) {
-          errors.push(`Câu hỏi '${q.code}' không thể tự tham chiếu chính nó trong điều kiện hiển thị`);
-        } else {
-          // c.questionCode must be answered before q.code
-          adj.get(c.questionCode)?.add(q.code);
-        }
+    const allVisConditions = extractAllConditionsFromGroup(q.visibilityConditions);
+    for (const c of allVisConditions) {
+      if (!qCodeSet.has(c.questionCode)) {
+        errors.push(
+          `Câu hỏi '${q.code}' có điều kiện hiển thị tham chiếu đến mã câu hỏi không tồn tại '${c.questionCode}'`
+        );
+      } else if (c.questionCode === q.code) {
+        errors.push(`Câu hỏi '${q.code}' không thể tự tham chiếu chính nó trong điều kiện hiển thị`);
+      } else {
+        // c.questionCode must be answered before q.code
+        adj.get(c.questionCode)?.add(q.code);
       }
     }
 
@@ -922,13 +1024,12 @@ export function validateAkinatorConfigIntegrity(params: {
       }
     }
 
-    if (r.conditions?.conditions) {
-      for (const c of r.conditions.conditions) {
-        if (!qCodeSet.has(c.questionCode)) {
-          errors.push(
-            `Quy tắc '${r.code}' có điều kiện tham chiếu đến mã câu hỏi không tồn tại '${c.questionCode}'`
-          );
-        }
+    const allRuleConditions = extractAllConditionsFromGroup(r.conditions);
+    for (const c of allRuleConditions) {
+      if (!qCodeSet.has(c.questionCode)) {
+        errors.push(
+          `Quy tắc '${r.code}' có điều kiện tham chiếu đến mã câu hỏi không tồn tại '${c.questionCode}'`
+        );
       }
     }
   }

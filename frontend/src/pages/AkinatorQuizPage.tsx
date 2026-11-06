@@ -25,6 +25,7 @@ import {
   Compass,
   AlertCircle,
   Check,
+  ExternalLink,
 } from 'lucide-react';
 import { akinatorPublicApi } from '../services/akinatorService';
 import {
@@ -902,20 +903,43 @@ export const AkinatorQuizPage: React.FC = () => {
                 result.outcomeData?.categories &&
                 result.outcomeData.categories.length > 0 && (
                   <div className="space-y-4">
+                    <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+                      <span className="font-semibold uppercase tracking-wider text-slate-300">
+                        Sản phẩm / Giải pháp phù hợp ({result.outcomeData.categories.length})
+                      </span>
+                      <span className="text-[11px]">Sắp xếp theo thứ tự ưu tiên</span>
+                    </div>
                     {result.outcomeData.categories.map((cat, idx) => (
                       <div
                         key={idx}
                         className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3"
                       >
-                        <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start justify-between gap-3 flex-wrap">
                           <div>
-                            <span className="text-[10px] font-semibold tracking-wider text-blue-400 uppercase font-mono">
-                              {cat.categoryLabel || 'Nhóm nhu cầu phù hợp'}
-                            </span>
-                            <h3 className="font-semibold text-sm text-slate-100 mt-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-blue-500/15 border border-blue-500/30 text-[10px] font-mono font-bold text-blue-400">
+                                #{idx + 1}
+                              </span>
+                              <span className="text-[10px] font-semibold tracking-wider text-blue-400 uppercase font-mono">
+                                {cat.categoryLabel || 'Nhóm nhu cầu phù hợp'}
+                              </span>
+                            </div>
+                            <h3 className="font-semibold text-sm text-slate-100 mt-1">
                               {cat.referenceTitle}
                             </h3>
                           </div>
+
+                          {cat.registrationUrl && /^https?:\/\//i.test(cat.registrationUrl) && (
+                            <a
+                              href={cat.registrationUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md shadow-emerald-600/25 transition-all flex-shrink-0"
+                            >
+                              <span>Đăng ký ngay</span>
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          )}
                         </div>
 
                         <p className="text-xs text-slate-300 leading-relaxed">

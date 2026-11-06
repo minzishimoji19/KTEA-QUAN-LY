@@ -100,8 +100,20 @@ export const financialDetailInputSchema = z
     risks: z.array(z.string().max(255)).optional().nullable(),
     officialUrl: z
       .string()
-      .url('Đường dẫn thông tin chính thức phải là URL hợp lệ (http/https)')
-      .max(500)
+      .trim()
+      .max(500, 'Đường dẫn đăng ký tối đa 500 ký tự')
+      .refine(
+        (val) => {
+          if (!val) return true;
+          try {
+            const parsed = new URL(val);
+            return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+          } catch {
+            return false;
+          }
+        },
+        { message: 'Đường dẫn đăng ký phải là URL hợp lệ bắt đầu bằng http:// hoặc https://' }
+      )
       .optional()
       .nullable()
       .or(z.literal('')),

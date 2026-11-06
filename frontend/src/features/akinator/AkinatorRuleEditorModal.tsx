@@ -17,11 +17,14 @@ import {
   Check,
   Scale,
   Compass,
+  Layers,
+  Link2,
 } from 'lucide-react';
 import {
   AkinatorRuleItem,
   AkinatorQuestionItem,
   AkinatorSingleCondition,
+  AkinatorConditionSubGroup,
   AkinatorConditionOperator,
   PriorityLevel,
 } from '../../types/akinator';
@@ -77,6 +80,7 @@ export const AkinatorRuleEditorModal: React.FC<Props> = ({
   // Condition group
   const [logic, setLogic] = useState<'AND' | 'OR'>('AND');
   const [conditions, setConditions] = useState<AkinatorSingleCondition[]>([]);
+  const [conditionGroups, setConditionGroups] = useState<AkinatorConditionSubGroup[]>([]);
 
   // Outcome payload
   const [categoryCode, setCategoryCode] = useState<string>('');
@@ -86,6 +90,12 @@ export const AkinatorRuleEditorModal: React.FC<Props> = ({
   const [directionsText, setDirectionsText] = useState<string>('');
   const [cautionsText, setCautionsText] = useState<string>('');
   const [suggestedPriority, setSuggestedPriority] = useState<PriorityLevel | ''>('');
+  const [registrationUrl, setRegistrationUrl] = useState<string>('');
+
+  const formatCondValueForInput = (val: any): any => {
+    if (Array.isArray(val)) return val.join(', ');
+    return val;
+  };
 
   useEffect(() => {
     if (rule) {
@@ -97,7 +107,24 @@ export const AkinatorRuleEditorModal: React.FC<Props> = ({
 
       setLogic(rule.conditions?.logic || 'AND');
       setConditions(
-        rule.conditions?.conditions ? rule.conditions.conditions.map((c) => ({ ...c })) : []
+        rule.conditions?.conditions
+          ? rule.conditions.conditions.map((c) => ({
+              ...c,
+              value: formatCondValueForInput(c.value),
+            }))
+          : []
+      );
+      setConditionGroups(
+        rule.conditions?.groups
+          ? rule.conditions.groups.map((g, idx) => ({
+              id: g.id || `grp_${idx + 1}`,
+              logic: g.logic || 'OR',
+              conditions: (g.conditions || []).map((c) => ({
+                ...c,
+                value: formatCondValueForInput(c.value),
+              })),
+            }))
+          : []
       );
 
       const op = rule.outcomePayload || {};
@@ -108,6 +135,7 @@ export const AkinatorRuleEditorModal: React.FC<Props> = ({
       setDirectionsText(op.suggestedDirections ? op.suggestedDirections.join('\n') : '');
       setCautionsText(op.cautionNotes ? op.cautionNotes.join('\n') : '');
       setSuggestedPriority(op.suggestedPriority || '');
+      setRegistrationUrl(op.registrationUrl || '');
     } else {
       // Defaults for new rule
       const nextOrder = existingRules.length + 1;
@@ -119,6 +147,7 @@ export const AkinatorRuleEditorModal: React.FC<Props> = ({
       setLogic('AND');
       const defaultQ = availableQuestions.length > 0 ? availableQuestions[0].code : '';
       setConditions([{ questionCode: defaultQ, operator: 'EQUALS', value: '' }]);
+      setConditionGroups([]);
       setCategoryCode(`CAT_${nextOrder}`);
       setCategoryLabel('');
       setReferenceTitle('');
@@ -126,6 +155,7 @@ export const AkinatorRuleEditorModal: React.FC<Props> = ({
       setDirectionsText('');
       setCautionsText('');
       setSuggestedPriority('');
+      setRegistrationUrl('');
     }
     setActiveTab('info');
     setError(null);
@@ -163,6 +193,105 @@ export const AkinatorRuleEditorModal: React.FC<Props> = ({
     setConditions(conditions.filter((_, i) => i !== index));
   };
 
+  const handleAddConditionGroup = () => {
+    const defaultQ = availableQuestions.length > 0 ? availableQuestions[0].code : '';
+    setConditionGroups([
+      ...conditionGroups,
+      {
+        id: `grp_${Date.now()}_${conditionGroups.length + 1}`,
+        logic: 'OR',
+        conditions: [{ questionCode: defaultQ, operator: 'EQUALS', value: '' }],
+      },
+    ]);
+  };
+
+  const handleUpdateGroupLogic = (groupIndex: number, newLogic: 'AND' | 'OR') => {
+    const next = [...conditionGroups];
+    next[groupIndex] = { ...next[groupIndex], logic: newLogic };
+    setConditionGroups(next);
+  };
+
+  const handleRemoveConditionGroup = (groupIndex: number) => {
+    setConditionGroups(conditionGroups.filter((_, i) => i !== groupIndex));
+  };
+
+  const handleAddConditionInGroup = (groupIndex: number) => {
+    const defaultQ = availableQuestions.length > 0 ? availableQuestions[0].code : '';
+    const next = [...conditionGroups];
+    next[groupIndex] = {
+      ...next[groupIndex],
+      conditions: [
+        ...next[groupIndex].conditions,
+        { questionCode: defaultQ, operator: 'EQUALS', value: '' },
+      ],
+    };
+    setConditionGroups(next);
+  };
+
+  const handleUpdateConditionInGroup = (
+    groupIndex: number,
+    condIndex: number,
+    field: keyof AkinatorSingleCondition,
+    val: any
+  ) => {
+    const next = [...conditionGroups];
+    const nextConds = [...next[groupIndex].conditions];
+    nextConds[condIndex] = { ...nextConds[condIndex], [field]: val };
+    next[groupIndex] = { ...next[groupIndex], conditions: nextConds };
+    setConditionGroups(next);
+  };
+
+  const handleRemoveConditionInGroup = (groupIndex: number, condIndex: number) => {
+    const next = [...conditionGroups];
+    const nextConds = next[groupIndex].conditions.filter((_, i) => i !== condIndex);
+    next[groupIndex] = { ...next[groupIndex], conditions: nextConds };
+    setConditionGroups(next);
+  };
+
+  const normalizeConditionForSave = (c: AkinatorSingleCondition): AkinatorSingleCondition => {
+    let parsedVal = c.value;
+    if (c.operator === 'IN' || c.operator === 'NOT_IN') {
+      if (Array.isArray(parsedVal)) {
+        parsedVal = parsedVal.map((item) => String(item).trim()).filter(Boolean);
+      } else if (typeof parsedVal === 'string') {
+        const trimmed = parsedVal.trim();
+        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+          try {
+            const arr = JSON.parse(trimmed);
+            if (Array.isArray(arr)) {
+              parsedVal = arr.map((item) => String(item).trim()).filter(Boolean);
+            }
+          } catch {
+            parsedVal = trimmed
+              .split(',')
+              .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+              .filter(Boolean);
+          }
+        } else {
+          parsedVal = trimmed
+            .split(',')
+            .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+            .filter(Boolean);
+        }
+      }
+    } else if (parsedVal === 'true') {
+      parsedVal = true;
+    } else if (parsedVal === 'false') {
+      parsedVal = false;
+    } else if (
+      typeof parsedVal === 'string' &&
+      parsedVal.trim() !== '' &&
+      !isNaN(Number(parsedVal))
+    ) {
+      parsedVal = Number(parsedVal);
+    }
+    return { ...c, value: parsedVal };
+  };
+
+  const totalConditionsCount =
+    conditions.length +
+    conditionGroups.reduce((acc, g) => acc + (g.conditions?.length || 0), 0);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -195,17 +324,33 @@ export const AkinatorRuleEditorModal: React.FC<Props> = ({
       return;
     }
 
-    if (conditions.length === 0) {
-      setError('Cần ít nhất 1 điều kiện khớp cho quy tắc đánh giá');
+    if (conditions.length === 0 && conditionGroups.length === 0) {
+      setError('Cần ít nhất 1 điều kiện đơn lẻ hoặc 1 nhóm điều kiện cho quy tắc đánh giá');
       setActiveTab('conditions');
       return;
     }
 
     for (const c of conditions) {
       if (!c.questionCode) {
-        setError('Tất cả điều kiện cần chọn mã câu hỏi so sánh');
+        setError('Tất cả điều kiện đơn lẻ cần chọn mã câu hỏi so sánh');
         setActiveTab('conditions');
         return;
+      }
+    }
+
+    for (let gIdx = 0; gIdx < conditionGroups.length; gIdx++) {
+      const grp = conditionGroups[gIdx];
+      if (!grp.conditions || grp.conditions.length === 0) {
+        setError(`Nhóm điều kiện #${gIdx + 1} không được để trống (cần ít nhất 1 điều kiện)`);
+        setActiveTab('conditions');
+        return;
+      }
+      for (const c of grp.conditions) {
+        if (!c.questionCode) {
+          setError(`Tất cả điều kiện trong Nhóm điều kiện #${gIdx + 1} cần chọn mã câu hỏi so sánh`);
+          setActiveTab('conditions');
+          return;
+        }
       }
     }
 
@@ -219,6 +364,22 @@ export const AkinatorRuleEditorModal: React.FC<Props> = ({
       setError('Vui lòng nhập Tiêu đề tham khảo và Nội dung tóm tắt kết quả');
       setActiveTab('outcome');
       return;
+    }
+
+    const trimmedRegUrl = registrationUrl.trim();
+    if (trimmedRegUrl) {
+      try {
+        const parsed = new URL(trimmedRegUrl);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          setError('Đường dẫn đăng ký sản phẩm phải bắt đầu bằng http:// hoặc https://');
+          setActiveTab('outcome');
+          return;
+        }
+      } catch {
+        setError('Đường dẫn đăng ký sản phẩm không hợp lệ (ví dụ: https://...)');
+        setActiveTab('outcome');
+        return;
+      }
     }
 
     const suggestedDirections = directionsText
@@ -240,13 +401,16 @@ export const AkinatorRuleEditorModal: React.FC<Props> = ({
       requiredQuestionCodes,
       conditions: {
         logic,
-        conditions: conditions.map((c) => {
-          let parsedVal = c.value;
-          if (parsedVal === 'true') parsedVal = true;
-          else if (parsedVal === 'false') parsedVal = false;
-          else if (!isNaN(Number(parsedVal)) && parsedVal !== '') parsedVal = Number(parsedVal);
-          return { ...c, value: parsedVal };
-        }),
+        conditions: conditions.map(normalizeConditionForSave),
+        ...(conditionGroups.length > 0
+          ? {
+              groups: conditionGroups.map((g, idx) => ({
+                id: g.id || `grp_${idx + 1}`,
+                logic: g.logic,
+                conditions: g.conditions.map(normalizeConditionForSave),
+              })),
+            }
+          : {}),
       },
       outcomePayload: {
         categoryCode: categoryCode.trim(),
@@ -256,7 +420,9 @@ export const AkinatorRuleEditorModal: React.FC<Props> = ({
         suggestedDirections,
         cautionNotes,
         suggestedPriority: (suggestedPriority as PriorityLevel) || null,
+        registrationUrl: trimmedRegUrl || null,
       },
+      stopOnMatch: false,
       active: true,
     };
 
@@ -308,7 +474,10 @@ export const AkinatorRuleEditorModal: React.FC<Props> = ({
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            <span>Điều kiện khớp ({conditions.length})</span>
+            <span>
+              Điều kiện khớp ({totalConditionsCount}
+              {conditionGroups.length > 0 ? ` • ${conditionGroups.length} nhóm` : ''})
+            </span>
           </button>
 
           <button
@@ -446,17 +615,17 @@ export const AkinatorRuleEditorModal: React.FC<Props> = ({
           {/* TAB: CONDITIONS */}
           {activeTab === 'conditions' && (
             <div className="space-y-4 text-xs">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
                   <h3 className="font-semibold text-slate-200">
                     Điều kiện khớp quy tắc (Conditions)
                   </h3>
                   <p className="text-[11px] text-slate-400">
-                    Quy tắc chỉ kích hoạt khi các điều kiện bên dưới được thỏa mãn.
+                    Quy tắc kích hoạt khi biểu thức điều kiện tổng thể bên dưới được thỏa mãn. Hỗ trợ kết hợp điều kiện đơn lẻ và nhóm điều kiện (AND / OR).
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex rounded-lg border border-slate-800 overflow-hidden">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex rounded-lg border border-slate-800 overflow-hidden" title="Toán tử kết hợp ngoài cùng giữa các điều kiện và các nhóm điều kiện">
                     <button
                       type="button"
                       onClick={() => setLogic('AND')}
@@ -489,65 +658,372 @@ export const AkinatorRuleEditorModal: React.FC<Props> = ({
                     <Plus className="w-3.5 h-3.5" />
                     <span>Thêm điều kiện</span>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={handleAddConditionGroup}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition-colors"
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>Thêm nhóm điều kiện</span>
+                  </button>
                 </div>
               </div>
 
-              <div className="space-y-2.5">
-                {conditions.map((cond, idx) => (
-                  <div
-                    key={idx}
-                    className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center gap-2.5 flex-wrap"
-                  >
-                    <span className="font-mono text-xs text-slate-500 w-5 text-center">
-                      #{idx + 1}
-                    </span>
+              {/* Top-level Single Conditions */}
+              {conditions.length > 0 && (
+                <div className="space-y-2.5">
+                  {conditionGroups.length > 0 && (
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Điều kiện đơn lẻ (Kết hợp theo {logic} ngoài cùng)
+                    </div>
+                  )}
+                  {conditions.map((cond, idx) => {
+                    const selectedQuestion = availableQuestions.find(
+                      (q) => q.code === cond.questionCode
+                    );
+                    const qOptions = Array.isArray(selectedQuestion?.options)
+                      ? selectedQuestion!.options!
+                      : [];
+                    return (
+                      <div
+                        key={idx}
+                        className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2"
+                      >
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <span className="font-mono text-xs text-slate-500 w-6 text-center">
+                            #{idx + 1}
+                          </span>
 
-                    <select
-                      value={cond.questionCode}
-                      onChange={(e) => handleUpdateCondition(idx, 'questionCode', e.target.value)}
-                      className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 text-xs outline-none flex-1 min-w-[150px]"
-                    >
-                      <option value="">-- Chọn câu hỏi kiểm tra --</option>
-                      {availableQuestions.map((q) => (
-                        <option key={q.code} value={q.code}>
-                          {q.code} ({q.questionText.slice(0, 30)}...)
-                        </option>
-                      ))}
-                    </select>
+                          <select
+                            value={cond.questionCode}
+                            onChange={(e) =>
+                              handleUpdateCondition(idx, 'questionCode', e.target.value)
+                            }
+                            className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 text-xs outline-none flex-1 min-w-[160px]"
+                          >
+                            <option value="">-- Chọn câu hỏi kiểm tra --</option>
+                            {availableQuestions.map((q) => (
+                              <option key={q.code} value={q.code}>
+                                {q.code} ({q.questionText.slice(0, 35)}...)
+                              </option>
+                            ))}
+                          </select>
 
-                    <select
-                      value={cond.operator}
-                      onChange={(e) => handleUpdateCondition(idx, 'operator', e.target.value as AkinatorConditionOperator)}
-                      className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 text-xs outline-none"
-                    >
-                      {CONDITION_OPERATORS.map((op) => (
-                        <option key={op.value} value={op.value}>
-                          {op.label}
-                        </option>
-                      ))}
-                    </select>
+                          <select
+                            value={cond.operator}
+                            onChange={(e) =>
+                              handleUpdateCondition(
+                                idx,
+                                'operator',
+                                e.target.value as AkinatorConditionOperator
+                              )
+                            }
+                            className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 text-xs outline-none"
+                          >
+                            {CONDITION_OPERATORS.map((op) => (
+                              <option key={op.value} value={op.value}>
+                                {op.label}
+                              </option>
+                            ))}
+                          </select>
 
-                    {!['IS_ANSWERED', 'IS_NOT_ANSWERED'].includes(cond.operator) && (
-                      <input
-                        type="text"
-                        value={cond.value !== undefined ? String(cond.value) : ''}
-                        onChange={(e) => handleUpdateCondition(idx, 'value', e.target.value)}
-                        placeholder="Giá trị (ví dụ: true, 50000000, BUSINESS)"
-                        className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 text-xs outline-none flex-1 min-w-[140px]"
-                      />
-                    )}
+                          {!['IS_ANSWERED', 'IS_NOT_ANSWERED'].includes(cond.operator) && (
+                            <input
+                              type="text"
+                              value={cond.value !== undefined ? String(cond.value) : ''}
+                              onChange={(e) =>
+                                handleUpdateCondition(idx, 'value', e.target.value)
+                              }
+                              placeholder={
+                                cond.operator === 'IN' || cond.operator === 'NOT_IN'
+                                  ? 'Nhập các mã cách nhau dấu phẩy (VD: LOAN_ONLY, BOTH)'
+                                  : 'Giá trị (ví dụ: true, 6000000, BUSINESS)'
+                              }
+                              className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 text-xs outline-none flex-1 min-w-[150px]"
+                            />
+                          )}
 
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveCondition(idx)}
-                      disabled={conditions.length <= 1}
-                      className="text-slate-500 hover:text-red-400 p-1.5 rounded disabled:opacity-30"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveCondition(idx)}
+                            disabled={conditions.length <= 1 && conditionGroups.length === 0}
+                            title="Xóa điều kiện"
+                            className="text-slate-500 hover:text-red-400 p-1.5 rounded disabled:opacity-30"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {qOptions.length > 0 &&
+                          !['IS_ANSWERED', 'IS_NOT_ANSWERED'].includes(cond.operator) && (
+                            <div className="pl-8 flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] text-slate-500">Gợi ý mã đáp án:</span>
+                              {qOptions.map((opt) => (
+                                <button
+                                  key={opt.value}
+                                  type="button"
+                                  onClick={() => {
+                                    if (cond.operator === 'IN' || cond.operator === 'NOT_IN') {
+                                      const currentStr = String(cond.value || '').trim();
+                                      const parts = currentStr
+                                        ? currentStr
+                                            .split(',')
+                                            .map((s) => s.trim())
+                                            .filter(Boolean)
+                                        : [];
+                                      const nextParts = parts.includes(opt.value)
+                                        ? parts.filter((p) => p !== opt.value)
+                                        : [...parts, opt.value];
+                                      handleUpdateCondition(idx, 'value', nextParts.join(', '));
+                                    } else {
+                                      handleUpdateCondition(idx, 'value', opt.value);
+                                    }
+                                  }}
+                                  className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700/70 text-[10px] font-mono text-slate-300 transition-colors"
+                                  title={opt.label}
+                                >
+                                  {opt.value} ({opt.label.slice(0, 22)})
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Nested Condition Groups (AND / OR) */}
+              {conditionGroups.length > 0 && (
+                <div className="space-y-3 pt-1">
+                  {conditions.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <div className="h-px bg-slate-800 flex-1" />
+                      <span className="px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-[10px] font-bold text-emerald-400">
+                        {logic === 'AND' ? 'VÀ (AND)' : 'HOẶC (OR)'}
+                      </span>
+                      <div className="h-px bg-slate-800 flex-1" />
+                    </div>
+                  )}
+
+                  {conditionGroups.map((grp, grpIdx) => (
+                    <React.Fragment key={grp.id || grpIdx}>
+                      {grpIdx > 0 && (
+                        <div className="flex items-center gap-2">
+                          <div className="h-px bg-slate-800 flex-1" />
+                          <span className="px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-[10px] font-bold text-emerald-400">
+                            {logic === 'AND' ? 'VÀ (AND)' : 'HOẶC (OR)'}
+                          </span>
+                          <div className="h-px bg-slate-800 flex-1" />
+                        </div>
+                      )}
+
+                      <div className="bg-indigo-950/15 border border-indigo-500/30 rounded-xl p-3.5 space-y-3">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 font-semibold text-xs">
+                              <Layers className="w-3.5 h-3.5" />
+                              Nhóm điều kiện #{grpIdx + 1}
+                            </span>
+                            <span className="text-[11px] text-slate-400">
+                              ({grp.conditions.length} điều kiện bên trong nhóm)
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <div className="flex rounded-lg border border-indigo-500/40 overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateGroupLogic(grpIdx, 'AND')}
+                                className={`px-2.5 py-1 font-semibold text-[11px] ${
+                                  grp.logic === 'AND'
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                Tất cả trong nhóm (AND)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateGroupLogic(grpIdx, 'OR')}
+                                className={`px-2.5 py-1 font-semibold text-[11px] ${
+                                  grp.logic === 'OR'
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                Bất kỳ trong nhóm (OR)
+                              </button>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleAddConditionInGroup(grpIdx)}
+                              className="flex items-center gap-1 px-2.5 py-1 bg-indigo-600/80 hover:bg-indigo-600 text-white rounded-lg text-[11px] font-medium transition-colors"
+                            >
+                              <Plus className="w-3 h-3" />
+                              <span>Thêm điều kiện</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveConditionGroup(grpIdx)}
+                              title="Xóa nhóm điều kiện này"
+                              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-950/40 hover:bg-red-900/50 border border-red-500/30 text-red-300 text-[11px] transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Xóa nhóm</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 pl-2 border-l-2 border-indigo-500/30">
+                          {grp.conditions.map((cond, cIdx) => {
+                            const selectedQuestion = availableQuestions.find(
+                              (q) => q.code === cond.questionCode
+                            );
+                            const qOptions = Array.isArray(selectedQuestion?.options)
+                              ? selectedQuestion!.options!
+                              : [];
+                            return (
+                              <div
+                                key={cIdx}
+                                className="bg-slate-950/90 p-2.5 rounded-lg border border-slate-800 space-y-2"
+                              >
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-mono text-[11px] text-indigo-400 w-8 text-center">
+                                    #{grpIdx + 1}.{cIdx + 1}
+                                  </span>
+
+                                  <select
+                                    value={cond.questionCode}
+                                    onChange={(e) =>
+                                      handleUpdateConditionInGroup(
+                                        grpIdx,
+                                        cIdx,
+                                        'questionCode',
+                                        e.target.value
+                                      )
+                                    }
+                                    className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 text-xs outline-none flex-1 min-w-[150px]"
+                                  >
+                                    <option value="">-- Chọn câu hỏi kiểm tra --</option>
+                                    {availableQuestions.map((q) => (
+                                      <option key={q.code} value={q.code}>
+                                        {q.code} ({q.questionText.slice(0, 35)}...)
+                                      </option>
+                                    ))}
+                                  </select>
+
+                                  <select
+                                    value={cond.operator}
+                                    onChange={(e) =>
+                                      handleUpdateConditionInGroup(
+                                        grpIdx,
+                                        cIdx,
+                                        'operator',
+                                        e.target.value as AkinatorConditionOperator
+                                      )
+                                    }
+                                    className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 text-xs outline-none"
+                                  >
+                                    {CONDITION_OPERATORS.map((op) => (
+                                      <option key={op.value} value={op.value}>
+                                        {op.label}
+                                      </option>
+                                    ))}
+                                  </select>
+
+                                  {!['IS_ANSWERED', 'IS_NOT_ANSWERED'].includes(cond.operator) && (
+                                    <input
+                                      type="text"
+                                      value={cond.value !== undefined ? String(cond.value) : ''}
+                                      onChange={(e) =>
+                                        handleUpdateConditionInGroup(
+                                          grpIdx,
+                                          cIdx,
+                                          'value',
+                                          e.target.value
+                                        )
+                                      }
+                                      placeholder={
+                                        cond.operator === 'IN' || cond.operator === 'NOT_IN'
+                                          ? 'Nhập các mã cách nhau dấu phẩy (VD: LOAN_ONLY, BOTH)'
+                                          : 'Giá trị (ví dụ: true, 6000000, BUSINESS)'
+                                      }
+                                      className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 text-xs outline-none flex-1 min-w-[140px]"
+                                    />
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveConditionInGroup(grpIdx, cIdx)}
+                                    disabled={grp.conditions.length <= 1}
+                                    title="Xóa điều kiện trong nhóm"
+                                    className="text-slate-500 hover:text-red-400 p-1.5 rounded disabled:opacity-30"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+
+                                {qOptions.length > 0 &&
+                                  !['IS_ANSWERED', 'IS_NOT_ANSWERED'].includes(cond.operator) && (
+                                    <div className="pl-9 flex items-center gap-1.5 flex-wrap">
+                                      <span className="text-[10px] text-slate-500">
+                                        Gợi ý mã đáp án:
+                                      </span>
+                                      {qOptions.map((opt) => (
+                                        <button
+                                          key={opt.value}
+                                          type="button"
+                                          onClick={() => {
+                                            if (
+                                              cond.operator === 'IN' ||
+                                              cond.operator === 'NOT_IN'
+                                            ) {
+                                              const currentStr = String(cond.value || '').trim();
+                                              const parts = currentStr
+                                                ? currentStr
+                                                    .split(',')
+                                                    .map((s) => s.trim())
+                                                    .filter(Boolean)
+                                                : [];
+                                              const nextParts = parts.includes(opt.value)
+                                                ? parts.filter((p) => p !== opt.value)
+                                                : [...parts, opt.value];
+                                              handleUpdateConditionInGroup(
+                                                grpIdx,
+                                                cIdx,
+                                                'value',
+                                                nextParts.join(', ')
+                                              );
+                                            } else {
+                                              handleUpdateConditionInGroup(
+                                                grpIdx,
+                                                cIdx,
+                                                'value',
+                                                opt.value
+                                              );
+                                            }
+                                          }}
+                                          className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700/70 text-[10px] font-mono text-slate-300 transition-colors"
+                                          title={opt.label}
+                                        >
+                                          {opt.value} ({opt.label.slice(0, 22)})
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </React.Fragment>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -584,7 +1060,7 @@ export const AkinatorRuleEditorModal: React.FC<Props> = ({
 
               <div>
                 <label className="font-medium text-slate-300 block mb-1">
-                  Tiêu đề tham khảo (referenceTitle) <span className="text-red-400">*</span>
+                  Tiêu đề tham khảo / Tên sản phẩm (referenceTitle) <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="text"
@@ -593,6 +1069,24 @@ export const AkinatorRuleEditorModal: React.FC<Props> = ({
                   placeholder="Ví dụ: Giải pháp Bổ sung vốn kinh doanh có Tài sản đảm bảo"
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:border-emerald-500 outline-none"
                 />
+              </div>
+
+              <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-xl p-3.5 space-y-1.5">
+                <label className="font-semibold text-emerald-300 flex items-center gap-1.5">
+                  <Link2 className="w-3.5 h-3.5" />
+                  <span>Đường dẫn đăng ký sản phẩm / khoản vay (Registration URL)</span>
+                </label>
+                <input
+                  type="url"
+                  value={registrationUrl}
+                  onChange={(e) => setRegistrationUrl(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:border-emerald-500 outline-none font-mono"
+                />
+                <p className="text-[11px] text-slate-400">
+                  Khi sản phẩm/quy tắc này khớp với thông tin khách hàng, hệ thống sẽ hiển thị nút{' '}
+                  <strong className="text-emerald-300">&quot;Đăng ký ngay&quot;</strong> dẫn tới đường link này (mở tab mới). Để trống nếu chưa có link đăng ký.
+                </p>
               </div>
 
               <div>

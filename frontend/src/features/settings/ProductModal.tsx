@@ -226,6 +226,20 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       return;
     }
 
+    const trimmedOfficialUrl = officialUrl.trim();
+    if (trimmedOfficialUrl) {
+      try {
+        const parsed = new URL(trimmedOfficialUrl);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          setError('Đường dẫn đăng ký sản phẩm phải bắt đầu bằng http:// hoặc https://');
+          return;
+        }
+      } catch {
+        setError('Đường dẫn đăng ký sản phẩm không hợp lệ (ví dụ: https://...)');
+        return;
+      }
+    }
+
     // Parse array items from multi-line text
     const benefitsList = benefitsText
       .split('\n')
@@ -428,6 +442,23 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-emerald-300 flex items-center gap-1.5">
+                  <LinkIcon className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Đường dẫn đăng ký vay / sản phẩm (Registration URL)</span>
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://nganhang.vn/dang-ky-vay"
+                  value={officialUrl}
+                  onChange={(e) => setOfficialUrl(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500"
+                />
+                <p className="text-[10px] text-slate-400">
+                  Khi sản phẩm này được gợi ý cho khách hàng, hệ thống sẽ hiển thị nút &quot;Đăng ký ngay&quot; mở tới đường link này.
+                </p>
               </div>
 
               <div className="space-y-1">
@@ -708,12 +739,12 @@ export const ProductModal: React.FC<ProductModalProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="md:col-span-1 space-y-1">
                   <label className="text-xs font-medium text-slate-300 flex items-center gap-1">
-                    <LinkIcon className="w-3 h-3 text-slate-400" />
-                    <span>Nguồn chính thức (URL)</span>
+                    <LinkIcon className="w-3 h-3 text-emerald-400" />
+                    <span>Đường dẫn đăng ký (URL)</span>
                   </label>
                   <input
                     type="url"
-                    placeholder="https://nganhang.vn/san-pham"
+                    placeholder="https://nganhang.vn/dang-ky-vay"
                     value={officialUrl}
                     onChange={(e) => setOfficialUrl(e.target.value)}
                     className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500"

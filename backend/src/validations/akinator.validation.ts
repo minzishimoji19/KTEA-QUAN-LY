@@ -35,10 +35,28 @@ export const akinatorSingleConditionSchema = z.object({
   value: z.any().optional(),
 });
 
-export const akinatorConditionGroupSchema = z.object({
+export const akinatorConditionSubGroupSchema = z.object({
+  id: z.string().trim().max(100).optional(),
   logic: z.enum(['AND', 'OR']).default('AND'),
-  conditions: z.array(akinatorSingleConditionSchema).min(1, 'Phải có ít nhất 1 điều kiện'),
+  conditions: z
+    .array(akinatorSingleConditionSchema)
+    .min(1, 'Nhóm điều kiện phải có ít nhất 1 điều kiện'),
 });
+
+export const akinatorConditionGroupSchema = z
+  .object({
+    logic: z.enum(['AND', 'OR']).default('AND'),
+    conditions: z.array(akinatorSingleConditionSchema).default([]),
+    groups: z.array(akinatorConditionSubGroupSchema).optional().default([]),
+  })
+  .refine(
+    (val) =>
+      (Array.isArray(val.conditions) && val.conditions.length > 0) ||
+      (Array.isArray(val.groups) && val.groups.length > 0),
+    {
+      message: 'Phải có ít nhất 1 điều kiện đơn lẻ hoặc 1 nhóm điều kiện hợp lệ',
+    }
+  );
 
 export const akinatorNextQuestionRuleSchema = z
   .object({
@@ -125,6 +143,26 @@ export const akinatorRuleOutcomePayloadSchema = z.object({
   suggestedDirections: z.array(z.string().trim().min(1).max(500)).default([]),
   cautionNotes: z.array(z.string().trim().min(1).max(500)).default([]),
   suggestedPriority: z.nativeEnum(PriorityLevel).nullable().optional(),
+  registrationUrl: z
+    .string()
+    .trim()
+    .max(500, 'Đường dẫn đăng ký tối đa 500 ký tự')
+    .refine(
+      (val) => {
+        if (!val) return true;
+        try {
+          const parsed = new URL(val);
+          return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+        } catch {
+          return false;
+        }
+      },
+      { message: 'Đường dẫn đăng ký phải là URL hợp lệ bắt đầu bằng http:// hoặc https://' }
+    )
+    .nullable()
+    .optional()
+    .transform((val) => (!val || val.trim() === '' ? null : val.trim())),
+  productCode: z.string().trim().max(100).nullable().optional(),
 });
 
 export const akinatorRuleInputSchema = z.object({
